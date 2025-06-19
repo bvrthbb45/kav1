@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QApplication,
     QStyle,
-    QFileDialog
+    QFileDialog,
 )
 
 from PySide6.QtGui import QIcon
@@ -196,7 +196,9 @@ class CreateVisitorDialog(QDialog):
         self.accept()
 
     def load_keys(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Load Keys File", "", "Text Files (*.txt);;All Files (*)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Load Keys File", "", "Text Files (*.txt);;All Files (*)"
+        )
         if not file_path:
             return
 
@@ -228,6 +230,7 @@ class CreateVisitorDialog(QDialog):
         for key_input, value_input in self.param_fields:
             key_input.parentWidget().deleteLater()
         self.param_fields.clear()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
