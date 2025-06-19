@@ -27,6 +27,7 @@ from PySide6.QtCore import Qt
 from app.core.api_client import ApiClient
 from app.utils.log import Log
 from app.views.logs.logs_dialog import LogsDialog
+from app.views.visitor.edit_visitor_dialog import EditVisitorDialog
 
 
 class VisitorDetailsDialog(QDialog):
@@ -86,6 +87,7 @@ class VisitorDetailsDialog(QDialog):
             scroll_layout.setContentsMargins(8, 8, 8, 8)
             scroll_layout.setSpacing(8)
 
+            self.property_edits = {}
             for key, value in properties.items():
                 line_edit = QLineEdit()
                 line_edit.setText(f"{key}: {value}")
@@ -93,7 +95,7 @@ class VisitorDetailsDialog(QDialog):
                 line_edit.setReadOnly(True)
                 line_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 line_edit.adjustSize()
-
+                self.property_edits[key] = line_edit
                 scroll_layout.addWidget(line_edit)
 
             scroll.setWidget(scroll_content)
@@ -104,6 +106,12 @@ class VisitorDetailsDialog(QDialog):
             properties_layout.addWidget(self.no_properties_label)
 
         self.layout.addWidget(self.properties_frame)
+
+        # Add edit button
+        self.edit_button = QPushButton("Edit Visitor")
+        self.edit_button.setMinimumHeight(40)
+        self.edit_button.clicked.connect(self.edit_visitor)
+        self.layout.addWidget(self.edit_button)
 
         isInside = self.visitor_data["inside"]
         self.toggle_button = QPushButton(f"Mark {'Outside' if isInside else 'Inside'}")
@@ -167,6 +175,12 @@ class VisitorDetailsDialog(QDialog):
     def on_logs_received(self, data):
         self.api_client.response_received.disconnect(self.on_logs_received)
         LogsDialog(data).exec()
+
+    def edit_visitor(self):
+        dialog = EditVisitorDialog(self.visitor_data, self)
+        if dialog.exec() == QDialog.Accepted:
+            # The edit dialog will handle closing both dialogs
+            pass
 
 
 if __name__ == "__main__":

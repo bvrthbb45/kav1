@@ -44,9 +44,10 @@ def delete_visitor(db: Session, visitor_id: str):
     )
 
     if visitor:
+        visitor_data = {"visitorid": visitor.visitorid, "name": visitor.name}
         db.delete(visitor)
         db.commit()
-        return visitor
+        return visitor_data
     return None
 
 
@@ -133,3 +134,28 @@ def search_visitors_by_key_value(db: Session, key: str, value: str = None):
             == value
         )
     return query.all()
+
+
+def update_visitor_details(
+    db: Session,
+    visitor_id: str,
+    name: str = None,
+    visitorid: str = None,
+    properties: dict = None,
+):
+    visitor = (
+        db.query(models.Visitor).filter(models.Visitor.visitorid == visitor_id).first()
+    )
+
+    if visitor:
+        if name is not None:
+            visitor.name = name
+        if visitorid is not None:
+            visitor.visitorid = visitorid
+        if properties is not None:
+            visitor.properties = properties
+        db.commit()
+        db.refresh(visitor)
+        log_visitor_action(db, visitor.dbid, "update")
+        return visitor
+    return None

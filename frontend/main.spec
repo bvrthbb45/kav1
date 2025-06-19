@@ -5,7 +5,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('app\\**\\*.py', 'app')
+        ('app\\**\\*.py', 'app'),
+        ('app/views/Kav1.png', 'app/views'),
+        ('style.css', '.'),
     ],
     hiddenimports=[],
     hookspath=[],

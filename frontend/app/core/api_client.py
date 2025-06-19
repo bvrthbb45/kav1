@@ -98,6 +98,13 @@ class ApiClient(QObject):
         ApiClient.logger.write_to_log(f"GET request to {url} for visitor logs")
         self._send_request(url, "GET")
 
+    def update_visitor(self, visitor_id: str, visitor_data: dict):
+        url = Settings.get_http_url(f"/visitors/{visitor_id}")
+        ApiClient.logger.write_to_log(
+            f"PUT request to {url} with visitor data: {visitor_data}"
+        )
+        self._send_request(url, "PUT", visitor_data)
+
     def _send_request(self, url: str, method: str, data: dict = None):
         request = QNetworkRequest(QUrl(url))
         request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
@@ -111,6 +118,12 @@ class ApiClient(QObject):
                 f"POST request to {url} with data: {json.dumps(data)}"
             )
             self.manager.post(request, json_data)
+        elif method == "PUT":
+            json_data = QJsonDocument.fromVariant(data).toJson()
+            ApiClient.logger.write_to_log(
+                f"PUT request to {url} with data: {json.dumps(data)}"
+            )
+            self.manager.put(request, json_data)
 
     @Slot(object)
     def _handle_response(self, reply):
@@ -122,8 +135,19 @@ class ApiClient(QObject):
             ApiClient.logger.write_to_log(f"HTTP Status Code: {status_code}")
 
             if status_code != 200:
-                ApiClient.logger.write_to_log(f"Error occurred: HTTP {status_code}")
-                self.error_occurred.emit(f"HTTP Error: {status_code}")
+                error_message = "Unknown error occurred"
+                try:
+                    decoded_data = raw_data.data().decode("utf-8")
+                    error_data = json.loads(decoded_data)
+                    if "detail" in error_data:
+                        error_message = error_data["detail"]
+                except:
+                    pass
+
+                ApiClient.logger.write_to_log(
+                    f"Error occurred: HTTP {status_code} - {error_message}"
+                )
+                self.error_occurred.emit(f"Error: {error_message}")
             else:
                 decoded_data = raw_data.data().decode("utf-8")
                 data = json.loads(decoded_data)

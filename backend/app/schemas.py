@@ -19,7 +19,6 @@ class VisitorBase(VisitorCreate):
 class VisitorUpdate(BaseModel):
     name: Optional[str] = None
     visitorid: Optional[str] = None
-    inside: Optional[bool] = None
     properties: Optional[Dict] = Field(default_factory=dict)
 
     class Config:

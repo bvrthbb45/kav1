@@ -18,7 +18,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
     QApplication,
+    QStyle,
+    QFileDialog,
 )
+
+from PySide6.QtGui import QIcon
 
 from app.core.api_client import ApiClient
 
@@ -30,7 +34,7 @@ class CreateVisitorDialog(QDialog):
         super().__init__()
 
         self.setWindowTitle("Create Visitor")
-        self.setMinimumSize(600, 400)
+        self.setMinimumSize(800, 600)
 
         self.api_client = ApiClient.get_instance()
 
@@ -64,6 +68,18 @@ class CreateVisitorDialog(QDialog):
         self.submit_btn = QPushButton("Submit")
         self.submit_btn.clicked.connect(self.submit_data)
         layout.addWidget(self.submit_btn)
+
+        icon = self.style().standardIcon(QStyle.SP_FileDialogStart)
+
+        self.load_keys_btn = QPushButton("Load Keys")
+        self.load_keys_btn.setIcon(icon)
+        self.load_keys_btn.clicked.connect(self.load_keys)
+        layout.addWidget(self.load_keys_btn)
+
+        self.clear_keys_btn = QPushButton("Clear Keys")
+        self.clear_keys_btn.setIcon(icon)
+        self.clear_keys_btn.clicked.connect(self.clear_keys)
+        layout.addWidget(self.clear_keys_btn)
 
         self.param_fields = []
         self.add_param_field()
@@ -178,6 +194,42 @@ class CreateVisitorDialog(QDialog):
 
         self.api_client.create_visitor(data)
         self.accept()
+
+    def load_keys(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Load Keys File", "", "Text Files (*.txt);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                keys = [k.strip() for k in content.split(",") if k.strip()]
+        except Exception as e:
+            show_warning("File Error", f"Could not read the file:\n\n• {e}")
+            return
+
+        for key in keys:
+            key_input = QLineEdit()
+            key_input.setText(key)
+
+            value_input = QLineEdit()
+
+            field_layout = QHBoxLayout()
+            field_layout.addWidget(key_input)
+            field_layout.addWidget(value_input)
+
+            container = QWidget()
+            container.setLayout(field_layout)
+
+            self.form_layout.addWidget(container)
+            self.param_fields.append((key_input, value_input))
+
+    def clear_keys(self):
+        for key_input, value_input in self.param_fields:
+            key_input.parentWidget().deleteLater()
+        self.param_fields.clear()
 
 
 if __name__ == "__main__":
