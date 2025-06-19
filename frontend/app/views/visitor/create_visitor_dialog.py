@@ -30,7 +30,7 @@ class CreateVisitorDialog(QDialog):
         super().__init__()
 
         self.setWindowTitle("Create Visitor")
-        self.setMinimumSize(600, 400)
+        self.setMinimumSize(800, 600)
 
         self.api_client = ApiClient.get_instance()
 
