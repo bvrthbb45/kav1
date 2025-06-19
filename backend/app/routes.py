@@ -139,7 +139,9 @@ async def delete_visitor(visitor_id: str, db: Session = Depends(database.get_db)
         return {"message": "Visitor not found"}
 
     visitor_logger.log_event(
-        event_type="DELETE", visitor_id=visitor.visitorid, visitor_name=visitor.name
+        event_type="DELETE",
+        visitor_id=visitor["visitorid"],
+        visitor_name=visitor["name"],
     )
 
     try:

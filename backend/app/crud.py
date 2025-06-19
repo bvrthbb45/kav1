@@ -44,9 +44,10 @@ def delete_visitor(db: Session, visitor_id: str):
     )
 
     if visitor:
+        visitor_data = {"visitorid": visitor.visitorid, "name": visitor.name}
         db.delete(visitor)
         db.commit()
-        return visitor
+        return visitor_data
     return None
 
 
