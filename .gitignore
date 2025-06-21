@@ -21,6 +21,8 @@ build
 dist
 *.exe
 *.zip
+bin/
+obj/
 
 # log files
 *.log
