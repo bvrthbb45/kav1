@@ -42,6 +42,9 @@ class MainWindow(QMainWindow):
     def __init__(self, appName="Kav 1"):
         super().__init__()
         self.logger = Log()
+
+        self.ask_for_connection()
+
         self.setup_ui(appName)
         self.setup_clients()
         self.connect_signals()
@@ -216,12 +219,15 @@ class MainWindow(QMainWindow):
             visitor_details_dialog.exec()
 
     def ask_for_connection(self):
-        pass
+        """Show connection configuration dialog"""
         dialog = ConnectionDialog()
         if dialog.exec():
             address = dialog.get_address()
             if address:
                 Settings.set_url(address)
+                self.logger.write_to_log(f"Connection set to: {address}")
+        else:
+            self.logger.write_to_log("Connection configuration cancelled")
 
     def handle_connect(self):
         msg = f"Connected to {Settings.get_base_url()}"
