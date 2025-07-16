@@ -39,13 +39,13 @@ from app.utils.log import Log
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, appName = "Kav 1"):
+    def __init__(self, appName="Kav 1"):
         super().__init__()
         self.logger = Log()
         self.setup_ui(appName)
         self.setup_clients()
         self.connect_signals()
-        
+
         QTimer.singleShot(1000, self.force_sync)
 
     def setup_ui(self, appName):
@@ -117,16 +117,16 @@ class MainWindow(QMainWindow):
         # Clear existing connections
         self.api_client.response_received.disconnect()
         self.ws_client.message_received.disconnect()
-        
+
         # Set up new connections
         self.ws_client.message_received.connect(self.handle_ws_message)
         self.ws_client.connected.connect(self.handle_connect)
         self.ws_client.disconnected.connect(self.handle_disconnect)
-        
+
         # Default API response handler
         self.api_client.response_received.connect(self.handle_api_response)
         self.api_client.error_occurred.connect(self.log_error)
-        
+
         # Button connections
         self.search_button.clicked.connect(self.open_search_dialog)
         self.sync_button.clicked.connect(self.force_sync)
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
     def handle_api_response(self, response: dict):
         self.logger.write_to_log(f"API Response Type: {type(response)}")
         self.logger.write_to_log(f"API Response Content: {str(response)}")
-        
+
         if response and isinstance(response, list):
             self.update_visitors_list(response)
         else:
@@ -186,7 +186,11 @@ class MainWindow(QMainWindow):
             self.visitors_list.clear()
             if visitors and isinstance(visitors, list):  # More explicit check
                 for visitor in visitors:
-                    if isinstance(visitor, dict) and 'visitorid' in visitor and 'name' in visitor:
+                    if (
+                        isinstance(visitor, dict)
+                        and "visitorid" in visitor
+                        and "name" in visitor
+                    ):
                         display_name = f"{visitor['visitorid']} - {visitor['name']}"
                         self.visitors_list.addItem(display_name)
         except Exception as e:
