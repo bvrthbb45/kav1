@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (
     QStyle,
     QApplication,
 )
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QFont
+from PySide6.QtCore import QTimer
 from datetime import datetime
 
 from app.core.api_client import ApiClient
@@ -38,21 +39,14 @@ from app.utils.log import Log
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, appName="Kav 1"):
+    def __init__(self, appName = "Kav 1"):
         super().__init__()
-
-        self.ask_for_connection()
-
-        icon_path = Path(__file__).parent / "Kav1.png"
-        self.setWindowIcon(QIcon(str(icon_path)))
-
         self.logger = Log()
-
         self.setup_ui(appName)
         self.setup_clients()
         self.connect_signals()
-
-        self.force_sync()
+        
+        QTimer.singleShot(1000, self.force_sync)
 
     def setup_ui(self, appName):
         self.setWindowTitle(appName)
@@ -120,15 +114,20 @@ class MainWindow(QMainWindow):
         self.ws_client.connect(Settings.get_ws_url())
 
     def connect_signals(self):
+        # Clear existing connections
         self.api_client.response_received.disconnect()
+        self.ws_client.message_received.disconnect()
+        
+        # Set up new connections
         self.ws_client.message_received.connect(self.handle_ws_message)
         self.ws_client.connected.connect(self.handle_connect)
         self.ws_client.disconnected.connect(self.handle_disconnect)
-
+        
+        # Default API response handler
         self.api_client.response_received.connect(self.handle_api_response)
         self.api_client.error_occurred.connect(self.log_error)
-
-        self.logs_button.clicked.connect(self.open_logs_dialog)
+        
+        # Button connections
         self.search_button.clicked.connect(self.open_search_dialog)
         self.sync_button.clicked.connect(self.force_sync)
         self.create_button.clicked.connect(self.add_visitor_dialog)
@@ -141,22 +140,30 @@ class MainWindow(QMainWindow):
             self.api_client.get_visitors_inside()
 
     def handle_api_response(self, response: dict):
-        self.logger.write_to_log("API Response:")
-        self.logger.write_to_log(str(response))
-
+        self.logger.write_to_log(f"API Response Type: {type(response)}")
+        self.logger.write_to_log(f"API Response Content: {str(response)}")
+        
         if response and isinstance(response, list):
             self.update_visitors_list(response)
+        else:
+            self.logger.write_to_log("Empty or invalid response received")
+            self.visitors_list.clear()
 
     def log_error(self, error: str):
         self.logger.write_to_log(f"Error: {error}")
 
     def force_sync(self):
+        self.logger.write_to_log("Manual sync initiated...")
         try:
+            # Temporarily connect the specific handler
             self.api_client.response_received.disconnect()
-        except TypeError:
-            pass
-        self.api_client.response_received.connect(self.handle_get_visitors)
-        self.api_client.get_visitors_inside()
+            self.api_client.response_received.connect(self.handle_get_visitors)
+            self.api_client.get_visitors_inside()
+        except Exception as e:
+            self.log_error(f"Sync failed: {str(e)}")
+            # Restore default handler
+            self.api_client.response_received.disconnect()
+            self.api_client.response_received.connect(self.handle_api_response)
 
     def open_search_dialog(self):
         dialog = SearchDialog()
@@ -174,23 +181,16 @@ class MainWindow(QMainWindow):
             self.visitors_list.clear()
 
     def update_visitors_list(self, visitors):
-        self.visitors_list.clear()
-        if len(visitors) > 0:
-            for visitor in visitors:
-                action = visitor.get("action", {})
-                # Get the first action type and time (e.g. "entry": "timehere")
-                if action:
-                    action_type, action_time = next(iter(action.items()))
-                    dt = datetime.fromisoformat(action_time)
-                    formatted = dt.strftime("%H:%M:%S0 %d\\%m\\%Y")
-                    display_action = f"{action_type} at {formatted}"
-                else:
-                    display_action = "No action"
-
-                display_name = (
-                    f"{visitor['visitorid']} - {visitor['name']} ({display_action})"
-                )
-                self.visitors_list.addItem(display_name)
+        """Update the visitors list with those currently inside."""
+        try:
+            self.visitors_list.clear()
+            if visitors and isinstance(visitors, list):  # More explicit check
+                for visitor in visitors:
+                    if isinstance(visitor, dict) and 'visitorid' in visitor and 'name' in visitor:
+                        display_name = f"{visitor['visitorid']} - {visitor['name']}"
+                        self.visitors_list.addItem(display_name)
+        except Exception as e:
+            self.log_error(f"Error updating visitors list: {str(e)}")
 
     def on_visitor_clicked(self):
         """Handle visitor item click."""
