@@ -3,12 +3,12 @@ cls
 
 :: Build frontend
 cd frontend
-pyinstaller --noconfirm main.spec
+pyinstaller --noconfirm --log-level=DEBUG main.spec
 cd ..
 
 :: Build backend
 cd backend
-pyinstaller --noconfirm server.spec
+pyinstaller --noconfirm --log-level=DEBUG server.spec
 cd ..
 
 echo Build completed.

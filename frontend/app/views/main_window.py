@@ -177,11 +177,14 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def handle_get_visitors(self, response):
-        if response and isinstance(response, list):
-            self.logger.write_to_log(response)
-            self.update_visitors_list(response)
-        else:
-            self.visitors_list.clear()
+        try:
+            if response and isinstance(response, list):
+                self.logger.write_to_log(f"Visitor list received: {response}")
+                self.update_visitors_list(response)
+            else:
+                self.logger.write_to_log("handle_get_visitors: response was not a list")
+        except Exception as e:
+            self.logger.write_to_log(f"Exception in handle_get_visitors: {e}")
 
     def update_visitors_list(self, visitors):
         """Update the visitors list with those currently inside."""
