@@ -126,6 +126,9 @@ class MainWindow(QMainWindow):
         self.ws_client.connected.connect(self.handle_connect)
         self.ws_client.disconnected.connect(self.handle_disconnect)
 
+        # Connect buttons
+        self.logs_button.clicked.connect(self.open_logs_dialog)
+
         # Default API response handler
         self.api_client.response_received.connect(self.handle_api_response)
         self.api_client.error_occurred.connect(self.log_error)
