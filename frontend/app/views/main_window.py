@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QStyle,
     QApplication,
+    QDialog,
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
@@ -149,11 +150,17 @@ class MainWindow(QMainWindow):
         self.logger.write_to_log(f"API Response Type: {type(response)}")
         self.logger.write_to_log(f"API Response Content: {str(response)}")
 
-        if response and isinstance(response, list):
-            self.update_visitors_list(response)
-        else:
-            self.logger.write_to_log("Empty or invalid response received")
-            self.visitors_list.clear()
+        # Disconnect old handler
+        try:
+            self.api_client.response_received.disconnect()
+        except TypeError:
+            pass
+
+        # Reconnect default handler
+        self.api_client.response_received.connect(self.handle_api_response)
+
+        # Force refresh visitors list
+        self.api_client.get_visitors_inside()
 
     def log_error(self, error: str):
         self.logger.write_to_log(f"Error: {error}")
@@ -222,7 +229,9 @@ class MainWindow(QMainWindow):
         """Handle the visitor details response."""
         if results and "visitor" in results:
             visitor_details_dialog = VisitorDetailsDialog(results["visitor"], self)
-            visitor_details_dialog.exec()
+            if visitor_details_dialog.exec() == QDialog.Accepted:
+                # When dialog is accepted (after status change or deletion)
+                self.api_client.get_visitors_inside()
 
     def ask_for_connection(self):
         """Show connection configuration dialog"""
