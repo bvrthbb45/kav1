@@ -150,17 +150,14 @@ class MainWindow(QMainWindow):
         self.logger.write_to_log(f"API Response Type: {type(response)}")
         self.logger.write_to_log(f"API Response Content: {str(response)}")
 
-        # Disconnect old handler
-        try:
+        if response and isinstance(response, dict) and "visitor" in response:
+            # This is a single visitor response
             self.api_client.response_received.disconnect()
-        except TypeError:
-            pass
-
-        # Reconnect default handler
-        self.api_client.response_received.connect(self.handle_api_response)
-
-        # Force refresh visitors list
-        self.api_client.get_visitors_inside()
+            self.api_client.response_received.connect(self.handle_get_visitors)
+            self.api_client.get_visitors_inside()
+        elif response and isinstance(response, list):
+            # This is a list of visitors, update the list directly
+            self.update_visitors_list(response)
 
     def log_error(self, error: str):
         self.logger.write_to_log(f"Error: {error}")
