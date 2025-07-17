@@ -262,7 +262,7 @@ class MainWindow(QMainWindow):
         except TypeError:
             pass
         self.api_client.response_received.connect(self.handle_logs_response)
-        self.api_client.get_logs(limit=20)
+        self.api_client.get_logs(limit=50)
 
     def handle_logs_response(self, logs):
         from app.views.logs.logs_dialog import LogsDialog
