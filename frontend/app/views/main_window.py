@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QStyle,
     QApplication,
+    QDialog,
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
@@ -126,6 +127,9 @@ class MainWindow(QMainWindow):
         self.ws_client.connected.connect(self.handle_connect)
         self.ws_client.disconnected.connect(self.handle_disconnect)
 
+        # Connect buttons
+        self.logs_button.clicked.connect(self.open_logs_dialog)
+
         # Default API response handler
         self.api_client.response_received.connect(self.handle_api_response)
         self.api_client.error_occurred.connect(self.log_error)
@@ -146,11 +150,14 @@ class MainWindow(QMainWindow):
         self.logger.write_to_log(f"API Response Type: {type(response)}")
         self.logger.write_to_log(f"API Response Content: {str(response)}")
 
-        if response and isinstance(response, list):
+        if response and isinstance(response, dict) and "visitor" in response:
+            # This is a single visitor response
+            self.api_client.response_received.disconnect()
+            self.api_client.response_received.connect(self.handle_get_visitors)
+            self.api_client.get_visitors_inside()
+        elif response and isinstance(response, list):
+            # This is a list of visitors, update the list directly
             self.update_visitors_list(response)
-        else:
-            self.logger.write_to_log("Empty or invalid response received")
-            self.visitors_list.clear()
 
     def log_error(self, error: str):
         self.logger.write_to_log(f"Error: {error}")
@@ -219,7 +226,9 @@ class MainWindow(QMainWindow):
         """Handle the visitor details response."""
         if results and "visitor" in results:
             visitor_details_dialog = VisitorDetailsDialog(results["visitor"], self)
-            visitor_details_dialog.exec()
+            if visitor_details_dialog.exec() == QDialog.Accepted:
+                # When dialog is accepted (after status change or deletion)
+                self.api_client.get_visitors_inside()
 
     def ask_for_connection(self):
         """Show connection configuration dialog"""
@@ -259,7 +268,7 @@ class MainWindow(QMainWindow):
         except TypeError:
             pass
         self.api_client.response_received.connect(self.handle_logs_response)
-        self.api_client.get_logs(limit=20)
+        self.api_client.get_logs(limit=50)
 
     def handle_logs_response(self, logs):
         from app.views.logs.logs_dialog import LogsDialog
