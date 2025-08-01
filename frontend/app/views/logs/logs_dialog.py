@@ -1,4 +1,11 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QLabel, QPushButton, QFileDialog
+from PySide6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QListWidget,
+    QLabel,
+    QPushButton,
+    QFileDialog,
+)
 from datetime import datetime
 import csv
 from app.views.common.warning_dialog import show_warning
@@ -52,14 +59,23 @@ class LogsDialog(QDialog):
 
     def download_logs(self):
         # Open a file dialog to select the save location
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Logs", "", "CSV Files (*.csv)")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Logs", "", "CSV Files (*.csv)"
+        )
         if file_path:
             try:
                 # Write logs to the selected CSV file
                 with open(file_path, mode="w", newline="", encoding="utf-8") as file:
-                    writer = csv.DictWriter(file, fieldnames=["Timestamp", "Visitor DBID", "Visitor Name", "Action"])
+                    writer = csv.DictWriter(
+                        file,
+                        fieldnames=[
+                            "Timestamp",
+                            "Visitor DBID",
+                            "Visitor Name",
+                            "Action",
+                        ],
+                    )
                     writer.writeheader()
                     writer.writerows(self.logs_data)
             except Exception as e:
                 show_warning("Error", f"Failed to save logs: {str(e)}")
-
