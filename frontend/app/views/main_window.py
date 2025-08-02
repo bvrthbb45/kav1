@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QApplication,
     QDialog,
+    QInputDialog,
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
@@ -267,8 +268,19 @@ class MainWindow(QMainWindow):
             self.api_client.response_received.disconnect()
         except TypeError:
             pass
-        self.api_client.response_received.connect(self.handle_logs_response)
-        self.api_client.get_logs(limit=50)
+        
+        limit, ok = QInputDialog.getInt(
+            self,
+            "Logs Limit",
+            "Enter the number of logs to retrieve:",
+            50,
+            1,
+            1000
+        )
+
+        if ok:
+            self.api_client.response_received.connect(self.handle_logs_response)
+            self.api_client.get_logs(limit=limit)
 
     def handle_logs_response(self, logs):
         from app.views.logs.logs_dialog import LogsDialog
