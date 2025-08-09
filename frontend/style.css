@@ -164,6 +164,17 @@ QLabel#ws_status_label {
     padding: 4px 0;
 }
 
+/* Status label when disconnected - highly visible red styling */
+QLabel#ws_status_label[disconnected="true"] {
+    color: #ff4444;
+    font-weight: bold;
+    font-size: 14px;
+    background-color: #2d1010;
+    border: 1px solid #ff4444;
+    border-radius: 4px;
+    padding: 8px 12px;
+}
+
 /* --- Containers --- */
 QFrame {
     border: 1px solid #3a3a3a;

@@ -12,9 +12,10 @@ def resource_path(relative_path):
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
-    # with open(resource_path("style.css"), "r") as f:
-    #     _style = f.read()
-    #     app.setStyleSheet(_style)
+    # Load the CSS styles
+    with open(resource_path("style.css"), "r") as f:
+        _style = f.read()
+        app.setStyleSheet(_style)
     window.show()
     sys.exit(app.exec())
 
