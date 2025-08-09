@@ -59,8 +59,9 @@ class LogsDialog(QDialog):
 
     def download_logs(self):
         # Open a file dialog to select the save location
+        timestamp = datetime.now().strftime("logs_%Y-%m-%d_%H-%M-%S.csv")
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Logs", "", "CSV Files (*.csv)"
+            self, "Save Logs", timestamp, "CSV Files (*.csv)"
         )
         if file_path:
             try:
