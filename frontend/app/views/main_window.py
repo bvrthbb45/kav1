@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
-from datetime import datetime
 
 from app.core.api_client import ApiClient
 from app.core.ws_client import WebSocketClient
@@ -36,7 +35,7 @@ from .connection_dialog import ConnectionDialog
 from app.views.search.search_dialog import SearchDialog
 
 # from search.search_result_dialog import SearchResultDialog
-from app.views.common.warning_dialog import show_warning
+from app.views.common.warning_dialog import show_critical_disconnection_warning
 from app.utils.log import Log
 
 
@@ -265,61 +264,16 @@ class MainWindow(QMainWindow):
         self.show_disconnection_dialog()
 
     def show_disconnection_dialog(self):
-        """Show a highly visible, un-hideable disconnection dialog"""
-        from PySide6.QtWidgets import QMessageBox
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QFont
+        """Show a critical disconnection warning dialog."""
+        try:
+            show_critical_disconnection_warning("Connection Lost",
+                                              "The server connection has been lost.",
+                                              parent=self)
+        except Exception as e:
+            self.logger.write_to_log(f"Error showing disconnection dialog: {str(e)}")
+        finally:
+            self.close()
 
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Critical)
-        msg.setWindowTitle("🔴 CONNECTION LOST")
-
-        # Make text more prominent
-        main_text = "❌ SERVER CONNECTION LOST"
-        detail_text = (
-            "The connection to the server has been lost.\n\n"
-            "This means:\n"
-            "• No real-time updates will be received\n"
-            "• Some features may not work properly\n"
-            "• Data synchronization is interrupted\n\n"
-            "Please check:\n"
-            "✓ Your network connection is active\n"
-            "✓ The server is running and accessible\n"
-            "✓ Firewall settings allow this connection\n\n"
-            "Click OK to close the application and restart it."
-        )
-
-        msg.setText(main_text)
-        msg.setDetailedText(detail_text)
-        msg.setStandardButtons(QMessageBox.Ok)
-
-        # Make it truly un-hideable and prominent
-        msg.setWindowFlags(
-            Qt.WindowStaysOnTopHint
-            | Qt.Dialog
-            | Qt.CustomizeWindowHint
-            | Qt.WindowTitleHint
-            | Qt.WindowSystemMenuHint
-        )
-        msg.setWindowModality(Qt.ApplicationModal)
-        msg.setModal(True)
-
-        # Remove close button to force user acknowledgment
-        msg.setWindowFlag(Qt.WindowCloseButtonHint, False)
-
-        # Make the font larger and more prominent
-        font = QFont()
-        font.setPointSize(12)
-        font.setWeight(QFont.Bold)
-        msg.setFont(font)
-
-        # Ensure it's on top and visible
-        msg.activateWindow()
-        msg.raise_()
-        msg.setFocus()
-
-        # Execute and quit after acknowledgment
-        msg.exec()
         QApplication.quit()
 
     def open_logs_dialog(self):
