@@ -259,7 +259,7 @@ class MainWindow(QMainWindow):
         self.ws_status_label.setProperty("disconnected", True)
         self.ws_status_label.style().unpolish(self.ws_status_label)
         self.ws_status_label.style().polish(self.ws_status_label)
-        
+
         # Show prominent, un-hideable warning dialog
         self.show_disconnection_dialog()
 
@@ -268,11 +268,11 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QMessageBox
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QFont
-        
+
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Critical)
         msg.setWindowTitle("🔴 CONNECTION LOST")
-        
+
         # Make text more prominent
         main_text = "❌ SERVER CONNECTION LOST"
         detail_text = (
@@ -287,36 +287,36 @@ class MainWindow(QMainWindow):
             "✓ Firewall settings allow this connection\n\n"
             "Click OK to close the application and restart it."
         )
-        
+
         msg.setText(main_text)
         msg.setDetailedText(detail_text)
         msg.setStandardButtons(QMessageBox.Ok)
-        
+
         # Make it truly un-hideable and prominent
         msg.setWindowFlags(
-            Qt.WindowStaysOnTopHint |
-            Qt.Dialog |
-            Qt.CustomizeWindowHint |
-            Qt.WindowTitleHint |
-            Qt.WindowSystemMenuHint
+            Qt.WindowStaysOnTopHint
+            | Qt.Dialog
+            | Qt.CustomizeWindowHint
+            | Qt.WindowTitleHint
+            | Qt.WindowSystemMenuHint
         )
         msg.setWindowModality(Qt.ApplicationModal)
         msg.setModal(True)
-        
+
         # Remove close button to force user acknowledgment
         msg.setWindowFlag(Qt.WindowCloseButtonHint, False)
-        
+
         # Make the font larger and more prominent
         font = QFont()
         font.setPointSize(12)
         font.setWeight(QFont.Bold)
         msg.setFont(font)
-        
+
         # Ensure it's on top and visible
         msg.activateWindow()
         msg.raise_()
         msg.setFocus()
-        
+
         # Execute and quit after acknowledgment
         msg.exec()
         QApplication.quit()

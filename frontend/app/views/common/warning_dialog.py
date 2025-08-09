@@ -34,30 +34,30 @@ def show_critical_disconnection_warning(message: str, detail: str, parent=None):
     msg.setWindowTitle(f"🔴 {message}")
     msg.setText(f"❌ {detail}")
     msg.setStandardButtons(QMessageBox.Ok)
-    
+
     # Make it extremely prominent and un-hideable
     msg.setWindowFlags(
-        Qt.WindowStaysOnTopHint |
-        Qt.Dialog |
-        Qt.CustomizeWindowHint |
-        Qt.WindowTitleHint |
-        Qt.WindowSystemMenuHint
+        Qt.WindowStaysOnTopHint
+        | Qt.Dialog
+        | Qt.CustomizeWindowHint
+        | Qt.WindowTitleHint
+        | Qt.WindowSystemMenuHint
     )
     msg.setWindowModality(Qt.ApplicationModal)
     msg.setModal(True)
-    
+
     # Remove close button completely
     msg.setWindowFlag(Qt.WindowCloseButtonHint, False)
-    
+
     # Make font bold and larger
     font = QFont()
     font.setPointSize(12)
     font.setWeight(QFont.Bold)
     msg.setFont(font)
-    
+
     # Force it to be visible and on top
     msg.activateWindow()
     msg.raise_()
     msg.setFocus()
-    
+
     return msg.exec()
