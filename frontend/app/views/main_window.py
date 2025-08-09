@@ -266,9 +266,9 @@ class MainWindow(QMainWindow):
     def show_disconnection_dialog(self):
         """Show a critical disconnection warning dialog."""
         try:
-            show_critical_disconnection_warning("Connection Lost",
-                                              "The server connection has been lost.",
-                                              parent=self)
+            show_critical_disconnection_warning(
+                "Connection Lost", "The server connection has been lost.", parent=self
+            )
         except Exception as e:
             self.logger.write_to_log(f"Error showing disconnection dialog: {str(e)}")
         finally:
