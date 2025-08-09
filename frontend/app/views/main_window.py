@@ -271,13 +271,10 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             self.logger.write_to_log(f"Error showing disconnection dialog: {str(e)}")
+        finally:
             self.close()
-        except Exception as e:
-            self.logger.write_to_log(f"Error showing disconnection dialog: {str(e)}")
-            self.close()
-
-        QApplication.quit()
             QApplication.quit()
+
     def open_logs_dialog(self):
         try:
             self.api_client.response_received.disconnect()
