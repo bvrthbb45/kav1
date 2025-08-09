@@ -65,7 +65,10 @@ class LogsDialog(QDialog):
         )
         if file_path:
             if not self._is_safe_path(file_path):
-                show_warning("Invalid File Path", "The selected file path is not allowed. Please choose a location within your home directory and avoid system folders.")
+                show_warning(
+                    "Invalid File Path",
+                    "The selected file path is not allowed. Please choose a location within your home directory and avoid system folders.",
+                )
                 return
             try:
                 # Write logs to the selected CSV file

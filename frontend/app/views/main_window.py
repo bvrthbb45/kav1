@@ -327,14 +327,9 @@ class MainWindow(QMainWindow):
             self.api_client.response_received.disconnect()
         except TypeError:
             pass
-        
+
         limit, ok = QInputDialog.getInt(
-            self,
-            "Logs Limit",
-            "Enter the number of logs to retrieve:",
-            50,
-            1,
-            1000
+            self, "Logs Limit", "Enter the number of logs to retrieve:", 50, 1, 1000
         )
 
         if ok:
