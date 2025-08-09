@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
-from datetime import datetime
 
 from app.core.api_client import ApiClient
 from app.core.ws_client import WebSocketClient
@@ -36,7 +35,7 @@ from .connection_dialog import ConnectionDialog
 from app.views.search.search_dialog import SearchDialog
 
 # from search.search_result_dialog import SearchResultDialog
-from app.views.common.warning_dialog import show_warning
+from app.views.common.warning_dialog import show_critical_disconnection_warning
 from app.utils.log import Log
 
 
@@ -62,6 +61,7 @@ class MainWindow(QMainWindow):
         # self.log.setReadOnly(True)
 
         self.ws_status_label = QLabel("Disconnected")
+        self.ws_status_label.setObjectName("ws_status_label")
         # self.client_version = QLabel(f"Version Hash: {get_version()}")
 
         self.search_button = QPushButton("Search Visitors")
@@ -246,36 +246,43 @@ class MainWindow(QMainWindow):
         msg = f"Connected to {Settings.get_base_url()}"
         self.logger.write_to_log(msg)
         self.ws_status_label.setText(msg)
+        # Remove disconnected styling
+        self.ws_status_label.setProperty("disconnected", False)
+        self.ws_status_label.style().unpolish(self.ws_status_label)
+        self.ws_status_label.style().polish(self.ws_status_label)
 
     def handle_disconnect(self):
-        message = "WebSocket Connection Lost"
+        message = "⚠️ CONNECTION LOST - Server Disconnected"
         self.logger.write_to_log(message)
         self.ws_status_label.setText(message)
-        show_warning(
-            "Connection Error",
-            "Unable to connect to the server.\n\n"
-            "Please verify:\n"
-            "✓ Your network connection is active\n"
-            "✓ The server is running and accessible\n"
-            "✓ Firewall settings allow this connection\n\n"
-            "Technical details:\n"
-            f"• {message}",
-        )
-        QApplication.quit()
+        # Apply disconnected styling
+        self.ws_status_label.setProperty("disconnected", True)
+        self.ws_status_label.style().unpolish(self.ws_status_label)
+        self.ws_status_label.style().polish(self.ws_status_label)
+
+        # Show prominent, un-hideable warning dialog
+        self.show_disconnection_dialog()
+
+    def show_disconnection_dialog(self):
+        """Show a critical disconnection warning dialog."""
+        try:
+            show_critical_disconnection_warning(
+                "Connection Lost", "The server connection has been lost.", parent=self
+            )
+        except Exception as e:
+            self.logger.write_to_log(f"Error showing disconnection dialog: {str(e)}")
+        finally:
+            self.close()
+            QApplication.quit()
 
     def open_logs_dialog(self):
         try:
             self.api_client.response_received.disconnect()
         except TypeError:
             pass
-        
+
         limit, ok = QInputDialog.getInt(
-            self,
-            "Logs Limit",
-            "Enter the number of logs to retrieve:",
-            50,
-            1,
-            1000
+            self, "Logs Limit", "Enter the number of logs to retrieve:", 50, 1, 1000
         )
 
         if ok:
