@@ -16,6 +16,9 @@ test*.*
 # VSCode files
 .vscode
 
+# Local secrets (see .env.example)
+.env
+
 # Build files
 build
 dist
