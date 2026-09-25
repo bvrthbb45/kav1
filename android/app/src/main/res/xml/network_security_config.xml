@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The local FastAPI server speaks plain HTTP over the USB-tether link; allow cleartext
+     only for that host. Update this if SYNC_BASE_URL in app/build.gradle.kts changes. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.42.100</domain>
+    </domain-config>
+</network-security-config>

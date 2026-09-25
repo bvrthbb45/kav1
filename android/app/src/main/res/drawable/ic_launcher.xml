@@ -1,0 +1,12 @@
+<!-- Kav1 mark (from the project README logo) on a black rounded square. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="500"
+    android:viewportHeight="500">
+    <path android:fillColor="#000000" android:pathData="M60,0h380a60,60 0,0 1,60 60v380a60,60 0,0 1,-60 60h-380a60,60 0,0 1,-60 -60v-380a60,60 0,0 1,60 -60z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M75,100h50v300h-50z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M375,100h50v300h-50z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M123.4,211.6L264.8,70.2L300.2,105.6L158.8,247z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M158.8,253L300.2,394.4L264.8,429.8L123.4,288.4z" />
+</vector>

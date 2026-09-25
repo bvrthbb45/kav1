@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kav1 Inventory</string>
+    <string name="sync_now">Sync now</string>
+    <string name="all_synced">All changes synced</string>
+    <plurals name="pending_count">
+        <item quantity="one">%d change waiting to sync</item>
+        <item quantity="other">%d changes waiting to sync</item>
+    </plurals>
+
+    <string name="scan_hint">Point the camera at an item\'s QR code</string>
+    <string name="camera_permission_needed">Camera access is needed to scan QR codes.</string>
+    <string name="grant_permission">Grant camera access</string>
+
+    <string name="qr_id_format">QR: %1$s</string>
+    <string name="unknown_item">Unknown item</string>
+    <string name="status_unknown">UNKNOWN</string>
+    <string name="unknown_item_warning">This code is not in the local database yet. The action will still be saved and checked by the server on the next sync.</string>
+    <string name="action_label">Action</string>
+    <string name="borrow">Borrow</string>
+    <string name="return_item">Return</string>
+    <string name="user_label">User</string>
+    <string name="no_users_hint">No users downloaded yet. Connect via USB tethering and tap Sync now.</string>
+    <string name="select_user_error">Select a user</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="saved_offline">Saved. It will sync when the server is reachable.</string>
+</resources>
