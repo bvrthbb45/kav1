@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#2E5E4E</color>
+    <color name="primary_dark">#1E3F34</color>
+    <color name="accent">#D9822B</color>
+    <color name="borrow">#B23B3B</color>
+    <color name="return_green">#2E7D32</color>
+    <color name="text_secondary">#5F6368</color>
+    <color name="warning">#B26A00</color>
+    <color name="white">#FFFFFF</color>
+</resources>

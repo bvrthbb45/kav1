@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app is Hebrew-only: these default strings are Hebrew. -->
+<resources>
+    <string name="app_name">ניהול מחסן</string>
+
+    <!-- Main screen -->
+    <string name="main_title">מערכת ניהול ציוד</string>
+    <string name="btn_scan">סרוק ציוד</string>
+    <string name="btn_manual_entry">הזנת קוד ידנית</string>
+    <string name="btn_manual_sync">סנכרון נתונים ידני</string>
+    <string name="status_pending">פעולות הממתינות לסנכרון: %1$d</string>
+    <string name="status_failed">פעולות שנדחו על ידי השרת: %1$d (לחץ לפרטים)</string>
+    <string name="status_local_data">במכשיר: %1$d פריטים, %2$d משתמשים</string>
+    <string name="status_last_sync">סנכרון אחרון: %1$s</string>
+    <string name="status_never_synced">טרם בוצע סנכרון</string>
+    <string name="syncing">מסנכרן נתונים…</string>
+
+    <!-- Scanning -->
+    <string name="scan_prompt">כוון את המצלמה אל קוד ה-QR</string>
+    <string name="scan_cancelled">הסריקה בוטלה</string>
+    <string name="camera_permission_denied">אין הרשאה למצלמה. ניתן להזין את הקוד ידנית</string>
+    <string name="manual_entry_title">הזנת קוד פריט</string>
+    <string name="manual_entry_hint">קוד QR של הפריט</string>
+    <string name="manual_entry_empty">יש להזין קוד פריט</string>
+
+    <!-- Item screen -->
+    <string name="item_title">פרטי ציוד</string>
+    <string name="label_qr">קוד: %1$s</string>
+    <string name="label_name">שם: %1$s</string>
+    <string name="label_status">סטטוס: %1$s</string>
+    <string name="status_available">זמין במחסן</string>
+    <string name="status_borrowed">מושאל</string>
+    <string name="status_unknown">לא ידוע</string>
+    <string name="item_unknown">הפריט אינו מוכר במכשיר. יש לבצע סנכרון נתונים או לפנות לאחראי המחסן</string>
+    <string name="btn_borrow">השאלה</string>
+    <string name="btn_return">החזרה</string>
+    <string name="btn_back">חזרה למסך הראשי</string>
+
+    <!-- User picker -->
+    <string name="pick_user_title">בחר חייל/גורם מאשר</string>
+    <string name="pick_user_search_hint">חיפוש לפי שם, מספר אישי או יחידה</string>
+    <string name="pick_user_none">לא נמצאו משתמשים</string>
+    <string name="no_users">אין משתמשים שמורים במכשיר. יש לבצע סנכרון נתונים</string>
+    <string name="user_row_details">%1$s · %2$s</string>
+
+    <!-- Confirmation -->
+    <string name="confirm_title">אישור פעולה</string>
+    <string name="confirm_borrow">להשאיל את \"%1$s\" ל%2$s?</string>
+    <string name="confirm_return">לרשום החזרה של \"%1$s\" מ%2$s?</string>
+    <string name="warn_already_borrowed">שים לב: הפריט כבר רשום כמושאל.</string>
+    <string name="warn_already_available">שים לב: הפריט כבר רשום כזמין במחסן.</string>
+    <string name="btn_confirm">אישור</string>
+    <string name="btn_cancel">ביטול</string>
+    <string name="btn_close">סגור</string>
+    <string name="action_saved">הפעולה נשמרה בהצלחה</string>
+    <string name="action_save_failed">שמירת הפעולה נכשלה, נסה שוב</string>
+
+    <!-- Sync results -->
+    <string name="sync_success">הסנכרון הושלם בהצלחה: נשלחו %1$d פעולות, התקבלו %2$d פריטים ו-%3$d משתמשים</string>
+    <string name="sync_success_with_rejected">הסנכרון הושלם, אך %1$d פעולות נדחו על ידי השרת</string>
+    <string name="sync_offline">אין חיבור לשרת. הנתונים שמורים במכשיר ויסונכרנו כשהחיבור יחזור</string>
+    <string name="sync_server_error">שגיאת שרת (%1$d): %2$s</string>
+    <string name="sync_server_error_no_message">שגיאת שרת (%1$d)</string>
+    <string name="sync_invalid_response">התקבלה תשובה לא תקינה מהשרת</string>
+    <string name="sync_failed">הסנכרון נכשל עקב שגיאה במכשיר</string>
+
+    <!-- Rejected transactions -->
+    <string name="failed_title">פעולות שנדחו</string>
+    <string name="failed_row">%1$s · %2$s · %3$s\n%4$s</string>
+    <string name="failed_retry">שלח שוב</string>
+    <string name="failed_delete">מחק</string>
+    <string name="failed_delete_confirm">למחוק לצמיתות את הפעולות שנדחו?</string>
+    <string name="failed_requeued">הפעולות הוחזרו לתור הסנכרון</string>
+    <string name="failed_deleted">הפעולות שנדחו נמחקו</string>
+    <string name="action_borrow_short">השאלה</string>
+    <string name="action_return_short">החזרה</string>
+</resources>

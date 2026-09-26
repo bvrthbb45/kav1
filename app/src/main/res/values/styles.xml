@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+    </style>
+
+    <!-- Large, glove-friendly buttons. -->
+    <style name="BigButton" parent="Widget.AppCompat.Button.Colored">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">@dimen/big_button_height</item>
+        <item name="android:layout_marginTop">@dimen/gap</item>
+        <item name="android:textSize">@dimen/big_button_text</item>
+        <item name="android:textColor">@color/white</item>
+    </style>
+
+    <style name="BodyText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:textSize">@dimen/body_text</item>
+        <item name="android:gravity">start</item>
+        <item name="android:textDirection">rtl</item>
+    </style>
+</resources>
