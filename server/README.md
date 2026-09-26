@@ -66,3 +66,10 @@ The same can be done over HTTP with `POST /api/admin/users` and `POST /api/admin
 pip install -r requirements-dev.txt
 python -m pytest tests
 ```
+
+## Offline Windows package
+
+`packaging/build_offline_zip.sh` (run on any Linux/macOS machine with internet) produces
+`WarehouseServer-win64-offline.zip`: portable Python 3.11, all dependencies pre-installed and the
+scripts in `packaging/windows/` (`install.bat`, `set_static_ip.bat`, `import_data.bat`, …).
+Instructions for the target machine are in `packaging/windows/README_HE.txt`.

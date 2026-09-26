@@ -32,6 +32,7 @@ dist
 version.txt
 # Warehouse server: keep requirements and tests despite the rules above
 !server/requirements*.txt
+!server/packaging/windows/README_HE.txt
 !server/tests/test_*.py
 .pytest_cache
 
