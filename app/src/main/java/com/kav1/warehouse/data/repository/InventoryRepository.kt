@@ -4,7 +4,10 @@ import androidx.room.withTransaction
 import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.AppDatabase
 import com.kav1.warehouse.data.local.ItemEntity
+import com.kav1.warehouse.data.local.ItemStatus
+import com.kav1.warehouse.data.local.ItemWithHolder
 import com.kav1.warehouse.data.local.PendingTransactionEntity
+import com.kav1.warehouse.data.local.StatusCount
 import com.kav1.warehouse.data.local.UserEntity
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
@@ -19,8 +22,8 @@ class InventoryRepository(private val db: AppDatabase) {
     suspend fun getUser(userId: String): UserEntity? = db.userDao().getById(userId)
 
     /**
-     * Records a borrow/return in the outbox and optimistically updates the
-     * local item status, atomically.
+     * Records a borrow/issue/return in the outbox and optimistically updates
+     * the local item, atomically.
      */
     suspend fun recordAction(qrId: String, userId: String, actionType: String) {
         val tx = PendingTransactionEntity(
@@ -32,9 +35,33 @@ class InventoryRepository(private val db: AppDatabase) {
         )
         db.withTransaction {
             db.pendingTransactionDao().insert(tx)
-            db.itemDao().updateStatus(qrId, ActionType.resultingStatus(actionType))
+            db.itemDao().applyAction(
+                qrId,
+                ActionType.resultingStatus(actionType),
+                ActionType.resultingHolder(actionType, userId),
+                tx.timestamp,
+            )
         }
     }
+
+    // --- Management (queued for upload on the next sync) ---
+
+    /** Adds a new item, or renames an existing one without touching its status. */
+    suspend fun saveItem(qrId: String, name: String) {
+        db.withTransaction {
+            if (db.itemDao().renameLocal(qrId, name) == 0) {
+                db.itemDao().insert(
+                    ItemEntity(qrId, name, ItemStatus.AVAILABLE, pendingUpload = true),
+                )
+            }
+        }
+    }
+
+    suspend fun saveUser(userId: String, fullName: String, unit: String) {
+        db.userDao().insert(UserEntity(userId, fullName, unit, pendingUpload = true))
+    }
+
+    // --- Observers ---
 
     fun observeUnsyncedCount(): Flow<Int> = db.pendingTransactionDao().observeUnsyncedCount()
 
@@ -43,6 +70,19 @@ class InventoryRepository(private val db: AppDatabase) {
     fun observeItemCount(): Flow<Int> = db.itemDao().observeCount()
 
     fun observeUserCount(): Flow<Int> = db.userDao().observeCount()
+
+    fun observePendingItemEdits(): Flow<Int> = db.itemDao().observePendingUploadCount()
+
+    fun observePendingUserEdits(): Flow<Int> = db.userDao().observePendingUploadCount()
+
+    fun observeStatusCounts(): Flow<List<StatusCount>> = db.itemDao().observeStatusCounts()
+
+    fun observeItems(status: String?, query: String): Flow<List<ItemWithHolder>> =
+        db.itemDao().observeWithHolder(status, query.trim())
+
+    fun observeUsers(query: String): Flow<List<UserEntity>> = db.userDao().observeFiltered(query.trim())
+
+    // --- Rejected transactions ---
 
     suspend fun getFailed(): List<PendingTransactionEntity> = db.pendingTransactionDao().getFailed()
 

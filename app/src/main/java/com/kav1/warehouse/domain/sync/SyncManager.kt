@@ -5,13 +5,16 @@ import androidx.room.withTransaction
 import com.google.gson.JsonParseException
 import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.AppDatabase
+import com.kav1.warehouse.data.local.AppPrefs
 import com.kav1.warehouse.data.local.ItemEntity
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
 import com.kav1.warehouse.data.remote.ApiClient
 import com.kav1.warehouse.data.remote.ErrorDto
+import com.kav1.warehouse.data.remote.ItemUpsertDto
 import com.kav1.warehouse.data.remote.PendingTransactionDto
 import com.kav1.warehouse.data.remote.PushRequestDto
+import com.kav1.warehouse.data.remote.UserUpsertDto
 import com.kav1.warehouse.data.remote.WarehouseApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -20,8 +23,9 @@ import retrofit2.Response
 import java.io.IOException
 
 /**
- * Sync flow: push the outbox, drop what the server accepted, then replace the
- * local items/users with the server's state.
+ * Sync flow: upload items/users added in the management screen, push the
+ * outbox, drop what the server accepted, then replace the local items/users
+ * with the server's state.
  *
  * Safe to call from the UI and from [SyncWorker] concurrently: runs are
  * serialised by a process-wide lock. Never throws for network/server
@@ -29,9 +33,12 @@ import java.io.IOException
  */
 class SyncManager(
     private val db: AppDatabase,
-    private val api: WarehouseApi,
-    private val prefs: SyncPrefs,
+    /** Called per sync so a changed server address takes effect immediately. */
+    private val apiProvider: () -> WarehouseApi,
+    private val prefs: AppPrefs,
 ) {
+    private lateinit var api: WarehouseApi
+
     suspend fun sync(): SyncResult = lock.withLock {
         try {
             runSync()
@@ -56,10 +63,29 @@ class SyncManager(
     }
 
     private suspend fun runSync(): SyncResult {
+        api = apiProvider()
+        // Management edits first: new items/users must exist on the server
+        // before actions that reference them.
+        pushManagementEdits()
         val (pushed, rejected) = pushPending()
         val (itemCount, userCount) = pullState()
         prefs.lastSuccessfulSync = System.currentTimeMillis()
         return SyncResult.Success(pushed, rejected, itemCount, userCount)
+    }
+
+    private suspend fun pushManagementEdits() {
+        val items = db.itemDao().getPendingUpload()
+        for (batch in items.chunked(PUSH_BATCH_SIZE)) {
+            api.upsertItems(batch.map { ItemUpsertDto(it.qrId, it.name) }).bodyOrThrow()
+            db.withTransaction { batch.forEach { db.itemDao().markUploaded(it.qrId, it.name) } }
+        }
+        val users = db.userDao().getPendingUpload()
+        for (batch in users.chunked(PUSH_BATCH_SIZE)) {
+            api.upsertUsers(batch.map { UserUpsertDto(it.userId, it.fullName, it.unit) }).bodyOrThrow()
+            db.withTransaction {
+                batch.forEach { db.userDao().markUploaded(it.userId, it.fullName, it.unit) }
+            }
+        }
     }
 
     /** @return (accepted, rejected) counts. */
@@ -101,7 +127,13 @@ class SyncManager(
         val body = api.pull().bodyOrThrow()
         val items = body.items?.mapNotNull { dto ->
             val qrId = dto.qrId ?: return@mapNotNull null
-            ItemEntity(qrId, dto.name.orEmpty(), dto.currentStatus ?: ItemStatus.AVAILABLE)
+            ItemEntity(
+                qrId = qrId,
+                name = dto.name.orEmpty(),
+                currentStatus = dto.currentStatus ?: ItemStatus.AVAILABLE,
+                holderUserId = dto.holderUserId,
+                lastActionAt = dto.lastActionAt,
+            )
         } ?: throw MalformedResponseException("items missing")
         val users = body.users?.mapNotNull { dto ->
             val userId = dto.userId ?: return@mapNotNull null
@@ -114,7 +146,12 @@ class SyncManager(
             // Actions recorded after the push started are not on the server
             // yet; re-apply them so the device keeps showing what it did.
             db.pendingTransactionDao().getUnsynced().forEach {
-                db.itemDao().updateStatus(it.qrId, ActionType.resultingStatus(it.actionType))
+                db.itemDao().applyAction(
+                    it.qrId,
+                    ActionType.resultingStatus(it.actionType),
+                    ActionType.resultingHolder(it.actionType, it.userId),
+                    it.timestamp,
+                )
             }
         }
         return items.size to users.size

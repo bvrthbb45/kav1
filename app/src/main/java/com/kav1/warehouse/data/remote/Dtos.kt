@@ -35,6 +35,8 @@ data class ItemDto(
     @SerializedName("qr_id") val qrId: String?,
     @SerializedName("name") val name: String?,
     @SerializedName("current_status") val currentStatus: String?,
+    @SerializedName("holder_user_id") val holderUserId: String?,
+    @SerializedName("last_action_at") val lastActionAt: Long?,
 )
 
 data class UserDto(
@@ -49,6 +51,23 @@ data class PullResponseDto(
     @SerializedName("server_time") val serverTime: Long?,
     @SerializedName("items") val items: List<ItemDto>?,
     @SerializedName("users") val users: List<UserDto>?,
+)
+
+data class ItemUpsertDto(
+    @SerializedName("qr_id") val qrId: String,
+    @SerializedName("name") val name: String,
+)
+
+data class UserUpsertDto(
+    @SerializedName("user_id") val userId: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("unit") val unit: String,
+)
+
+data class UpsertResponseDto(
+    @SerializedName("success") val success: Boolean?,
+    @SerializedName("message") val message: String?,
+    @SerializedName("count") val count: Int?,
 )
 
 /** Shape of every error body returned by the server. */

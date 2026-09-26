@@ -35,6 +35,20 @@
             style="@style/BigButton"
             android:text="@string/btn_manual_sync" />
 
+        <Button
+            android:id="@+id/btnDashboard"
+            style="@style/BigButton"
+            android:text="@string/btn_dashboard" />
+
+        <Button
+            android:id="@+id/btnAdmin"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/btn_admin"
+            android:textSize="@dimen/body_text" />
+
         <ProgressBar
             android:id="@+id/syncProgress"
             style="?android:attr/progressBarStyleHorizontal"
@@ -48,6 +62,11 @@
             android:id="@+id/txtPending"
             style="@style/BodyText"
             android:layout_marginTop="24dp" />
+
+        <TextView
+            android:id="@+id/txtPendingEdits"
+            style="@style/BodyText"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/txtFailed"

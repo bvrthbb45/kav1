@@ -12,11 +12,13 @@ class UserOut(BaseModel):
 
 
 class ItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     qr_id: str
     name: str
     current_status: str
+    # Who holds the item (borrowed/issued), from its latest action.
+    holder_user_id: Optional[str] = None
+    # Device time (epoch ms) of the item's latest action.
+    last_action_at: Optional[int] = None
 
 
 class PendingTransaction(BaseModel):

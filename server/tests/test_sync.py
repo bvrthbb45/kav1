@@ -101,3 +101,34 @@ def test_db_error_rolls_back_whole_batch(client, monkeypatch):
     ).json()
     assert body["accepted"] == ["t1"]
     assert _status(client)["q1"] == "AVAILABLE"
+
+
+def test_issue_sets_issued_and_holder(client):
+    client.post("/api/sync/push", json={"transactions": [_tx("t1", "ISSUE", 1000)]})
+    item = client.get("/api/sync/pull").json()["items"][0]
+    assert item["current_status"] == "ISSUED"
+    assert item["holder_user_id"] == "u1"
+    assert item["last_action_at"] == 1000
+
+
+def test_return_clears_holder(client):
+    txs = [_tx("t1", "BORROW", 1000), _tx("t2", "RETURN", 2000)]
+    client.post("/api/sync/push", json={"transactions": txs})
+    item = client.get("/api/sync/pull").json()["items"][0]
+    assert item["current_status"] == "AVAILABLE"
+    assert item["holder_user_id"] is None
+    assert item["last_action_at"] == 2000
+
+
+def test_item_without_actions_has_no_holder(client):
+    item = client.get("/api/sync/pull").json()["items"][0]
+    assert item["holder_user_id"] is None
+    assert item["last_action_at"] is None
+
+
+def test_admin_upsert_keeps_status(client):
+    client.post("/api/sync/push", json={"transactions": [_tx("t1", "ISSUE", 1000)]})
+    client.post("/api/admin/items", json=[{"qr_id": "q1", "name": "שם חדש"}])
+    item = client.get("/api/sync/pull").json()["items"][0]
+    assert item["name"] == "שם חדש"
+    assert item["current_status"] == "ISSUED"

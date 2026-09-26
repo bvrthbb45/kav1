@@ -26,6 +26,17 @@
             style="@style/BodyText" />
 
         <TextView
+            android:id="@+id/txtHolder"
+            style="@style/BodyText"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txtLastAction"
+            style="@style/BodyText"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/txtUnknown"
             style="@style/BodyText"
             android:layout_marginTop="@dimen/gap"
@@ -41,10 +52,22 @@
             app:backgroundTint="@color/borrow" />
 
         <Button
+            android:id="@+id/btnIssue"
+            style="@style/BigButton"
+            android:text="@string/btn_issue"
+            app:backgroundTint="@color/issued" />
+
+        <Button
             android:id="@+id/btnReturn"
             style="@style/BigButton"
             android:text="@string/btn_return"
             app:backgroundTint="@color/return_green" />
+
+        <Button
+            android:id="@+id/btnRegister"
+            style="@style/BigButton"
+            android:text="@string/btn_register_item"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/btnBack"

@@ -102,6 +102,28 @@ def push_transactions(
     )
 
 
+def _latest_actions(db: Session, qr_ids=None) -> Dict[str, models.Transaction]:
+    """Most recent transaction (by device time) per item."""
+    latest = select(
+        models.Transaction.qr_id,
+        func.max(models.Transaction.timestamp).label("ts"),
+    ).group_by(models.Transaction.qr_id)
+    if qr_ids is not None:
+        latest = latest.where(models.Transaction.qr_id.in_(qr_ids))
+    latest = latest.subquery()
+    rows = db.scalars(
+        select(models.Transaction)
+        .join(
+            latest,
+            (models.Transaction.qr_id == latest.c.qr_id)
+            & (models.Transaction.timestamp == latest.c.ts),
+        )
+        .order_by(models.Transaction.tx_id)
+    ).all()
+    # Ties on timestamp: the last tx_id wins, deterministically.
+    return {tx.qr_id: tx for tx in rows}
+
+
 def _recompute_item_status(db: Session, qr_ids: Set[str]) -> None:
     """Set each item's status from its most recent action (by device time).
 
@@ -110,42 +132,38 @@ def _recompute_item_status(db: Session, qr_ids: Set[str]) -> None:
     """
     if not qr_ids:
         return
-    latest = (
-        select(
-            models.Transaction.qr_id,
-            func.max(models.Transaction.timestamp).label("ts"),
-        )
-        .where(models.Transaction.qr_id.in_(qr_ids))
-        .group_by(models.Transaction.qr_id)
-        .subquery()
-    )
-    rows = db.execute(
-        select(models.Transaction.qr_id, models.Transaction.action_type)
-        .join(
-            latest,
-            (models.Transaction.qr_id == latest.c.qr_id)
-            & (models.Transaction.timestamp == latest.c.ts),
-        )
-        .order_by(models.Transaction.tx_id)
-    ).all()
-    status_by_item: Dict[str, str] = {}
-    for qr_id, action_type in rows:
-        status_by_item[qr_id] = models.STATUS_BY_ACTION[action_type]
-    for item in db.scalars(
-        select(models.Item).where(models.Item.qr_id.in_(status_by_item))
-    ):
-        item.current_status = status_by_item[item.qr_id]
+    latest = _latest_actions(db, qr_ids)
+    for item in db.scalars(select(models.Item).where(models.Item.qr_id.in_(latest))):
+        item.current_status = models.STATUS_BY_ACTION[latest[item.qr_id].action_type]
+
+
+def _to_epoch_ms(value: datetime) -> int:
+    return int(value.replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def pull_state(db: Session) -> schemas.PullResponse:
     items = db.scalars(select(models.Item).order_by(models.Item.name)).all()
     users = db.scalars(select(models.User).order_by(models.User.full_name)).all()
+    latest = _latest_actions(db)
     return schemas.PullResponse(
         success=True,
         message=messages.PULL_OK,
         server_time=int(datetime.now(timezone.utc).timestamp() * 1000),
-        items=[schemas.ItemOut.model_validate(i) for i in items],
+        items=[_item_out(i, latest.get(i.qr_id)) for i in items],
         users=[schemas.UserOut.model_validate(u) for u in users],
+    )
+
+
+def _item_out(item: models.Item, last_tx) -> schemas.ItemOut:
+    holder = None
+    if last_tx is not None and last_tx.action_type != models.ACTION_RETURN:
+        holder = last_tx.user_id
+    return schemas.ItemOut(
+        qr_id=item.qr_id,
+        name=item.name,
+        current_status=item.current_status,
+        holder_user_id=holder,
+        last_action_at=_to_epoch_ms(last_tx.timestamp) if last_tx else None,
     )
 
 

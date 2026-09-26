@@ -7,5 +7,7 @@
     <color name="return_green">#2E7D32</color>
     <color name="text_secondary">#5F6368</color>
     <color name="warning">#B26A00</color>
+    <color name="issued">#5B3E96</color>
+    <color name="tile_bg">#EEF3F1</color>
     <color name="white">#FFFFFF</color>
 </resources>

@@ -1,7 +1,7 @@
 package com.kav1.warehouse.ui
 
+import android.content.Intent
 import android.os.Bundle
-import android.text.format.DateFormat
 import android.view.LayoutInflater
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -17,7 +17,6 @@ import com.kav1.warehouse.R
 import com.kav1.warehouse.databinding.ActivityMainBinding
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import java.util.Date
 
 class MainActivity : AppCompatActivity() {
 
@@ -40,6 +39,12 @@ class MainActivity : AppCompatActivity() {
         binding.btnScan.setOnClickListener { startScan() }
         binding.btnManualEntry.setOnClickListener { showManualEntry() }
         binding.btnSync.setOnClickListener { runManualSync() }
+        binding.btnDashboard.setOnClickListener {
+            startActivity(Intent(this, DashboardActivity::class.java))
+        }
+        binding.btnAdmin.setOnClickListener {
+            requireAdminPin { startActivity(Intent(this, AdminActivity::class.java)) }
+        }
         binding.txtFailed.setOnClickListener { showFailedTransactions() }
 
         observeLocalState()
@@ -111,13 +116,20 @@ class MainActivity : AppCompatActivity() {
         val repo = app.repository
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                val pendingEdits = combine(
+                    repo.observePendingItemEdits(),
+                    repo.observePendingUserEdits(),
+                ) { items, users -> items + users }
                 combine(
                     repo.observeUnsyncedCount(),
                     repo.observeFailedCount(),
                     repo.observeItemCount(),
                     repo.observeUserCount(),
-                ) { pending, failed, items, users -> intArrayOf(pending, failed, items, users) }
-                    .collect { (pending, failed, items, users) ->
+                    pendingEdits,
+                ) { pending, failed, items, users, edits -> intArrayOf(pending, failed, items, users, edits) }
+                    .collect { (pending, failed, items, users, edits) ->
+                        binding.txtPendingEdits.text = getString(R.string.status_pending_edits, edits)
+                        binding.txtPendingEdits.visibility = if (edits > 0) View.VISIBLE else View.GONE
                         binding.txtPending.text = getString(R.string.status_pending, pending)
                         binding.txtFailed.text = getString(R.string.status_failed, failed)
                         binding.txtFailed.visibility = if (failed > 0) View.VISIBLE else View.GONE
@@ -130,14 +142,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderLastSync() {
-        val last = app.syncPrefs.lastSuccessfulSync
+        val last = app.prefs.lastSuccessfulSync
         binding.txtLastSync.text = if (last == 0L) {
             getString(R.string.status_never_synced)
         } else {
-            val date = Date(last)
-            val formatted = "${DateFormat.getDateFormat(this).format(date)} " +
-                DateFormat.getTimeFormat(this).format(date)
-            getString(R.string.status_last_sync, formatted)
+            getString(R.string.status_last_sync, formatDateTime(last))
         }
     }
 
