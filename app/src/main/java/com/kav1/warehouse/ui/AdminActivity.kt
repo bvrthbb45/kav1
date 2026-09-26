@@ -286,7 +286,7 @@ class AdminActivity : AppCompatActivity() {
 
     /** A small vertical form inside an AlertDialog that stays open until valid. */
     private class Form(private val context: Context) {
-        private val layout = LinearLayout(context).apply {
+        private val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             val pad = (20 * context.resources.displayMetrics.density).toInt()
             setPadding(pad, pad / 2, pad, 0)
@@ -298,7 +298,7 @@ class AdminActivity : AppCompatActivity() {
                 setSingleLine(true)
                 setText(value.orEmpty())
                 isEnabled = enabled
-                layout.addView(this)
+                container.addView(this)
             }
 
         /** Trimmed value, or null (with an error shown) if invalid. */
@@ -321,7 +321,7 @@ class AdminActivity : AppCompatActivity() {
         fun show(title: Int, onSave: () -> Boolean) {
             val dialog = AlertDialog.Builder(context)
                 .setTitle(title)
-                .setView(layout)
+                .setView(container)
                 .setPositiveButton(R.string.btn_confirm, null)
                 .setNegativeButton(R.string.btn_cancel, null)
                 .create()
