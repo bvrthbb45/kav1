@@ -1,14 +1,18 @@
 @echo off
 setlocal
 REM Installs the warehouse sync server as a startup task and opens the firewall.
-REM Run as Administrator (right-click > Run as administrator).
+REM Asks for Administrator permission (UAC) automatically when needed.
 cd /d "%~dp0"
 
 net session >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Please run this script as Administrator.
-    pause
-    exit /b 1
+    REM Not elevated: relaunch this script through a UAC prompt.
+    echo Requesting Administrator permission...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs" || (
+        echo [ERROR] Administrator permission is required. Right-click the file and choose "Run as administrator".
+        pause
+    )
+    exit /b
 )
 
 echo [1/4] Checking bundled Python...
