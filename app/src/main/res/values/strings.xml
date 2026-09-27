@@ -73,6 +73,8 @@
     <string name="sync_invalid_response">התקבלה תשובה לא תקינה מהשרת</string>
     <string name="sync_failed">הסנכרון נכשל עקב שגיאה במכשיר</string>
 
+    <string name="usb_sync_prefix">סנכרון בכבל USB: %1$s</string>
+
     <!-- Rejected transactions -->
     <string name="failed_title">פעולות שנדחו</string>
     <string name="failed_row">%1$s · %2$s · %3$s\n%4$s</string>

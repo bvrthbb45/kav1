@@ -33,6 +33,13 @@ python3 -m pip install --quiet --no-compile \
     -r "$SERVER_DIR/requirements.txt" \
     colorama  # click needs it on Windows; the marker is evaluated for the build host
 
+echo "Bundling adb.exe (from the adbutils wheel) for wired USB sync..."
+python3 -m pip download --quiet --no-deps --only-binary=:all: \
+    --platform win_amd64 --python-version "${PY_VERSION%.*}" \
+    -d "$WORK/adbwheel" adbutils
+mkdir -p "$PKG/adb"
+unzip -q -j "$WORK"/adbwheel/adbutils-*.whl 'adbutils/binaries/*.exe' 'adbutils/binaries/*.dll' -d "$PKG/adb"
+
 echo "Copying server code and scripts..."
 cp -r "$SERVER_DIR/app" "$SERVER_DIR/main.py" "$SERVER_DIR/seed.py" \
       "$SERVER_DIR/requirements.txt" "$PKG/"

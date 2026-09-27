@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("WAREHOUSE_USB_SYNC", "0")
     monkeypatch.setenv("WAREHOUSE_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     # Re-import with the temp database URL.
     for name in list(sys.modules):

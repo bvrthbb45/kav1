@@ -46,6 +46,18 @@
             android:parentActivityName=".ui.MainActivity"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Wired sync over ADB. DUMP is held by the adb shell only, so other
+             apps on the tablet cannot trigger export/import. -->
+        <receiver
+            android:name=".domain.sync.UsbSyncReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.kav1.warehouse.USB_EXPORT" />
+                <action android:name="com.kav1.warehouse.USB_IMPORT" />
+            </intent-filter>
+        </receiver>
+
         <!-- Scanner screen from zxing-android-embedded, locked to portrait. -->
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"

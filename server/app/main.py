@@ -7,8 +7,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import messages
-from .database import init_db
+from .database import SessionLocal, init_db
 from .routers import admin, sync
+from .usb_sync import start_background
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +17,10 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    agent = start_background(SessionLocal)
     yield
+    if agent is not None:
+        agent.stop()
 
 
 app = FastAPI(title="Warehouse Inventory Sync", lifespan=lifespan)

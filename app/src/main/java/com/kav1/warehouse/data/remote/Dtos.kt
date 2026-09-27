@@ -74,3 +74,23 @@ data class UpsertResponseDto(
 data class ErrorDto(
     @SerializedName("message") val message: String?,
 )
+
+// --- Wired (ADB) sync files; must match server/app/usb_sync.py ---
+
+/** outbox.json, written by the tablet for the PC agent. */
+data class UsbOutboxDto(
+    @SerializedName("request_id") val requestId: String,
+    @SerializedName("device_id") val deviceId: String,
+    @SerializedName("transactions") val transactions: List<PendingTransactionDto>,
+    @SerializedName("items") val items: List<ItemUpsertDto>,
+    @SerializedName("users") val users: List<UserUpsertDto>,
+)
+
+/** inbox.json, written by the PC agent with the server's answers. */
+data class UsbInboxDto(
+    @SerializedName("request_id") val requestId: String?,
+    @SerializedName("push") val push: PushResponseDto?,
+    @SerializedName("items_uploaded") val itemsUploaded: List<ItemUpsertDto>?,
+    @SerializedName("users_uploaded") val usersUploaded: List<UserUpsertDto>?,
+    @SerializedName("state") val state: PullResponseDto?,
+)

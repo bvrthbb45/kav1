@@ -13,7 +13,11 @@ import com.kav1.warehouse.data.remote.ApiClient
 import com.kav1.warehouse.data.remote.ErrorDto
 import com.kav1.warehouse.data.remote.ItemUpsertDto
 import com.kav1.warehouse.data.remote.PendingTransactionDto
+import com.kav1.warehouse.data.remote.PullResponseDto
+import com.kav1.warehouse.data.remote.PushResponseDto
 import com.kav1.warehouse.data.remote.PushRequestDto
+import com.kav1.warehouse.data.remote.UsbInboxDto
+import com.kav1.warehouse.data.remote.UsbOutboxDto
 import com.kav1.warehouse.data.remote.UserUpsertDto
 import com.kav1.warehouse.data.remote.WarehouseApi
 import kotlinx.coroutines.CancellationException
@@ -90,8 +94,7 @@ class SyncManager(
 
     /** @return (accepted, rejected) counts. */
     private suspend fun pushPending(): Pair<Int, Int> {
-        val dao = db.pendingTransactionDao()
-        val pending = dao.getUnsynced()
+        val pending = db.pendingTransactionDao().getUnsynced()
         var accepted = 0
         var rejected = 0
         // Batches keep each request small over a flaky link; a failure part-way
@@ -104,27 +107,33 @@ class SyncManager(
                 },
             )
             val body = api.push(request).bodyOrThrow()
-            val acceptedIds = body.accepted ?: throw MalformedResponseException("accepted missing")
-            val batchIds = batch.mapTo(HashSet()) { it.txId }
-
-            db.withTransaction {
-                dao.deleteByIds(acceptedIds.filter { it in batchIds })
-                body.rejected.orEmpty().forEach { result ->
-                    val txId = result.txId ?: return@forEach
-                    if (txId in batchIds) {
-                        dao.markFailed(txId, result.message ?: "")
-                    }
-                }
-            }
-            accepted += acceptedIds.size
-            rejected += body.rejected.orEmpty().size
+            val (a, r) = applyPushResult(batch.mapTo(HashSet()) { it.txId }, body)
+            accepted += a
+            rejected += r
         }
         return accepted to rejected
     }
 
+    /** Drops accepted and flags rejected transactions among [sentIds]. @return (accepted, rejected). */
+    private suspend fun applyPushResult(sentIds: Set<String>, body: PushResponseDto): Pair<Int, Int> {
+        val dao = db.pendingTransactionDao()
+        val acceptedIds = body.accepted ?: throw MalformedResponseException("accepted missing")
+        db.withTransaction {
+            dao.deleteByIds(acceptedIds.filter { it in sentIds })
+            body.rejected.orEmpty().forEach { result ->
+                val txId = result.txId ?: return@forEach
+                if (txId in sentIds) {
+                    dao.markFailed(txId, result.message ?: "")
+                }
+            }
+        }
+        return acceptedIds.size to body.rejected.orEmpty().size
+    }
+
     /** @return (items, users) counts now stored locally. */
-    private suspend fun pullState(): Pair<Int, Int> {
-        val body = api.pull().bodyOrThrow()
+    private suspend fun pullState(): Pair<Int, Int> = applyPull(api.pull().bodyOrThrow())
+
+    private suspend fun applyPull(body: PullResponseDto): Pair<Int, Int> {
         val items = body.items?.mapNotNull { dto ->
             val qrId = dto.qrId ?: return@mapNotNull null
             ItemEntity(
@@ -155,6 +164,55 @@ class SyncManager(
             }
         }
         return items.size to users.size
+    }
+
+    // --- Wired sync over USB (ADB) ---------------------------------------
+    //
+    // The PC agent cannot open a connection to the server from the tablet
+    // (no USB tethering on some devices), so it drives the exchange itself:
+    // it asks for an outbox, sends it to the server, and hands back the
+    // server's answers. The same bookkeeping as the network sync applies.
+
+    /** Snapshot of everything waiting to be sent. */
+    suspend fun exportForUsb(requestId: String): UsbOutboxDto = lock.withLock {
+        UsbOutboxDto(
+            requestId = requestId,
+            deviceId = prefs.deviceId,
+            transactions = db.pendingTransactionDao().getUnsynced().map {
+                PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp)
+            },
+            items = db.itemDao().getPendingUpload().map { ItemUpsertDto(it.qrId, it.name) },
+            users = db.userDao().getPendingUpload().map { UserUpsertDto(it.userId, it.fullName, it.unit) },
+        )
+    }
+
+    /** Applies the server's answers to a previous [exportForUsb]. */
+    suspend fun importFromUsb(outbox: UsbOutboxDto, inbox: UsbInboxDto): SyncResult = lock.withLock {
+        try {
+            if (inbox.requestId != outbox.requestId) {
+                throw MalformedResponseException("request id mismatch")
+            }
+            db.withTransaction {
+                inbox.itemsUploaded.orEmpty().forEach { db.itemDao().markUploaded(it.qrId, it.name) }
+                inbox.usersUploaded.orEmpty().forEach {
+                    db.userDao().markUploaded(it.userId, it.fullName, it.unit)
+                }
+            }
+            val push = inbox.push ?: throw MalformedResponseException("push missing")
+            val (pushed, rejected) = applyPushResult(outbox.transactions.mapTo(HashSet()) { it.txId }, push)
+            val state = inbox.state ?: throw MalformedResponseException("state missing")
+            val (itemCount, userCount) = applyPull(state)
+            prefs.lastSuccessfulSync = System.currentTimeMillis()
+            SyncResult.Success(pushed, rejected, itemCount, userCount)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: MalformedResponseException) {
+            Log.w(TAG, "bad USB inbox: ${e.message}")
+            SyncResult.InvalidResponse
+        } catch (e: Exception) {
+            Log.e(TAG, "USB import failed", e)
+            SyncResult.Failed(e)
+        }
     }
 
     private fun <T> Response<T>.bodyOrThrow(): T {
