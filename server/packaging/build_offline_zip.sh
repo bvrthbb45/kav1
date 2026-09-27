@@ -23,7 +23,13 @@ tar xzf "$WORK/python.tar.gz" -C "$PKG"
 # Trim debug symbols and components the server never uses.
 find "$PKG/python" -name '*.pdb' -delete
 rm -rf "$PKG/python/Lib/test" "$PKG/python/Lib/idlelib" "$PKG/python/Lib/tkinter" \
-       "$PKG/python/Lib/turtledemo" "$PKG/python/tcl" "$PKG/python/include"
+       "$PKG/python/Lib/turtledemo" "$PKG/python/tcl" "$PKG/python/include" \
+       "$PKG/python/Lib/ensurepip" "$PKG/python/Lib/lib2to3" "$PKG/python/Lib/pydoc_data" \
+       "$PKG/python/Lib/site-packages/pip" "$PKG/python/Lib/site-packages"/pip-* \
+       "$PKG/python/Lib/site-packages/setuptools" "$PKG/python/Lib/site-packages"/setuptools-* \
+       "$PKG/python/Lib/site-packages/_distutils_hack" "$PKG/python/Lib/site-packages/pkg_resources" \
+       "$PKG/python/DLLs"/_tkinter.pyd "$PKG/python/DLLs"/tcl*.dll "$PKG/python/DLLs"/tk*.dll
+find "$PKG/python" -name '__pycache__' -prune -exec rm -rf {} +
 
 echo "Installing dependencies (win_amd64 wheels)..."
 python3 -m pip install --quiet --no-compile \
