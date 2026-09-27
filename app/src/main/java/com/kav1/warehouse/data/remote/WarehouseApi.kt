@@ -11,6 +11,9 @@ interface WarehouseApi {
     @POST("api/sync/push")
     suspend fun push(@Body request: PushRequestDto): Response<PushResponseDto>
 
+    @GET("api/health")
+    suspend fun health(): Response<ErrorDto>
+
     @GET("api/sync/pull")
     suspend fun pull(): Response<PullResponseDto>
 

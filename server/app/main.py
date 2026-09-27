@@ -24,6 +24,12 @@ app.include_router(sync.router)
 app.include_router(admin.router)
 
 
+@app.get("/")
+def root():
+    # Opened from a browser to check the server is reachable.
+    return {"success": True, "message": messages.ROOT_OK}
+
+
 @app.get("/api/health")
 def health():
     return {"success": True, "message": messages.HEALTH_OK}

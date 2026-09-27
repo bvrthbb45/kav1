@@ -26,6 +26,7 @@ import com.kav1.warehouse.R
 import com.kav1.warehouse.data.remote.ApiClient
 import com.kav1.warehouse.databinding.ActivityAdminBinding
 import com.kav1.warehouse.domain.sync.SyncScheduler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,6 +84,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnTabUsers.setOnClickListener { showUsers.value = true }
         binding.btnServerUrl.setOnClickListener { showServerUrlDialog() }
         binding.btnChangePin.setOnClickListener { showChangePinDialog() }
+        binding.btnTestConnection.setOnClickListener { testConnection() }
         binding.editSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -245,6 +247,34 @@ class AdminActivity : AppCompatActivity() {
             }
         }
         dialog.show()
+    }
+
+    /** Calls /api/health on the configured server and shows exactly what happened. */
+    private fun testConnection() {
+        val url = app.prefs.serverUrl
+        binding.btnTestConnection.isEnabled = false
+        binding.btnTestConnection.text = getString(R.string.connection_testing, url)
+        lifecycleScope.launch {
+            val message = try {
+                val response = app.api().health()
+                if (response.isSuccessful) {
+                    getString(R.string.connection_ok, url, response.body()?.message.orEmpty())
+                } else {
+                    getString(R.string.connection_http_error, url, response.code())
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                getString(R.string.connection_failed, url, "${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+            }
+            binding.btnTestConnection.isEnabled = true
+            binding.btnTestConnection.setText(R.string.admin_test_connection)
+            AlertDialog.Builder(this@AdminActivity)
+                .setTitle(R.string.admin_test_connection)
+                .setMessage(message)
+                .setPositiveButton(R.string.btn_close, null)
+                .show()
+        }
     }
 
     private fun showChangePinDialog() {

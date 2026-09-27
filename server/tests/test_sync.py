@@ -132,3 +132,9 @@ def test_admin_upsert_keeps_status(client):
     item = client.get("/api/sync/pull").json()["items"][0]
     assert item["name"] == "שם חדש"
     assert item["current_status"] == "ISSUED"
+
+
+def test_root_page_is_hebrew(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert r.json()["message"].startswith("שרת סנכרון המחסן פעיל")
