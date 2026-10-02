@@ -68,6 +68,8 @@ class UsbSyncReceiver : BroadcastReceiver() {
         val message = app.syncResultMessage(result)
         val status = if (result is SyncResult.Success) "ok" else "error"
         writeAtomically(File(dir, IMPORT_DONE), "$requestId|$status|$message")
+        app.prefs.lastUsbMessage = message
+        app.prefs.lastUsbSync = System.currentTimeMillis()
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(app, app.getString(R.string.usb_sync_prefix, message), Toast.LENGTH_LONG).show()
         }

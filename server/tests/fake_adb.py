@@ -20,8 +20,16 @@ def local(remote: str) -> Path:
 
 
 def main(argv):
+    if argv in (["start-server"], ["kill-server"]):
+        return 0
     if argv == ["devices"]:
         print(f"List of devices attached\n{SERIAL}\tdevice\n")
+        return 0
+    if argv == ["devices", "-l"]:
+        print(
+            f"List of devices attached\n{SERIAL}\tdevice usb:1-1 product:santos10wifi"
+            " model:GT_P5210 device:santos10wifi\n"
+        )
         return 0
     assert argv[:2] == ["-s", SERIAL], argv
     cmd, rest = argv[2], argv[3:]
@@ -36,6 +44,8 @@ def main(argv):
 
 
 def shell(args):
+    if len(args) == 1 and "agent.alive" in args[0]:
+        return heartbeat()
     if args[:2] == ["pm", "path"]:
         print("package:/data/app/com.kav1.warehouse-1.apk")
     elif args[:2] == ["mkdir", "-p"]:
@@ -50,6 +60,18 @@ def shell(args):
         action = args[args.index("-a") + 1]
         request_id = args[args.index("--es") + 2]
         emulate_app(action, request_id)
+    return 0
+
+
+def heartbeat():
+    # The agent's one-line shell script: touch agent.alive, consume sync.request.
+    sync_dir = local("/sdcard/Android/data/com.kav1.warehouse/files/usb-sync")
+    sync_dir.mkdir(parents=True, exist_ok=True)
+    (sync_dir / "agent.alive").write_text("1")
+    request = sync_dir / "sync.request"
+    if request.exists():
+        request.unlink()
+        print("SYNC_REQUESTED")
     return 0
 
 

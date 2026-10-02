@@ -6,10 +6,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import messages
+from . import events, messages
 from .database import SessionLocal, init_db
-from .routers import admin, sync
-from .usb_sync import start_background
+from .routers import admin, panel, sync
+from .usb_sync import start_background, stop_background
 
 log = logging.getLogger(__name__)
 
@@ -17,15 +17,16 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    agent = start_background(SessionLocal)
+    events.add(events.SUCCESS, "השרת הופעל ומחכה לטאבלטים")
+    start_background(SessionLocal)
     yield
-    if agent is not None:
-        agent.stop()
+    stop_background()
 
 
 app = FastAPI(title="Warehouse Inventory Sync", lifespan=lifespan)
 app.include_router(sync.router)
 app.include_router(admin.router)
+app.include_router(panel.router)
 
 
 @app.get("/")
@@ -59,7 +60,10 @@ async def http_error_handler(_request: Request, exc: StarletteHTTPException):
     message = {
         404: messages.NOT_FOUND,
         405: messages.METHOD_NOT_ALLOWED,
-    }.get(exc.status_code, messages.REQUEST_FAILED)
+    }.get(exc.status_code)
+    if message is None:
+        # Our own HTTPExceptions carry a Hebrew detail; anything else gets a generic text.
+        message = exc.detail if exc.status_code == 403 else messages.REQUEST_FAILED
     return JSONResponse(
         status_code=exc.status_code, content={"success": False, "message": message}
     )

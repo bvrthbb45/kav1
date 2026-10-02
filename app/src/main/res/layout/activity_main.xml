@@ -86,5 +86,16 @@
             android:id="@+id/txtLastSync"
             style="@style/BodyText"
             android:textColor="@color/text_secondary" />
+
+        <TextView
+            style="@style/BodyText"
+            android:layout_marginTop="24dp"
+            android:text="@string/usb_status_title"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtUsbStatus"
+            style="@style/BodyText"
+            android:lineSpacingExtra="4dp" />
     </LinearLayout>
 </ScrollView>

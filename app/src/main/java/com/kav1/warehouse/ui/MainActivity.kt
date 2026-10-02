@@ -2,6 +2,7 @@ package com.kav1.warehouse.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -15,6 +16,9 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.kav1.warehouse.R
 import com.kav1.warehouse.databinding.ActivityMainBinding
+import com.kav1.warehouse.domain.sync.SyncResult
+import com.kav1.warehouse.domain.sync.UsbLink
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -48,6 +52,7 @@ class MainActivity : AppCompatActivity() {
         binding.txtFailed.setOnClickListener { showFailedTransactions() }
 
         observeLocalState()
+        observeUsbLink()
     }
 
     override fun onResume() {
@@ -93,17 +98,92 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    /**
+     * Over the network when the server is reachable; otherwise, with the cable
+     * plugged in, asks the PC agent to run a wired sync right away.
+     */
     private fun runManualSync() {
         setSyncing(true)
         lifecycleScope.launch {
             try {
+                val link = UsbLink.status(this@MainActivity)
+                if (link.cableConnected && link.serverSeen()) {
+                    syncOverUsb()
+                    return@launch
+                }
                 val result = app.syncManager.sync()
-                toast(syncResultMessage(result))
                 renderLastSync()
+                when {
+                    result != SyncResult.Offline -> toast(syncResultMessage(result))
+                    link.cableConnected -> explainUsbProblem(link)
+                    else -> toast(R.string.sync_offline_no_cable)
+                }
             } finally {
                 setSyncing(false)
             }
         }
+    }
+
+    private suspend fun syncOverUsb() {
+        val before = app.prefs.lastUsbSync
+        if (!UsbLink.requestSync(this)) {
+            toast(R.string.sync_failed)
+            return
+        }
+        toast(R.string.usb_sync_requested)
+        val deadline = SystemClock.elapsedRealtime() + USB_SYNC_WAIT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            delay(500)
+            if (app.prefs.lastUsbSync != before) {
+                // UsbSyncReceiver already showed the result.
+                renderLastSync()
+                renderUsbStatus()
+                return
+            }
+        }
+        toast(R.string.usb_sync_timeout)
+    }
+
+    private fun explainUsbProblem(link: UsbLink.Status) {
+        val message = if (link.adbEnabled) {
+            // Picked up as soon as the server sees the tablet.
+            UsbLink.requestSync(this)
+            R.string.usb_problem_not_seen
+        } else {
+            R.string.usb_problem_debug_off
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.usb_problem_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.btn_close, null)
+            .show()
+    }
+
+    private fun observeUsbLink() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    renderUsbStatus()
+                    delay(2_000)
+                }
+            }
+        }
+    }
+
+    private fun renderUsbStatus() {
+        val link = UsbLink.status(this)
+        val lastUsb = app.prefs.lastUsbSync
+        val lines = listOf(
+            getString(if (link.cableConnected) R.string.usb_cable_on else R.string.usb_cable_off),
+            getString(if (link.adbEnabled) R.string.usb_debug_on else R.string.usb_debug_off),
+            getString(if (link.serverSeen()) R.string.usb_server_seen else R.string.usb_server_not_seen),
+            if (lastUsb == 0L) {
+                getString(R.string.usb_never_synced)
+            } else {
+                getString(R.string.usb_last_sync, formatDateTime(lastUsb))
+            },
+        )
+        binding.txtUsbStatus.text = lines.joinToString("\n")
     }
 
     private fun setSyncing(syncing: Boolean) {
@@ -185,5 +265,9 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.btn_cancel, null)
             .show()
+    }
+
+    private companion object {
+        const val USB_SYNC_WAIT_MS = 45_000L
     }
 }

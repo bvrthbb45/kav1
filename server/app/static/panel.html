@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מרכז בקרה – מחסן</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --card: #ffffff; --text: #1d2430; --muted: #687385; --line: #e2e6ec;
+    --accent: #1f6feb; --ok: #1a7f37; --ok-bg: #e6f4ea; --warn: #9a6700; --warn-bg: #fff4d6;
+    --err: #c62828; --err-bg: #fdeaea; --info-bg: #eaf1fd;
+    --available: #1a7f37; --borrowed: #c26a00; --issued: #6f42c1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: "Segoe UI", Arial, sans-serif; font-size: 15px; }
+  header { background: #1d2430; color: #fff; padding: 14px 24px; display: flex;
+           align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  header .meta { color: #b8c0cc; font-size: 13px; }
+  .pill { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .pill.ok { background: var(--ok); color: #fff; }
+  .pill.err { background: var(--err); color: #fff; }
+  main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .tile .label { color: var(--muted); font-size: 13px; }
+  .tile .value { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 18px 20px; margin-top: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+  .card h2 .spacer { flex: 1; }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 8px;
+           padding: 7px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:hover { filter: brightness(0.96); }
+  button:disabled { opacity: .5; cursor: default; }
+  .checklist { list-style: none; margin: 0; padding: 0; }
+  .checklist li { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .checklist li:last-child { border-bottom: 0; }
+  .mark { width: 24px; height: 24px; border-radius: 50%; flex: none; display: grid; place-items: center;
+          font-weight: 700; font-size: 14px; color: #fff; }
+  .mark.ok { background: var(--ok); } .mark.bad { background: var(--err); } .mark.unknown { background: #aab2bf; }
+  .step-title { font-weight: 600; }
+  .step-detail { color: var(--err); font-size: 14px; margin-top: 2px; }
+  .next { background: var(--warn-bg); border: 1px solid #f0d58a; border-radius: 8px; padding: 10px 14px;
+          margin-bottom: 12px; }
+  .next.ok { background: var(--ok-bg); border-color: #b7dfc2; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; background: #fafbfc; position: sticky; top: 0; }
+  .ltr { direction: ltr; unicode-bidi: embed; display: inline-block; }
+  .muted { color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .badge.AVAILABLE, .badge.RETURN { background: var(--ok-bg); color: var(--available); }
+  .badge.BORROWED, .badge.BORROW { background: #fff0dc; color: var(--borrowed); }
+  .badge.ISSUED, .badge.ISSUE { background: #f0eafb; color: var(--issued); }
+  .badge.device, .badge.res-ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.unauthorized, .badge.offline, .badge.res-error { background: var(--err-bg); color: var(--err); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 12px; flex-wrap: wrap; }
+  .tab { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 14px;
+         color: var(--muted); font-weight: 600; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .toolbar input, .toolbar select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .toolbar input { flex: 1; min-width: 200px; }
+  .scroll { max-height: 460px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .event { display: flex; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+  .event .time { color: var(--muted); font-size: 13px; flex: none; width: 150px; }
+  .event .src { flex: none; width: 60px; font-size: 12px; color: var(--muted); }
+  .event.success { background: var(--ok-bg); } .event.warning { background: var(--warn-bg); }
+  .event.error { background: var(--err-bg); }
+  details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); }
+  pre { background: #f6f8fa; border: 1px solid var(--line); border-radius: 8px; padding: 10px; direction: ltr;
+        text-align: left; white-space: pre-wrap; font-size: 13px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1d2430; color: #fff;
+           padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent;
+          border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { padding: 18px; text-align: center; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>מרכז בקרה – שרת המחסן</h1>
+  <span id="serverPill" class="pill ok">מתחבר…</span>
+  <span class="meta" id="serverMeta"></span>
+</header>
+<main>
+  <div class="tiles">
+    <div class="tile"><div class="label">פריטים במלאי</div><div class="value" id="cItems">–</div></div>
+    <div class="tile"><div class="label">זמינים</div><div class="value" id="cAvailable" style="color:var(--available)">–</div></div>
+    <div class="tile"><div class="label">מושאלים</div><div class="value" id="cBorrowed" style="color:var(--borrowed)">–</div></div>
+    <div class="tile"><div class="label">מנופקים</div><div class="value" id="cIssued" style="color:var(--issued)">–</div></div>
+    <div class="tile"><div class="label">משתמשים</div><div class="value" id="cUsers">–</div></div>
+    <div class="tile"><div class="label">פעולות ב-24 שעות</div><div class="value" id="c24h">–</div></div>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>חיבור טאבלטים בכבל (USB)<span class="spacer"></span>
+        <button class="primary" id="btnSync">סנכרן עכשיו</button>
+        <button id="btnAdb">אתחול ADB</button>
+      </h2>
+      <div id="nextStep" class="next">בודק…</div>
+      <ul class="checklist" id="checklist"></ul>
+      <details>
+        <summary>פרטים טכניים</summary>
+        <div id="tech"></div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>טאבלטים מחוברים</h2>
+      <div id="tablets"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="tabs">
+      <button class="tab active" data-tab="events">יומן סנכרונים ואירועים</button>
+      <button class="tab" data-tab="transactions">פעולות אחרונות</button>
+      <button class="tab" data-tab="items">מלאי</button>
+      <button class="tab" data-tab="users">משתמשים</button>
+    </div>
+
+    <div data-panel="events">
+      <div class="scroll" id="events"><div class="empty">אין אירועים עדיין</div></div>
+    </div>
+    <div data-panel="transactions" hidden>
+      <div class="toolbar"><input id="txSearch" placeholder="חיפוש לפי פריט, משתמש או מספר…"></div>
+      <div class="scroll"><table><thead><tr><th>זמן</th><th>פעולה</th><th>פריט</th><th>חייל / גורם</th></tr></thead>
+        <tbody id="txBody"></tbody></table></div>
+    </div>
+    <div data-panel="items" hidden>
+      <div class="toolbar">
+        <input id="itemSearch" placeholder="חיפוש לפי שם פריט, מספר או מחזיק…">
+        <select id="itemStatus">
+          <option value="">כל הסטטוסים</option><option value="AVAILABLE">זמין</option>
+          <option value="BORROWED">מושאל</option><option value="ISSUED">מנופק</option>
+        </select>
+      </div>
+      <div class="scroll"><table><thead><tr><th>פריט</th><th>מספר (QR)</th><th>סטטוס</th><th>מחזיק</th><th>פעולה אחרונה</th></tr></thead>
+        <tbody id="itemBody"></tbody></table></div>
+    </div>
+    <div data-panel="users" hidden>
+      <div class="toolbar"><input id="userSearch" placeholder="חיפוש לפי שם, מספר או יחידה…"></div>
+      <div class="scroll"><table><thead><tr><th>שם</th><th>מספר</th><th>יחידה</th><th>פריטים אצלו</th></tr></thead>
+        <tbody id="userBody"></tbody></table></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUS = { AVAILABLE: "זמין", BORROWED: "מושאל", ISSUED: "מנופק" };
+const ACTION = { BORROW: "השאלה", RETURN: "החזרה", ISSUE: "ניפוק" };
+const SOURCE = { usb: "כבל", network: "רשת", panel: "פאנל", server: "שרת" };
+const STATE = { device: "מחובר", unauthorized: "ממתין לאישור", offline: "לא מגיב" };
+const $ = (id) => document.getElementById(id);
+let lastEventId = 0;
+let data = { items: [], users: [], transactions: [] };
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtTime(ms) {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+function ago(sec) {
+  if (sec < 60) return "לפני " + Math.max(0, Math.round(sec)) + " שניות";
+  if (sec < 3600) return "לפני " + Math.round(sec / 60) + " דקות";
+  return "לפני " + Math.round(sec / 3600) + " שעות";
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+async function getJson(url, options) {
+  const r = await fetch(url, Object.assign({ cache: "no-store" }, options));
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || ("HTTP " + r.status));
+  return r.json();
+}
+
+function renderServer(s) {
+  const up = s.now - s.started_at;
+  const pill = $("serverPill"); pill.className = "pill ok"; pill.textContent = "השרת פעיל";
+  $("serverMeta").innerHTML = "פועל " + esc(ago(up).replace("לפני ", "")) +
+    " · מחשב: <span class='ltr'>" + esc(s.hostname) + "</span> · כתובות: <span class='ltr'>" +
+    esc((s.addresses.length ? s.addresses : ["127.0.0.1"]).map((a) => a + ":" + s.port).join(", ")) + "</span>";
+}
+
+function renderCounts(c) {
+  $("cItems").textContent = c.items; $("cAvailable").textContent = c.available;
+  $("cBorrowed").textContent = c.borrowed; $("cIssued").textContent = c.issued;
+  $("cUsers").textContent = c.users; $("c24h").textContent = c.transactions_24h;
+}
+
+function renderUsb(usb, now) {
+  const steps = usb.check.steps;
+  $("checklist").innerHTML = steps.map((st) => {
+    const cls = st.ok === true ? "ok" : st.ok === false ? "bad" : "unknown";
+    const sym = st.ok === true ? "✓" : st.ok === false ? "✗" : "•";
+    return "<li><span class='mark " + cls + "'>" + sym + "</span><div><div class='step-title'>" + esc(st.title) +
+      "</div>" + (st.detail ? "<div class='step-detail'>" + esc(st.detail) + "</div>" : "") + "</div></li>";
+  }).join("");
+  const failing = steps.find((st) => st.ok === false);
+  const next = $("nextStep");
+  const tablets = usb.snapshot ? usb.snapshot.tablets : [];
+  if (failing) {
+    next.className = "next"; next.innerHTML = "<b>מה לעשות עכשיו:</b> " + esc(failing.detail || failing.title);
+  } else if (tablets.some((t) => t.state === "device")) {
+    next.className = "next ok"; next.innerHTML = "<b>הכל תקין.</b> הטאבלטים המחוברים מסתנכרנים אוטומטית כל דקה.";
+  } else {
+    next.className = "next"; next.innerHTML = "<b>ממתין לטאבלט.</b> חבר טאבלט בכבל USB.";
+  }
+  $("btnSync").disabled = $("btnAdb").disabled = !usb.enabled;
+
+  const snap = usb.snapshot;
+  let tech = "";
+  if (snap) {
+    tech += "<p>ADB: <span class='ltr'>" + esc(snap.adb_path) + "</span>" +
+      (snap.last_poll_at ? " · בדיקה אחרונה " + esc(ago(now - snap.last_poll_at)) : "") + "</p>";
+    tech += "<p class='muted'>פלט adb devices -l:</p><pre>" + esc(snap.devices_raw || "(ריק)") + "</pre>";
+  } else {
+    tech += "<p>" + esc(usb.disabled_reason) + "</p>";
+  }
+  const pnp = usb.check.usb_devices;
+  if (pnp) {
+    tech += "<p class='muted'>התקני Samsung ש-Windows רואה:</p>";
+    tech += pnp.length ? "<pre>" + esc(pnp.map((d) => (d.Status || "?") + "  " + (d.FriendlyName || "?") +
+      "  [" + (d.Class || "") + "]").join("\n")) + "</pre>" : "<pre>(אין)</pre>";
+  }
+  $("tech").innerHTML = tech;
+
+  if (!tablets.length) {
+    $("tablets").innerHTML = "<div class='empty'>אין טאבלט מחובר בכבל כרגע</div>";
+    return;
+  }
+  $("tablets").innerHTML = "<table><thead><tr><th>טאבלט</th><th>מצב</th><th>סנכרון אחרון</th><th>תוצאה</th></tr></thead><tbody>" +
+    tablets.map((t) => {
+      const res = t.syncing ? "<span class='spin'></span> מסנכרן…" : t.last_result
+        ? "<span class='badge res-" + esc(t.last_result) + "'>" + (t.last_result === "ok" ? "הצליח" : "נכשל") +
+          "</span><div class='muted'>" + esc(t.last_message) + "</div>"
+        : "<span class='muted'>טרם בוצע</span>";
+      return "<tr><td><b>" + esc(t.model || "טאבלט") + "</b><div class='muted'><span class='ltr'>" + esc(t.serial) + "</span></div></td>" +
+        "<td><span class='badge " + esc(t.state) + "'>" + esc(STATE[t.state] || t.state) + "</span>" +
+        (t.state !== "device" ? "<div class='step-detail'>" + esc(t.hint) + "</div>" : "") + "</td>" +
+        "<td>" + (t.last_sync_at ? esc(fmtTime(t.last_sync_at * 1000)) + "<div class='muted'>" + esc(ago(now - t.last_sync_at)) + "</div>" : "—") + "</td>" +
+        "<td>" + res + "</td></tr>";
+    }).join("") + "</tbody></table>";
+}
+
+function renderEvents(list) {
+  if (!list.length) return;
+  const box = $("events");
+  if (lastEventId === 0) box.innerHTML = "";
+  const html = list.map((e) => "<div class='event " + esc(e.level) + "'><span class='time'>" + esc(fmtTime(e.time * 1000)) +
+    "</span><span class='src'>" + esc(SOURCE[e.source] || e.source) + "</span><span>" + esc(e.message) + "</span></div>").reverse().join("");
+  box.insertAdjacentHTML("afterbegin", html);
+  while (box.children.length > 500) box.lastChild.remove();
+  lastEventId = list[list.length - 1].id;
+}
+
+function renderData() {
+  const q = $("txSearch").value.trim().toLowerCase();
+  const tx = data.transactions.filter((t) => !q ||
+    [t.item_name, t.qr_id, t.user_name, t.user_id].some((v) => String(v).toLowerCase().includes(q)));
+  $("txBody").innerHTML = tx.length ? tx.map((t) => "<tr><td>" + esc(fmtTime(t.timestamp)) + "</td><td><span class='badge " +
+    esc(t.action_type) + "'>" + esc(ACTION[t.action_type] || t.action_type) + "</span></td><td>" + esc(t.item_name) +
+    "<div class='muted'><span class='ltr'>" + esc(t.qr_id) + "</span></div></td><td>" + esc(t.user_name) + "<div class='muted'><span class='ltr'>" + esc(t.user_id) + "</span>" +
+    "</div></td></tr>").join("") : "<tr><td colspan='4' class='empty'>אין פעולות</td></tr>";
+
+  const iq = $("itemSearch").value.trim().toLowerCase(), st = $("itemStatus").value;
+  const items = data.items.filter((i) => (!st || i.current_status === st) && (!iq ||
+    [i.name, i.qr_id, i.holder_name].some((v) => String(v || "").toLowerCase().includes(iq))));
+  $("itemBody").innerHTML = items.length ? items.map((i) => "<tr><td>" + esc(i.name) + "</td><td class='ltr'>" + esc(i.qr_id) +
+    "</td><td><span class='badge " + esc(i.current_status) + "'>" + esc(STATUS[i.current_status] || i.current_status) +
+    "</span></td><td>" + esc(i.holder_name || "—") + "</td><td>" + esc(fmtTime(i.last_action_at)) + "</td></tr>").join("")
+    : "<tr><td colspan='5' class='empty'>אין פריטים</td></tr>";
+
+  const holding = {};
+  data.items.forEach((i) => { if (i.holder_user_id) holding[i.holder_user_id] = (holding[i.holder_user_id] || 0) + 1; });
+  const uq = $("userSearch").value.trim().toLowerCase();
+  const users = data.users.filter((u) => !uq ||
+    [u.full_name, u.user_id, u.unit].some((v) => String(v || "").toLowerCase().includes(uq)));
+  $("userBody").innerHTML = users.length ? users.map((u) => "<tr><td>" + esc(u.full_name) + "</td><td class='ltr'>" +
+    esc(u.user_id) + "</td><td>" + esc(u.unit || "—") + "</td><td>" + (holding[u.user_id] || 0) + "</td></tr>").join("")
+    : "<tr><td colspan='4' class='empty'>אין משתמשים</td></tr>";
+}
+
+async function refreshData() {
+  try { data = await getJson("/api/panel/data"); renderData(); } catch (e) { /* shown by status poll */ }
+}
+
+async function refreshStatus() {
+  try {
+    const s = await getJson("/api/panel/status?after=" + lastEventId);
+    renderServer(s.server); renderCounts(s.counts); renderUsb(s.usb, s.server.now);
+    const changed = s.events.some((e) => e.level === "success");
+    renderEvents(s.events);
+    if (changed) refreshData();
+  } catch (e) {
+    const pill = $("serverPill"); pill.className = "pill err"; pill.textContent = "אין תקשורת עם השרת";
+    $("serverMeta").textContent = "ודא שהשרת פועל (start_server.bat) – מנסה שוב…";
+  }
+}
+
+async function post(url) {
+  try { const r = await getJson(url, { method: "POST" }); toast(r.message); refreshStatus(); }
+  catch (e) { toast(e.message); }
+}
+
+$("btnSync").onclick = () => post("/api/panel/sync-now");
+$("btnAdb").onclick = () => post("/api/panel/restart-adb");
+document.querySelectorAll(".tab").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
+  document.querySelectorAll("[data-panel]").forEach((p) => p.hidden = p.dataset.panel !== b.dataset.tab);
+});
+["txSearch", "itemSearch", "userSearch"].forEach((id) => $(id).addEventListener("input", renderData));
+$("itemStatus").addEventListener("change", renderData);
+
+refreshStatus(); refreshData();
+setInterval(refreshStatus, 2000);
+setInterval(refreshData, 15000);
+</script>
+</body>
+</html>

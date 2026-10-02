@@ -35,6 +35,23 @@ CSV headers: `user_id,full_name,unit` and `qr_id,name` (UTF-8, Excel "CSV UTF-8"
 The same can be done over HTTP with `POST /api/admin/users` and `POST /api/admin/items`
 (JSON arrays). Existing ids are updated; item status is never reset.
 
+## Control panel and wired sync
+
+Open `http://127.0.0.1:8000/panel` on the server PC (the offline package adds a
+"Warehouse Control Panel" desktop shortcut). It shows, live: server status,
+inventory counts, a step-by-step check of the USB/ADB tablet link (Windows sees
+the Samsung device, driver OK, USB debugging on, prompt approved, app
+installed, last sync), connected tablets, a sync/event log, recent actions,
+items and users, plus "sync now" and "restart ADB" buttons. The panel and its
+`/api/panel/*` endpoints answer only requests from the PC itself unless
+`WAREHOUSE_PANEL_REMOTE=1`.
+
+Wired sync (`app/usb_sync.py`) runs when `adb` is found (`adb/adb.exe` next to
+the server, `WAREHOUSE_ADB`, or PATH; disable with `WAREHOUSE_USB_SYNC=0`). Every
+3 s it touches `agent.alive` on each authorized tablet, so the app can show that
+the server sees it, and syncs when the app's manual sync button wrote
+`sync.request`, or every 60 s otherwise.
+
 ## API
 
 | Method | Path | Purpose |

@@ -74,6 +74,33 @@
     <string name="sync_failed">הסנכרון נכשל עקב שגיאה במכשיר</string>
 
     <string name="usb_sync_prefix">סנכרון בכבל USB: %1$s</string>
+    <string name="sync_offline_no_cable">אין חיבור לשרת. כדי לסנכרן, חבר את הטאבלט בכבל USB למחשב השרת. הנתונים שמורים במכשיר</string>
+
+    <!-- Wired (USB) link status on the main screen -->
+    <string name="usb_status_title">חיבור בכבל לשרת</string>
+    <string name="usb_cable_on">✔ כבל USB מחובר</string>
+    <string name="usb_cable_off">✘ כבל USB לא מחובר</string>
+    <string name="usb_debug_on">✔ איתור באגים של USB פעיל</string>
+    <string name="usb_debug_off">✘ איתור באגים של USB כבוי (הגדרות ← אפשרויות מפתחים)</string>
+    <string name="usb_server_seen">✔ השרת מזהה את הטאבלט</string>
+    <string name="usb_server_not_seen">✘ השרת עדיין לא מזהה את הטאבלט</string>
+    <string name="usb_last_sync">סנכרון אחרון בכבל: %1$s</string>
+    <string name="usb_never_synced">עדיין לא בוצע סנכרון בכבל</string>
+    <string name="usb_sync_requested">נשלחה בקשת סנכרון לשרת דרך הכבל…</string>
+    <string name="usb_sync_timeout">השרת לא השלים את הסנכרון בזמן. בדוק את מרכז הבקרה במחשב השרת</string>
+    <string name="usb_problem_title">הטאבלט לא מסונכרן עם השרת</string>
+    <string name="usb_problem_debug_off">הכבל מחובר, אבל איתור באגים של USB כבוי ולכן השרת לא יכול לגשת לטאבלט.
+
+הגדרות ← אפשרויות מפתחים ← לסמן "איתור באגים של USB", ואז לנתק ולחבר את הכבל.
+
+(אם "אפשרויות מפתחים" לא מופיע: הגדרות ← אודות המכשיר ← ללחוץ 7 פעמים על "מספר גרסת Build")</string>
+    <string name="usb_problem_not_seen">הכבל מחובר ואיתור באגים פעיל, אבל השרת עדיין לא מזהה את הטאבלט. נשלחה בקשת סנכרון, והיא תתבצע ברגע שהשרת יזהה אותו.
+
+לבדוק:
+• במסך הטאבלט הופיעה ההודעה "לאפשר איתור באגים של USB?" – לסמן "אפשר תמיד ממחשב זה" ולאשר
+• השרת פועל במחשב
+• במחשב השרת לפתוח את "Warehouse Control Panel" – הוא מראה בדיוק מה חסר
+• אם השרת ב-VirtualBox: התפריט Devices ← USB ← SAMSUNG_Android מסומן</string>
 
     <!-- Rejected transactions -->
     <string name="failed_title">פעולות שנדחו</string>

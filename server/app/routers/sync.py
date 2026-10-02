@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .. import messages, schemas, services
+from .. import events, messages, schemas, services
 from ..database import get_db
 
 log = logging.getLogger(__name__)
@@ -28,12 +28,19 @@ def push(request: schemas.PushRequest, db: Session = Depends(get_db)):
                 "rejected": [],
             },
         )
-    log.info(
-        "push from %s: %d accepted, %d rejected",
-        request.device_id,
-        len(result.accepted),
-        len(result.rejected),
-    )
+    device = request.device_id or "?"
+    if result.rejected:
+        events.add(
+            events.WARNING,
+            f"סנכרון ברשת מטאבלט {device[:8]}: {result.message}",
+            "network",
+        )
+    elif result.accepted:
+        events.add(
+            events.SUCCESS,
+            f"סנכרון ברשת מטאבלט {device[:8]}: {result.message}",
+            "network",
+        )
     return result
 
 

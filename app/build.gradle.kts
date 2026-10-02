@@ -14,8 +14,8 @@ android {
         // API-19-compatible versions; bumping minSdk to 21 lifts all of those caps.
         minSdk = 19
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
 
         multiDexEnabled = true
         // Vector drawables are rasterised to PNG at build time for API < 21.
