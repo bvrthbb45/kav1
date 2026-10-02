@@ -137,4 +137,4 @@ def test_admin_upsert_keeps_status(client):
 def test_root_page_is_hebrew(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert r.json()["message"].startswith("שרת סנכרון המחסן פעיל")
+    assert r.json()["message"].startswith("שרת אולימפוס פעיל")

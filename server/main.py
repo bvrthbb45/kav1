@@ -66,7 +66,7 @@ if __name__ == "__main__":
             webbrowser.open(PANEL_URL)
         sys.exit(0)
     print("=" * 64)
-    print(f" Warehouse sync server - port {PORT}")
+    print(f" Olympus sync server - port {PORT}")
     print(f" Control panel: {PANEL_URL}")
     print(" Keep this window open. Close it (or Ctrl+C) to stop the server.")
     print("=" * 64)

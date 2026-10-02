@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>מרכז בקרה – מחסן</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f3a5f'/%3E%3Cpath d='M32 12 50 21v22L32 52 14 43V21z' fill='%23f2b33d'/%3E%3Cpath d='M32 12 50 21 32 30 14 21z' fill='%23ffd47a'/%3E%3Cpath d='m24 33 6 6 11-12' stroke='%231f3a5f' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>אולימפוס – מרכז בקרה</title>
+<link rel="icon" href="/panel/logo.png">
 <style>
   :root {
-    --bg: #f2f4f7; --card: #ffffff; --text: #1d2430; --muted: #667085; --line: #e3e7ed;
-    --brand: #1f3a5f; --brand-2: #2b5283; --accent: #f2b33d;
-    --primary: #1f6feb; --ok: #1a7f37; --ok-bg: #e6f4ea; --warn: #9a6700; --warn-bg: #fff4d6;
+    --bg: #f3f2ec; --card: #ffffff; --text: #1d2430; --muted: #667085; --line: #e3e7ed;
+    --brand: #434c2f; --brand-2: #5a6440; --accent: #c8a96a;
+    --primary: #4e5a35; --ok: #1a7f37; --ok-bg: #e6f4ea; --warn: #9a6700; --warn-bg: #fff4d6;
     --err: #c62828; --err-bg: #fdeaea;
     --available: #1a7f37; --borrowed: #c26a00; --issued: #6f42c1;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", Arial, sans-serif; font-size: 15px; }
   header { background: linear-gradient(90deg, var(--brand), var(--brand-2)); color: #fff; padding: 12px 24px;
-           display: flex; align-items: center; gap: 14px; flex-wrap: wrap; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
-  header .logo { width: 40px; height: 40px; flex: none; }
-  header h1 { font-size: 20px; margin: 0; font-weight: 700; }
-  header .sub { font-size: 12px; color: #c9d6e8; }
-  header .meta { color: #c9d6e8; font-size: 13px; margin-inline-start: auto; }
+           display: flex; align-items: center; gap: 14px; flex-wrap: wrap; box-shadow: 0 2px 6px rgba(0,0,0,.15); border-bottom: 3px solid var(--accent); }
+  header .logo { width: 56px; height: 56px; flex: none; }
+  header h1 { color: var(--accent); font-size: 24px; margin: 0; font-weight: 700; }
+  header .sub { font-size: 12px; color: #e6d7ae; }
+  header .meta { color: #e6d7ae; font-size: 13px; margin-inline-start: auto; }
   .pill { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
   .pill.ok { background: var(--ok); color: #fff; } .pill.err { background: var(--err); color: #fff; }
   main { padding: 20px 24px 40px; max-width: 1440px; margin: 0 auto; }
@@ -106,14 +106,8 @@
 </head>
 <body>
 <header>
-  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
-    <rect width="64" height="64" rx="14" fill="#ffffff" fill-opacity=".12"/>
-    <path d="M32 10 52 20v24L32 54 12 44V20z" fill="#f2b33d"/>
-    <path d="M32 10 52 20 32 30 12 20z" fill="#ffd47a"/>
-    <path d="M32 30v24" stroke="#c98c1e" stroke-width="2"/>
-    <path d="m22 33 7 7 13-14" stroke="#1f3a5f" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>
-  <div><h1>מרכז בקרה – מחסן</h1><div class="sub">ניהול מלאי, חיילים וסנכרון טאבלטים</div></div>
+  <img class="logo" src="/panel/logo.png" alt="אולימפוס">
+  <div><h1>אולימפוס</h1><div class="sub">גף ביטחון · מרכז בקרה – מלאי, חיילים וסנכרון טאבלטים</div></div>
   <span id="serverPill" class="pill ok">מתחבר…</span>
   <span class="meta" id="serverMeta"></span>
 </header>

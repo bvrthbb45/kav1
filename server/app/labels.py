@@ -14,7 +14,7 @@ PAGE = """<!doctype html>
 <style>
   @page {{ size: A4; margin: 8mm; }}
   body {{ font-family: "Segoe UI", Arial, sans-serif; margin: 0; }}
-  .bar {{ padding: 10px 16px; background: #1f3a5f; color: #fff; display: flex; gap: 12px; align-items: center; }}
+  .bar {{ padding: 10px 16px; background: #434c2f; color: #fff; display: flex; gap: 12px; align-items: center; }}
   .bar button {{ font: inherit; padding: 6px 16px; border-radius: 6px; border: 0; cursor: pointer; }}
   .sheet {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; padding: 6mm; }}
   .label {{ border: 1px dashed #999; border-radius: 2mm; padding: 2mm; text-align: center; break-inside: avoid; }}

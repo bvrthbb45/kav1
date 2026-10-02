@@ -194,7 +194,7 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
 
 # --- Export --------------------------------------------------------------------
 
-HEADER_FILL = PatternFill("solid", fgColor="1F3A5F")
+HEADER_FILL = PatternFill("solid", fgColor="434C2F")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 DATE_FORMAT = "dd/mm/yyyy hh:mm"
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Hebrew for the strings shown by the zxing-android-embedded scanner screen. -->
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="zxing_app_name" tools:ignore="UnusedResources">ניהול מחסן</string>
+    <string name="zxing_app_name" tools:ignore="UnusedResources">אולימפוס</string>
     <string name="zxing_button_ok" tools:ignore="UnusedResources">אישור</string>
     <string name="zxing_msg_camera_framework_bug" tools:ignore="UnusedResources">לא ניתן להפעיל את המצלמה. ייתכן שיש צורך לאתחל את המכשיר או לאשר הרשאת מצלמה</string>
     <string name="zxing_msg_default_status" tools:ignore="UnusedResources">כוון את המצלמה אל קוד ה-QR</string>

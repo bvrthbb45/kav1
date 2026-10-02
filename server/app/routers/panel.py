@@ -53,6 +53,11 @@ def panel_page():
     return FileResponse(STATIC_DIR / "panel.html", media_type="text/html")
 
 
+@router.get("/panel/logo.png")
+def panel_logo():
+    return FileResponse(STATIC_DIR / "logo.png", media_type="image/png")
+
+
 def _local_addresses():
     addresses = set()
     try:

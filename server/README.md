@@ -1,4 +1,4 @@
-# Warehouse sync server
+# Olympus sync server
 
 FastAPI + SQLite backend for the offline-first warehouse Android app.
 All client-facing messages are in Hebrew.
@@ -38,7 +38,7 @@ The same can be done over HTTP with `POST /api/admin/users` and `POST /api/admin
 ## Control panel and wired sync
 
 Open `http://127.0.0.1:8000/panel` on the server PC (the offline package adds a
-"Warehouse Control Panel" desktop shortcut). It shows, live: server status,
+"Olympus Control Panel" desktop shortcut). It shows, live: server status,
 inventory counts, a step-by-step check of the USB/ADB tablet link (Windows sees
 the Samsung device, driver OK, USB debugging on, prompt approved, app
 installed, last sync), connected tablets, a sync/event log, recent actions,

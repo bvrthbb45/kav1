@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The app is Hebrew-only: these default strings are Hebrew. -->
 <resources>
-    <string name="app_name">ניהול מחסן</string>
+    <string name="app_name">אולימפוס</string>
 
     <!-- Main screen -->
-    <string name="main_title">מערכת ניהול ציוד</string>
-    <string name="main_subtitle">סריקה, השאלה, ניפוק והחזרה</string>
+    <string name="main_title">אולימפוס</string>
+    <string name="main_subtitle">גף ביטחון · ניהול ציוד ומלאי</string>
     <string name="btn_soldier_card">כרטיס חייל</string>
     <string name="status_title">מצב המכשיר</string>
     <string name="btn_scan">סרוק ציוד</string>
@@ -93,7 +93,7 @@
     <string name="usb_sync_timeout">השרת לא השלים את הסנכרון בזמן. בדוק את מרכז הבקרה במחשב השרת</string>
     <string name="usb_problem_title">הטאבלט לא מסונכרן עם השרת</string>
     <string name="usb_problem_debug_off">הכבל מחובר, אבל איתור באגים של USB כבוי ולכן השרת לא יכול לגשת לטאבלט.\n\nהגדרות ← אפשרויות מפתחים ← לסמן \"איתור באגים של USB\", ואז לנתק ולחבר את הכבל.\n\n(אם \"אפשרויות מפתחים\" לא מופיע: הגדרות ← אודות המכשיר ← ללחוץ 7 פעמים על \"מספר גרסת Build\")</string>
-    <string name="usb_problem_not_seen">הכבל מחובר ואיתור באגים פעיל, אבל השרת עדיין לא מזהה את הטאבלט. נשלחה בקשת סנכרון, והיא תתבצע ברגע שהשרת יזהה אותו.\n\nלבדוק:\n• במסך הטאבלט הופיעה ההודעה \"לאפשר איתור באגים של USB?\" – לסמן \"אפשר תמיד ממחשב זה\" ולאשר\n• השרת פועל במחשב\n• במחשב השרת לפתוח את \"Warehouse Control Panel\" – הוא מראה בדיוק מה חסר\n• אם השרת ב-VirtualBox: התפריט Devices ← USB ← SAMSUNG_Android מסומן</string>
+    <string name="usb_problem_not_seen">הכבל מחובר ואיתור באגים פעיל, אבל השרת עדיין לא מזהה את הטאבלט. נשלחה בקשת סנכרון, והיא תתבצע ברגע שהשרת יזהה אותו.\n\nלבדוק:\n• במסך הטאבלט הופיעה ההודעה \"לאפשר איתור באגים של USB?\" – לסמן \"אפשר תמיד ממחשב זה\" ולאשר\n• השרת פועל במחשב\n• במחשב השרת לפתוח את \"Olympus Control Panel\" – הוא מראה בדיוק מה חסר\n• אם השרת ב-VirtualBox: התפריט Devices ← USB ← SAMSUNG_Android מסומן</string>
 
     <!-- Item types, history and soldier card -->
     <string name="label_category">סוג: %1$s</string>

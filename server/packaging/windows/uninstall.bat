@@ -13,6 +13,6 @@ if errorlevel 1 (
 call "%~dp0stop_server.bat"
 schtasks /Delete /TN "WarehouseSyncServer" /F >nul 2>&1
 netsh advfirewall firewall delete rule name="Warehouse Sync Server" >nul 2>&1
-powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Warehouse Control Panel.lnk')" >nul 2>&1
+powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Warehouse Control Panel.lnk'); Remove-Item -ErrorAction SilentlyContinue (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Olympus Control Panel.lnk')" >nul 2>&1
 echo Uninstalled. Data is still in %~dp0warehouse.db
 pause

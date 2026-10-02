@@ -1,7 +1,7 @@
 def test_panel_page_is_served(client):
     r = client.get("/panel")
     assert r.status_code == 200
-    assert "מרכז בקרה" in r.text
+    assert "אולימפוס" in r.text
 
 
 def test_panel_status_without_usb(client):
@@ -55,3 +55,10 @@ def test_panel_is_local_only(client):
 def test_panel_actions_without_usb(client):
     r = client.post("/api/panel/sync-now").json()
     assert r["success"] is False and r["message"]
+
+
+def test_panel_logo_is_served(client):
+    r = client.get("/panel/logo.png")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:4] == b"\x89PNG"

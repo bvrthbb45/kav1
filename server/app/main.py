@@ -23,7 +23,7 @@ async def lifespan(_app: FastAPI):
     stop_background()
 
 
-app = FastAPI(title="Warehouse Inventory Sync", lifespan=lifespan)
+app = FastAPI(title="Olympus Inventory Sync", lifespan=lifespan)
 app.include_router(sync.router)
 app.include_router(admin.router)
 app.include_router(panel.router)

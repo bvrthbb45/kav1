@@ -39,12 +39,12 @@ schtasks /Run /TN "WarehouseSyncServer" >nul
 timeout /t 4 /nobreak >nul
 "%~dp0python\python.exe" "%~dp0tools\healthcheck.py"
 
-echo [5/5] Creating the "Warehouse Control Panel" shortcut on the desktop...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$d=[Environment]::GetFolderPath('CommonDesktopDirectory'); $s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'Warehouse Control Panel.lnk')); $s.TargetPath='%~dp0open_panel.bat'; $s.WorkingDirectory='%~dp0'; $s.WindowStyle=7; $s.IconLocation='%SystemRoot%\System32\imageres.dll,109'; $s.Save()" >nul 2>&1
+echo [5/5] Creating the "Olympus Control Panel" shortcut on the desktop...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$d=[Environment]::GetFolderPath('CommonDesktopDirectory'); Remove-Item -ErrorAction SilentlyContinue (Join-Path $d 'Warehouse Control Panel.lnk'); $s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'Olympus Control Panel.lnk')); $s.TargetPath='%~dp0open_panel.bat'; $s.WorkingDirectory='%~dp0'; $s.WindowStyle=7; $s.IconLocation='%~dp0olympus.ico'; $s.Save()" >nul 2>&1
 
 echo.
 echo Done. The server starts automatically on every boot.
-echo Control panel: double-click "Warehouse Control Panel" on the desktop
+echo Control panel: double-click "Olympus Control Panel" on the desktop
 echo                (or open_panel.bat, or http://127.0.0.1:8000/panel).
 call "%~dp0open_panel.bat"
 echo Logs: %~dp0logs\server.log
