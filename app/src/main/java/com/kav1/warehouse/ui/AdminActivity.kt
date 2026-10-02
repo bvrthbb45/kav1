@@ -9,6 +9,8 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -65,7 +67,9 @@ class AdminActivity : AppCompatActivity() {
             if (row.isUser) {
                 showUserDialog(row.id, row.title, row.unit)
             } else {
-                showItemDialog(row.id, row.title)
+                lifecycleScope.launch {
+                    app.repository.getItem(row.id)?.let { showItemDialog(it.qrId, it.name, it.category) }
+                }
             }
         }
 
@@ -129,7 +133,7 @@ class AdminActivity : AppCompatActivity() {
                 Row(
                     id = it.qrId,
                     title = it.name,
-                    subtitle = "${it.qrId} · ${statusLabel(it.currentStatus)}",
+                    subtitle = "${categoryLabel(it.category)} · ${it.qrId} · ${statusLabel(it.currentStatus)}",
                     unit = null,
                     pending = it.pendingUpload,
                     isUser = false,
@@ -166,28 +170,42 @@ class AdminActivity : AppCompatActivity() {
             val existing = app.repository.getItem(qrId)
             if (existing != null) {
                 toast(R.string.item_exists_editing)
-                showItemDialog(existing.qrId, existing.name)
+                showItemDialog(existing.qrId, existing.name, existing.category)
             } else {
                 showItemDialog(null, null, prefilledQr = qrId)
             }
         }
     }
 
-    private fun showItemDialog(qrId: String?, name: String?, prefilledQr: String? = null) {
-        val form = Form(this)
-        val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr, enabled = qrId == null)
-        val nameField = form.field(R.string.item_name_hint, name)
-        form.show(if (qrId == null) R.string.item_dialog_add else R.string.item_dialog_edit) {
-            val code = form.value(qrField, MAX_QR) ?: return@show false
-            val itemName = form.value(nameField, MAX_NAME) ?: return@show false
-            lifecycleScope.launch {
-                if (qrId == null && app.repository.getItem(code) != null) {
-                    toast(R.string.item_exists_editing)
+    private fun showItemDialog(
+        qrId: String?,
+        name: String?,
+        category: String? = null,
+        prefilledQr: String? = null,
+    ) {
+        lifecycleScope.launch {
+            val types = app.repository.getCategoryNames()
+            val form = Form(this@AdminActivity)
+            val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr, enabled = qrId == null)
+            val typeField = form.autocomplete(R.string.item_category_hint, category, types)
+            val nameField = form.field(R.string.item_name_optional_hint, name)
+            form.show(if (qrId == null) R.string.item_dialog_add else R.string.item_dialog_edit) {
+                val code = form.value(qrField, MAX_QR) ?: return@show false
+                val type = form.value(typeField, MAX_NAME, required = false) ?: return@show false
+                val itemName = form.value(nameField, MAX_NAME, required = false) ?: return@show false
+                if (itemName.isEmpty() && type.isEmpty()) {
+                    nameField.error = getString(R.string.item_name_or_type_required)
+                    return@show false
                 }
-                app.repository.saveItem(code, itemName)
-                savedPendingSync()
+                lifecycleScope.launch {
+                    if (qrId == null && app.repository.getItem(code) != null) {
+                        toast(R.string.item_exists_editing)
+                    }
+                    app.repository.saveItem(code, itemName.ifEmpty { type }, type)
+                    savedPendingSync()
+                }
+                true
             }
-            true
         }
     }
 
@@ -328,6 +346,17 @@ class AdminActivity : AppCompatActivity() {
                 setSingleLine(true)
                 setText(value.orEmpty())
                 isEnabled = enabled
+                container.addView(this)
+            }
+
+        /** A field that suggests [suggestions] while typing. */
+        fun autocomplete(hint: Int, value: String?, suggestions: List<String>): EditText =
+            AutoCompleteTextView(context).apply {
+                setHint(hint)
+                setSingleLine(true)
+                setText(value.orEmpty())
+                threshold = 1
+                setAdapter(ArrayAdapter(context, android.R.layout.simple_dropdown_item_1line, suggestions))
                 container.addView(this)
             }
 

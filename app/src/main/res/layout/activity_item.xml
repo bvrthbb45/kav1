@@ -22,12 +22,21 @@
             style="@style/BodyText" />
 
         <TextView
+            android:id="@+id/txtCategory"
+            style="@style/BodyText"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/txtStatus"
             style="@style/BodyText" />
 
         <TextView
             android:id="@+id/txtHolder"
             style="@style/BodyText"
+            android:background="?attr/selectableItemBackground"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/accent"
             android:visibility="gone" />
 
         <TextView
@@ -77,5 +86,19 @@
             android:layout_marginTop="@dimen/gap"
             android:text="@string/btn_back"
             android:textSize="@dimen/body_text" />
+
+        <TextView
+            android:id="@+id/txtHistoryTitle"
+            style="@style/SectionTitle"
+            android:text="@string/history_title"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/listHistory"
+            style="@style/Card"
+            android:layout_marginTop="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:visibility="gone" />
     </LinearLayout>
 </ScrollView>

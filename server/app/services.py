@@ -141,9 +141,19 @@ def _to_epoch_ms(value: datetime) -> int:
     return int(value.replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
+# Most recent actions sent to tablets for item history and soldier cards.
+HISTORY_LIMIT = 3000
+
+
 def pull_state(db: Session) -> schemas.PullResponse:
     items = db.scalars(select(models.Item).order_by(models.Item.name)).all()
     users = db.scalars(select(models.User).order_by(models.User.full_name)).all()
+    categories = db.scalars(select(models.Category).order_by(models.Category.name))
+    history = db.scalars(
+        select(models.Transaction)
+        .order_by(models.Transaction.timestamp.desc())
+        .limit(HISTORY_LIMIT)
+    )
     latest = _latest_actions(db)
     return schemas.PullResponse(
         success=True,
@@ -151,6 +161,21 @@ def pull_state(db: Session) -> schemas.PullResponse:
         server_time=int(datetime.now(timezone.utc).timestamp() * 1000),
         items=[_item_out(i, latest.get(i.qr_id)) for i in items],
         users=[schemas.UserOut.model_validate(u) for u in users],
+        categories=[
+            schemas.CategoryOut(name=c.name, target_qty=c.target_qty)
+            for c in categories
+        ],
+        history=[history_out(t) for t in history],
+    )
+
+
+def history_out(tx: models.Transaction) -> schemas.HistoryOut:
+    return schemas.HistoryOut(
+        tx_id=tx.tx_id,
+        qr_id=tx.qr_id,
+        user_id=tx.user_id,
+        action_type=tx.action_type,
+        timestamp=_to_epoch_ms(tx.timestamp),
     )
 
 
@@ -162,6 +187,7 @@ def _item_out(item: models.Item, last_tx) -> schemas.ItemOut:
         qr_id=item.qr_id,
         name=item.name,
         current_status=item.current_status,
+        category=item.category or "",
         holder_user_id=holder,
         last_action_at=_to_epoch_ms(last_tx.timestamp) if last_tx else None,
     )
@@ -182,16 +208,20 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
     try:
         for incoming in items:
             item = db.get(models.Item, incoming.qr_id)
+            category = (incoming.category or "").strip()
             if item is None:
                 db.add(
                     models.Item(
                         qr_id=incoming.qr_id,
                         name=incoming.name,
                         current_status=models.STATUS_AVAILABLE,
+                        category=category,
                     )
                 )
             else:
                 item.name = incoming.name
+                if incoming.category is not None:
+                    item.category = category
         db.commit()
     except Exception:
         db.rollback()

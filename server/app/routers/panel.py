@@ -7,12 +7,27 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from typing import Optional
+from urllib.parse import quote, unquote
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import diagnostics, events, messages, models, services, usb_sync
+from .. import (
+    catalog,
+    diagnostics,
+    events,
+    excel,
+    labels,
+    messages,
+    models,
+    schemas,
+    services,
+    usb_sync,
+)
 from ..config import DATABASE_URL, PORT
 from ..database import get_db
 
@@ -110,6 +125,7 @@ def data(db: Session = Depends(get_db)):
         .limit(300)
     ).all()
     return {
+        "categories": catalog.category_summary(db),
         "items": [
             {
                 **i.model_dump(),
@@ -150,3 +166,148 @@ def restart_adb():
         return {"success": False, "message": usb_sync.disabled_reason}
     agent.request_adb_restart()
     return {"success": True, "message": messages.PANEL_ADB_RESTARTING}
+
+
+# --- Management ----------------------------------------------------------------
+
+
+class ItemForm(BaseModel):
+    qr_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(default="", max_length=200)
+    category: str = Field(default="", max_length=200)
+
+
+class UserForm(BaseModel):
+    user_id: str = Field(min_length=1, max_length=64)
+    full_name: str = Field(min_length=1, max_length=200)
+    unit: str = Field(default="", max_length=200)
+
+
+class CategoryForm(schemas.CategoryIn):
+    old_name: Optional[str] = None
+
+
+def _ok(message: str, **extra):
+    return {"success": True, "message": message, **extra}
+
+
+@router.post("/api/panel/items")
+def save_item(form: ItemForm, db: Session = Depends(get_db)):
+    name = form.name.strip() or form.category.strip()
+    if not name:
+        raise catalog.CatalogError("יש להזין שם פריט או סוג פריט")
+    created = catalog.save_item(db, form.qr_id, name, form.category)
+    verb = "נוסף פריט" if created else "עודכן פריט"
+    events.add(events.INFO, f"{verb}: {name} ({form.qr_id.strip()})", "panel")
+    return _ok(messages.ITEM_SAVED.format(qr_id=form.qr_id.strip()))
+
+
+@router.delete("/api/panel/items")
+def delete_item(qr_id: str, db: Session = Depends(get_db)):
+    catalog.delete_item(db, qr_id)
+    events.add(events.INFO, f"נמחק פריט {qr_id}", "panel")
+    return _ok(messages.ITEM_DELETED.format(qr_id=qr_id))
+
+
+@router.get("/api/panel/items/card")
+def item_card(qr_id: str, db: Session = Depends(get_db)):
+    return catalog.item_card(db, qr_id)
+
+
+@router.post("/api/panel/users")
+def save_user(form: UserForm, db: Session = Depends(get_db)):
+    catalog.save_user(db, form.user_id, form.full_name, form.unit)
+    events.add(events.INFO, f"נשמר חייל: {form.full_name} ({form.user_id})", "panel")
+    return _ok(messages.USER_SAVED.format(user_id=form.user_id.strip()))
+
+
+@router.delete("/api/panel/users")
+def delete_user(user_id: str, db: Session = Depends(get_db)):
+    catalog.delete_user(db, user_id)
+    events.add(events.INFO, f"נמחק חייל {user_id}", "panel")
+    return _ok(messages.USER_DELETED.format(user_id=user_id))
+
+
+@router.get("/api/panel/users/card")
+def user_card(user_id: str, db: Session = Depends(get_db)):
+    return catalog.user_card(db, user_id)
+
+
+@router.post("/api/panel/categories")
+def save_category(form: CategoryForm, db: Session = Depends(get_db)):
+    catalog.save_category(db, form.name, form.target_qty, form.old_name)
+    return _ok(messages.CATEGORY_SAVED.format(name=form.name.strip()))
+
+
+@router.delete("/api/panel/categories")
+def delete_category(name: str, db: Session = Depends(get_db)):
+    catalog.delete_category(db, name)
+    return _ok(messages.CATEGORY_DELETED.format(name=name))
+
+
+# --- Excel ---------------------------------------------------------------------
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _xlsx(data: bytes, filename: str) -> Response:
+    # RFC 5987 so Hebrew file names survive.
+    disposition = (
+        f"attachment; filename=report.xlsx; filename*=UTF-8''{quote(filename)}"
+    )
+    return Response(data, media_type=XLSX, headers={"Content-Disposition": disposition})
+
+
+@router.post("/api/panel/import")
+async def import_excel(request: Request, db: Session = Depends(get_db)):
+    data = await request.body()
+    filename = unquote(request.headers.get("x-filename", ""))
+    result = excel.import_file(db, data, filename)
+    events.add(
+        events.SUCCESS if not result["errors"] else events.WARNING,
+        f"ייבוא מקובץ {filename}: {result['message']}",
+        "panel",
+    )
+    return _ok(result["message"], errors=result["errors"])
+
+
+@router.get("/api/panel/template")
+def import_template():
+    return _xlsx(excel.template(), "תבנית ייבוא.xlsx")
+
+
+@router.get("/api/panel/export/{report}")
+def export(
+    report: str,
+    start: Optional[int] = Query(default=None, description="epoch ms"),
+    end: Optional[int] = Query(default=None, description="epoch ms"),
+    db: Session = Depends(get_db),
+):
+    if report not in excel.REPORTS:
+        raise HTTPException(status_code=404)
+    data = excel.export_report(db, report, start, end)
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    return _xlsx(data, f"{excel.REPORTS[report]} {stamp}.xlsx")
+
+
+@router.get("/api/panel/users/export")
+def export_user_card(user_id: str, db: Session = Depends(get_db)):
+    data = excel.export_user_card(db, user_id)
+    user = db.get(models.User, user_id)
+    return _xlsx(data, f"כרטיס חייל {user.full_name if user else user_id}.xlsx")
+
+
+# --- QR labels -----------------------------------------------------------------
+
+
+@router.get("/panel/labels", response_class=HTMLResponse)
+def print_labels(
+    ids: str = "", category: Optional[str] = None, db: Session = Depends(get_db)
+):
+    query = select(models.Item).order_by(models.Item.category, models.Item.qr_id)
+    wanted = [i for i in ids.split(",") if i]
+    if wanted:
+        query = query.where(models.Item.qr_id.in_(wanted))
+    elif category is not None:
+        query = query.where(models.Item.category == category)
+    return labels.render(list(db.scalars(query)))

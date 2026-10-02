@@ -46,6 +46,16 @@ items and users, plus "sync now" and "restart ADB" buttons. The panel and its
 `/api/panel/*` endpoints answer only requests from the PC itself unless
 `WAREHOUSE_PANEL_REMOTE=1`.
 
+The panel also manages the data: items (the QR is the unit's serial number;
+each item has a type), item types with a target quantity, and soldiers; it
+shows soldier cards and item history, imports Excel/CSV
+(`POST /api/panel/import`, template at `/api/panel/template`), exports Excel
+reports (`/api/panel/export/{full,inventory,types,holders,users,transactions}`)
+and prints QR labels (`/panel/labels?ids=...` or `?category=...`, rendered on
+the server so no internet is needed). `seed.py --excel file.xlsx` imports the
+same file from the command line. `/api/sync/pull` now also returns
+`categories` and the latest `history` (3000 actions) for the tablets.
+
 Wired sync (`app/usb_sync.py`) runs when `adb` is found (`adb/adb.exe` next to
 the server, `WAREHOUSE_ADB`, or PATH; disable with `WAREHOUSE_USB_SYNC=0`). Every
 3 s it touches `agent.alive` on each authorized tablet, so the app can show that

@@ -1,6 +1,7 @@
 package com.kav1.warehouse.ui
 
 import android.content.Context
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -10,10 +11,12 @@ import android.view.ViewGroup
 import android.widget.BaseAdapter
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.kav1.warehouse.R
+import com.kav1.warehouse.data.local.CategorySummary
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.ItemWithHolder
 import com.kav1.warehouse.databinding.ActivityDashboardBinding
@@ -23,13 +26,19 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 
-/** Inventory overview: counts per status and a searchable list with holders. */
+/**
+ * Inventory overview: counts per status, a searchable list with holders, and
+ * a per-type summary (units per status against the target quantity).
+ */
 class DashboardActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDashboardBinding
     private val statusFilter = MutableStateFlow<String?>(null)
+    private val typeFilter = MutableStateFlow<String?>(null)
+    private val showTypes = MutableStateFlow(false)
     private val query = MutableStateFlow("")
     private lateinit var adapter: ItemAdapter
+    private lateinit var typeAdapter: TypeAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +52,16 @@ class DashboardActivity : AppCompatActivity() {
         binding.listItems.setOnItemClickListener { _, _, position, _ ->
             startActivity(ItemActivity.intent(this, adapter.getItem(position).qrId))
         }
+
+        typeAdapter = TypeAdapter(this)
+        binding.listTypes.adapter = typeAdapter
+        binding.listTypes.setOnItemClickListener { _, _, position, _ ->
+            typeFilter.value = typeAdapter.getItem(position).name
+            showTypes.value = false
+        }
+        binding.btnModeItems.setOnClickListener { showTypes.value = false }
+        binding.btnModeTypes.setOnClickListener { showTypes.value = true }
+        binding.txtFilter.setOnClickListener { typeFilter.value = null }
 
         binding.tileTotal.setOnClickListener { statusFilter.value = null }
         binding.tileAvailable.setOnClickListener { statusFilter.value = ItemStatus.AVAILABLE }
@@ -79,21 +98,93 @@ class DashboardActivity : AppCompatActivity() {
                     }
                 }
                 launch {
-                    statusFilter.collect { status ->
-                        binding.txtFilter.text = if (status == null) {
-                            getString(R.string.dashboard_filter_all)
-                        } else {
-                            getString(R.string.dashboard_filter, statusLabel(status))
+                    combine(statusFilter, typeFilter) { status, type -> status to type }.collect { (status, type) ->
+                        binding.txtFilter.text = when {
+                            type != null -> getString(R.string.dashboard_filter_type, categoryLabel(type))
+                            status == null -> getString(R.string.dashboard_filter_all)
+                            else -> getString(R.string.dashboard_filter, statusLabel(status))
                         }
                     }
                 }
-                combine(statusFilter, query) { status, q -> status to q }
-                    .flatMapLatest { (status, q) -> repo.observeItems(status, q) }
+                launch {
+                    showTypes.collect { types ->
+                        binding.listTypes.visibility = if (types) View.VISIBLE else View.GONE
+                        binding.listItems.visibility = if (types) View.GONE else View.VISIBLE
+                        binding.editSearch.visibility = if (types) View.GONE else View.VISIBLE
+                        binding.txtFilter.visibility = if (types) View.GONE else View.VISIBLE
+                        highlight(binding.btnModeTypes, types)
+                        highlight(binding.btnModeItems, !types)
+                        updateEmpty()
+                    }
+                }
+                launch {
+                    repo.observeCategorySummaries().collect {
+                        typeAdapter.submit(it)
+                        updateEmpty()
+                    }
+                }
+                combine(statusFilter, query, typeFilter) { status, q, type -> Triple(status, q, type) }
+                    .flatMapLatest { (status, q, type) -> repo.observeItems(status, q, type) }
                     .collect { items ->
                         adapter.submit(items)
-                        binding.txtEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+                        updateEmpty()
                     }
             }
+        }
+    }
+
+    private fun updateEmpty() {
+        val types = showTypes.value
+        val empty = if (types) typeAdapter.count == 0 else adapter.count == 0
+        binding.txtEmpty.setText(if (types) R.string.types_empty else R.string.dashboard_empty)
+        binding.txtEmpty.visibility = if (empty) View.VISIBLE else View.GONE
+    }
+
+    private fun highlight(button: TextView, selected: Boolean) {
+        button.setTextColor(
+            ContextCompat.getColor(this, if (selected) R.color.primary else R.color.text_secondary),
+        )
+        button.setTypeface(null, if (selected) Typeface.BOLD else Typeface.NORMAL)
+    }
+
+    private class TypeAdapter(private val context: Context) : BaseAdapter() {
+        private var rows: List<CategorySummary> = emptyList()
+
+        fun submit(newRows: List<CategorySummary>) {
+            rows = newRows
+            notifyDataSetChanged()
+        }
+
+        override fun getCount() = rows.size
+        override fun getItem(position: Int) = rows[position]
+        override fun getItemId(position: Int) = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val row = convertView
+                ?: LayoutInflater.from(context).inflate(R.layout.row_item, parent, false)
+            val type = rows[position]
+            row.findViewById<TextView>(R.id.txtItemName).text = context.categoryLabel(type.name)
+            val missing = type.missing
+            row.findViewById<TextView>(R.id.txtItemStatus).apply {
+                text = when {
+                    missing == null -> ""
+                    missing > 0 -> context.getString(R.string.type_row_missing, missing)
+                    else -> context.getString(R.string.type_row_full)
+                }
+                setTextColor(
+                    ContextCompat.getColor(context, if (missing != null && missing > 0) R.color.borrow else R.color.return_green),
+                )
+            }
+            var details = context.getString(
+                R.string.type_row_counts,
+                type.total,
+                type.available,
+                type.borrowed,
+                type.issued,
+            )
+            type.targetQty?.let { details = context.getString(R.string.type_row_target, it) + " · " + details }
+            row.findViewById<TextView>(R.id.txtItemDetails).text = details
+            return row
         }
     }
 
@@ -113,7 +204,12 @@ class DashboardActivity : AppCompatActivity() {
             val row = convertView
                 ?: LayoutInflater.from(context).inflate(R.layout.row_item, parent, false)
             val item = items[position]
-            row.findViewById<TextView>(R.id.txtItemName).text = item.name
+            row.findViewById<TextView>(R.id.txtItemName).text =
+                if (item.category.isNotEmpty() && item.category != item.name) {
+                    "${item.name} (${item.category})"
+                } else {
+                    item.name
+                }
             row.findViewById<TextView>(R.id.txtItemStatus).apply {
                 text = context.statusLabel(item.currentStatus)
                 setTextColor(context.statusColor(item.currentStatus))

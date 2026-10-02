@@ -4,6 +4,13 @@
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/window_bg</item>
+    </style>
+
+    <!-- Main screen draws its own header with the logo. -->
+    <style name="AppTheme.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
     </style>
 
     <!-- Large, glove-friendly buttons. -->
@@ -13,6 +20,7 @@
         <item name="android:layout_marginTop">@dimen/gap</item>
         <item name="android:textSize">@dimen/big_button_text</item>
         <item name="android:textColor">@color/white</item>
+        <item name="backgroundTint">@color/primary</item>
     </style>
 
     <style name="BodyText">
@@ -22,5 +30,22 @@
         <item name="android:textSize">@dimen/body_text</item>
         <item name="android:gravity">start</item>
         <item name="android:textDirection">rtl</item>
+    </style>
+
+    <style name="SectionTitle" parent="BodyText">
+        <item name="android:layout_marginTop">20dp</item>
+        <item name="android:textColor">@color/primary</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- White rounded panel grouping related lines. -->
+    <style name="Card">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">@dimen/gap</item>
+        <item name="android:background">@drawable/bg_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">16dp</item>
     </style>
 </resources>

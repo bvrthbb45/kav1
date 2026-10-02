@@ -4,14 +4,18 @@ import android.app.Activity
 import android.content.Context
 import android.text.InputType
 import android.text.format.DateFormat
+import android.view.LayoutInflater
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import com.kav1.warehouse.R
 import com.kav1.warehouse.WarehouseApp
 import com.kav1.warehouse.data.local.ActionType
+import com.kav1.warehouse.data.local.HistoryRow
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.domain.sync.SyncResult
 import java.util.Date
@@ -113,4 +117,77 @@ fun Context.syncResultMessage(result: SyncResult): String = when (result) {
         }
     SyncResult.InvalidResponse -> getString(R.string.sync_invalid_response)
     is SyncResult.Failed -> getString(R.string.sync_failed)
+}
+
+fun Context.actionColor(actionType: String): Int = ContextCompat.getColor(
+    this,
+    when (actionType) {
+        ActionType.BORROW -> R.color.borrow
+        ActionType.ISSUE -> R.color.issued
+        else -> R.color.return_green
+    },
+)
+
+fun Context.categoryLabel(category: String?): String =
+    if (category.isNullOrEmpty()) getString(R.string.no_category) else category
+
+/** Adds a row_item view (title / colored status / details) to [container]. */
+fun Context.addListRow(
+    container: LinearLayout,
+    title: String,
+    status: String,
+    statusColor: Int,
+    details: String,
+    onClick: (() -> Unit)? = null,
+) {
+    val row = LayoutInflater.from(this).inflate(R.layout.row_item, container, false)
+    row.findViewById<TextView>(R.id.txtItemName).text = title
+    row.findViewById<TextView>(R.id.txtItemStatus).apply {
+        text = status
+        setTextColor(statusColor)
+    }
+    row.findViewById<TextView>(R.id.txtItemDetails).text = details
+    if (onClick != null) {
+        row.setBackgroundResource(android.R.drawable.list_selector_background)
+        row.setOnClickListener { onClick() }
+    }
+    container.addView(row)
+}
+
+/**
+ * Fills [container] with history rows. [byItem]: the title is the item
+ * (soldier card); otherwise the soldier (item screen).
+ */
+fun Context.fillHistory(
+    container: LinearLayout,
+    rows: List<HistoryRow>,
+    byItem: Boolean,
+    onRowClick: ((HistoryRow) -> Unit)? = null,
+) {
+    container.removeAllViews()
+    if (rows.isEmpty()) {
+        container.addView(
+            TextView(this).apply {
+                setText(R.string.history_empty)
+                setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+                textSize = 16f
+                setPadding(0, 12, 0, 12)
+            },
+        )
+        return
+    }
+    rows.forEach { h ->
+        val title = if (byItem) h.itemName ?: h.qrId else h.userName ?: h.userId
+        val reference = if (byItem) h.qrId else h.userId
+        var details = getString(R.string.history_row_user, formatDateTime(h.timestamp), reference)
+        if (h.pending) details += " · " + getString(R.string.history_pending)
+        addListRow(
+            container,
+            title,
+            actionLabel(h.actionType),
+            actionColor(h.actionType),
+            details,
+            onRowClick?.let { click -> { click(h) } },
+        )
+    }
 }

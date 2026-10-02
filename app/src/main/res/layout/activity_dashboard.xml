@@ -17,7 +17,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:background="@color/tile_bg"
+            android:background="@drawable/bg_tile"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -46,7 +46,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:background="@color/tile_bg"
+            android:background="@drawable/bg_tile"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -75,7 +75,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:background="@color/tile_bg"
+            android:background="@drawable/bg_tile"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -104,7 +104,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:background="@color/tile_bg"
+            android:background="@drawable/bg_tile"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -129,9 +129,35 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnModeItems"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/dashboard_mode_items"
+            android:textSize="@dimen/body_text" />
+
+        <Button
+            android:id="@+id/btnModeTypes"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/dashboard_mode_types"
+            android:textSize="@dimen/body_text" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/txtFilter"
         style="@style/BodyText"
+        android:background="?attr/selectableItemBackground"
         android:textColor="@color/text_secondary" />
 
     <EditText
@@ -157,4 +183,11 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
+
+    <ListView
+        android:id="@+id/listTypes"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
 </LinearLayout>

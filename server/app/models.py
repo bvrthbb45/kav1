@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from typing import Optional
+
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -32,9 +34,25 @@ class User(Base):
 class Item(Base):
     __tablename__ = "items"
 
+    # The serial number printed on the item's QR label.
     qr_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     current_status: Mapped[str] = mapped_column(String(32), default=STATUS_AVAILABLE)
+    # Item type (e.g. "מכשיר קשר"); many serials share one type.
+    category: Mapped[str] = mapped_column(String(200), default="", server_default="")
+
+
+class Category(Base):
+    """An item type with an optional target quantity (תקן).
+
+    Types also exist implicitly through Item.category; a row here is only
+    needed to set the target quantity or to list a type before it has items.
+    """
+
+    __tablename__ = "categories"
+
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    target_qty: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class Transaction(Base):

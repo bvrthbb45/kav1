@@ -37,6 +37,7 @@ data class ItemDto(
     @SerializedName("current_status") val currentStatus: String?,
     @SerializedName("holder_user_id") val holderUserId: String?,
     @SerializedName("last_action_at") val lastActionAt: Long?,
+    @SerializedName("category") val category: String?,
 )
 
 data class UserDto(
@@ -51,11 +52,29 @@ data class PullResponseDto(
     @SerializedName("server_time") val serverTime: Long?,
     @SerializedName("items") val items: List<ItemDto>?,
     @SerializedName("users") val users: List<UserDto>?,
+    /** Missing from servers older than 1.5; treated as empty. */
+    @SerializedName("categories") val categories: List<CategoryDto>?,
+    @SerializedName("history") val history: List<HistoryDto>?,
+)
+
+data class CategoryDto(
+    @SerializedName("name") val name: String?,
+    @SerializedName("target_qty") val targetQty: Int?,
+)
+
+data class HistoryDto(
+    @SerializedName("tx_id") val txId: String?,
+    @SerializedName("qr_id") val qrId: String?,
+    @SerializedName("user_id") val userId: String?,
+    @SerializedName("action_type") val actionType: String?,
+    @SerializedName("timestamp") val timestamp: Long?,
 )
 
 data class ItemUpsertDto(
     @SerializedName("qr_id") val qrId: String,
     @SerializedName("name") val name: String,
+    // Nullable: Gson leaves it null when reading an older server's echo.
+    @SerializedName("category") val category: String?,
 )
 
 data class UserUpsertDto(

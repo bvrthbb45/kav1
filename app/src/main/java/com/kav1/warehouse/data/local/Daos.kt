@@ -27,8 +27,8 @@ abstract class ItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insert(item: ItemEntity)
 
-    @Query("UPDATE items SET name = :name, pending_upload = 1 WHERE qr_id = :qrId")
-    abstract suspend fun renameLocal(qrId: String, name: String): Int
+    @Query("UPDATE items SET name = :name, category = :category, pending_upload = 1 WHERE qr_id = :qrId")
+    abstract suspend fun updateLocal(qrId: String, name: String, category: String): Int
 
     @Query("DELETE FROM items")
     abstract suspend fun deleteAll()
@@ -37,8 +37,11 @@ abstract class ItemDao {
     abstract suspend fun getPendingUpload(): List<ItemEntity>
 
     /** Clears the flag only if the row was not edited again meanwhile. */
-    @Query("UPDATE items SET pending_upload = 0 WHERE qr_id = :qrId AND name = :sentName")
-    abstract suspend fun markUploaded(qrId: String, sentName: String)
+    @Query(
+        "UPDATE items SET pending_upload = 0 WHERE qr_id = :qrId AND name = :sentName " +
+            "AND category = :sentCategory",
+    )
+    abstract suspend fun markUploaded(qrId: String, sentName: String, sentCategory: String)
 
     @Query("SELECT COUNT(*) FROM items")
     abstract fun observeCount(): Flow<Int>
@@ -49,21 +52,41 @@ abstract class ItemDao {
     @Query("SELECT current_status AS status, COUNT(*) AS count FROM items GROUP BY current_status")
     abstract fun observeStatusCounts(): Flow<List<StatusCount>>
 
-    /** [status] null = all statuses; [query] matches name, code or holder name. */
+    @Query(
+        "SELECT category, current_status AS status, COUNT(*) AS count FROM items " +
+            "GROUP BY category, current_status",
+    )
+    abstract fun observeCategoryStatusCounts(): Flow<List<CategoryStatusCount>>
+
+    @Query("SELECT DISTINCT category FROM items WHERE category != '' ORDER BY category")
+    abstract suspend fun getCategoryNames(): List<String>
+
+    /**
+     * [status] / [category] null = any; [query] matches name, serial, type or holder.
+     * [holderId] non-null limits to items held by that soldier.
+     */
     @Query(
         """
         SELECT i.qr_id, i.name, i.current_status, i.holder_user_id, i.last_action_at,
-               i.pending_upload, u.full_name AS holder_name, u.unit AS holder_unit
+               i.pending_upload, i.category, u.full_name AS holder_name, u.unit AS holder_unit
         FROM items i LEFT JOIN users u ON u.user_id = i.holder_user_id
         WHERE (:status IS NULL OR i.current_status = :status)
+          AND (:category IS NULL OR i.category = :category)
+          AND (:holderId IS NULL OR i.holder_user_id = :holderId)
           AND (:query = '' OR i.name LIKE '%' || :query || '%'
                OR i.qr_id LIKE '%' || :query || '%'
+               OR i.category LIKE '%' || :query || '%'
                OR u.full_name LIKE '%' || :query || '%'
                OR u.user_id LIKE '%' || :query || '%')
-        ORDER BY i.name
+        ORDER BY i.category, i.name, i.qr_id
         """,
     )
-    abstract fun observeWithHolder(status: String?, query: String): Flow<List<ItemWithHolder>>
+    abstract fun observeWithHolder(
+        status: String?,
+        category: String?,
+        query: String,
+        holderId: String?,
+    ): Flow<List<ItemWithHolder>>
 
     /**
      * Replaces all items with the server's list, keeping local edits that
@@ -75,7 +98,7 @@ abstract class ItemDao {
         deleteAll()
         items.chunked(SQL_CHUNK).forEach { insertAll(it) }
         localEdits.forEach { edit ->
-            if (renameLocal(edit.qrId, edit.name) == 0) insert(edit)
+            if (updateLocal(edit.qrId, edit.name, edit.category) == 0) insert(edit)
         }
     }
 }
@@ -167,4 +190,62 @@ abstract class PendingTransactionDao {
 
     @Query("DELETE FROM pending_transactions WHERE sync_error IS NOT NULL")
     abstract suspend fun deleteFailed()
+}
+
+@Dao
+abstract class CategoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertAll(categories: List<CategoryEntity>)
+
+    @Query("DELETE FROM categories")
+    abstract suspend fun deleteAll()
+
+    @Query("SELECT * FROM categories ORDER BY name")
+    abstract fun observeAll(): Flow<List<CategoryEntity>>
+
+    @Query("SELECT name FROM categories ORDER BY name")
+    abstract suspend fun getNames(): List<String>
+
+    @Transaction
+    open suspend fun replaceAll(categories: List<CategoryEntity>) {
+        deleteAll()
+        insertAll(categories)
+    }
+}
+
+@Dao
+abstract class HistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertAll(rows: List<HistoryEntity>)
+
+    @Query("DELETE FROM history")
+    abstract suspend fun deleteAll()
+
+    @Transaction
+    open suspend fun replaceAll(rows: List<HistoryEntity>) {
+        deleteAll()
+        rows.chunked(SQL_CHUNK).forEach { insertAll(it) }
+    }
+
+    /** Server history plus this device's not-yet-synced actions, newest first. */
+    @Query(
+        """
+        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.pending,
+               i.name AS item_name, i.category AS category, u.full_name AS user_name
+        FROM (
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, 0 AS pending
+            FROM history WHERE (:qrId IS NULL OR qr_id = :qrId) AND (:userId IS NULL OR user_id = :userId)
+            UNION ALL
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, 1 AS pending
+            FROM pending_transactions
+            WHERE sync_error IS NULL AND (:qrId IS NULL OR qr_id = :qrId)
+              AND (:userId IS NULL OR user_id = :userId)
+        ) h
+        LEFT JOIN items i ON i.qr_id = h.qr_id
+        LEFT JOIN users u ON u.user_id = h.user_id
+        ORDER BY h.timestamp DESC
+        LIMIT :limit
+        """,
+    )
+    abstract fun observe(qrId: String?, userId: String?, limit: Int): Flow<List<HistoryRow>>
 }

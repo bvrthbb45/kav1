@@ -6,6 +6,8 @@ import com.google.gson.JsonParseException
 import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.AppDatabase
 import com.kav1.warehouse.data.local.AppPrefs
+import com.kav1.warehouse.data.local.CategoryEntity
+import com.kav1.warehouse.data.local.HistoryEntity
 import com.kav1.warehouse.data.local.ItemEntity
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
@@ -80,8 +82,10 @@ class SyncManager(
     private suspend fun pushManagementEdits() {
         val items = db.itemDao().getPendingUpload()
         for (batch in items.chunked(PUSH_BATCH_SIZE)) {
-            api.upsertItems(batch.map { ItemUpsertDto(it.qrId, it.name) }).bodyOrThrow()
-            db.withTransaction { batch.forEach { db.itemDao().markUploaded(it.qrId, it.name) } }
+            api.upsertItems(batch.map { ItemUpsertDto(it.qrId, it.name, it.category) }).bodyOrThrow()
+            db.withTransaction {
+                batch.forEach { db.itemDao().markUploaded(it.qrId, it.name, it.category) }
+            }
         }
         val users = db.userDao().getPendingUpload()
         for (batch in users.chunked(PUSH_BATCH_SIZE)) {
@@ -142,16 +146,31 @@ class SyncManager(
                 currentStatus = dto.currentStatus ?: ItemStatus.AVAILABLE,
                 holderUserId = dto.holderUserId,
                 lastActionAt = dto.lastActionAt,
+                category = dto.category.orEmpty(),
             )
         } ?: throw MalformedResponseException("items missing")
         val users = body.users?.mapNotNull { dto ->
             val userId = dto.userId ?: return@mapNotNull null
             UserEntity(userId, dto.fullName.orEmpty(), dto.unit.orEmpty())
         } ?: throw MalformedResponseException("users missing")
+        val categories = body.categories.orEmpty().mapNotNull { dto ->
+            dto.name?.let { CategoryEntity(it, dto.targetQty) }
+        }
+        val history = body.history.orEmpty().mapNotNull { dto ->
+            HistoryEntity(
+                txId = dto.txId ?: return@mapNotNull null,
+                qrId = dto.qrId ?: return@mapNotNull null,
+                userId = dto.userId ?: return@mapNotNull null,
+                actionType = dto.actionType ?: return@mapNotNull null,
+                timestamp = dto.timestamp ?: return@mapNotNull null,
+            )
+        }
 
         db.withTransaction {
             db.itemDao().replaceAll(items)
             db.userDao().replaceAll(users)
+            db.categoryDao().replaceAll(categories)
+            db.historyDao().replaceAll(history)
             // Actions recorded after the push started are not on the server
             // yet; re-apply them so the device keeps showing what it did.
             db.pendingTransactionDao().getUnsynced().forEach {
@@ -181,7 +200,7 @@ class SyncManager(
             transactions = db.pendingTransactionDao().getUnsynced().map {
                 PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp)
             },
-            items = db.itemDao().getPendingUpload().map { ItemUpsertDto(it.qrId, it.name) },
+            items = db.itemDao().getPendingUpload().map { ItemUpsertDto(it.qrId, it.name, it.category) },
             users = db.userDao().getPendingUpload().map { UserUpsertDto(it.userId, it.fullName, it.unit) },
         )
     }
@@ -193,7 +212,9 @@ class SyncManager(
                 throw MalformedResponseException("request id mismatch")
             }
             db.withTransaction {
-                inbox.itemsUploaded.orEmpty().forEach { db.itemDao().markUploaded(it.qrId, it.name) }
+                inbox.itemsUploaded.orEmpty().forEach {
+                    db.itemDao().markUploaded(it.qrId, it.name, it.category.orEmpty())
+                }
                 inbox.usersUploaded.orEmpty().forEach {
                     db.userDao().markUploaded(it.userId, it.fullName, it.unit)
                 }

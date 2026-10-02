@@ -1,101 +1,183 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:layoutDirection="rtl">
+    android:layoutDirection="rtl"
+    android:orientation="vertical">
 
+    <!-- Header with the logo -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="@dimen/screen_padding">
+        android:background="@color/primary"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="@dimen/screen_padding"
+        android:paddingTop="14dp"
+        android:paddingRight="@dimen/screen_padding"
+        android:paddingBottom="14dp">
 
-        <TextView
-            style="@style/BodyText"
-            android:text="@string/main_title"
-            android:textSize="26sp"
-            android:textStyle="bold" />
+        <ImageView
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_logo" />
 
-        <Button
-            android:id="@+id/btnScan"
-            style="@style/BigButton"
-            android:layout_marginTop="24dp"
-            android:text="@string/btn_scan" />
-
-        <Button
-            android:id="@+id/btnManualEntry"
-            style="@style/Widget.AppCompat.Button.Borderless.Colored"
-            android:layout_width="match_parent"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="@string/btn_manual_entry"
-            android:textSize="@dimen/body_text" />
+            android:layout_marginLeft="14dp"
+            android:layout_marginRight="14dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <Button
-            android:id="@+id/btnSync"
-            style="@style/BigButton"
-            android:text="@string/btn_manual_sync" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="start"
+                android:text="@string/main_title"
+                android:textColor="@color/white"
+                android:textDirection="rtl"
+                android:textSize="26sp"
+                android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnDashboard"
-            style="@style/BigButton"
-            android:text="@string/btn_dashboard" />
-
-        <Button
-            android:id="@+id/btnAdmin"
-            style="@style/Widget.AppCompat.Button.Borderless.Colored"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/btn_admin"
-            android:textSize="@dimen/body_text" />
-
-        <ProgressBar
-            android:id="@+id/syncProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:indeterminate="true"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/txtPending"
-            style="@style/BodyText"
-            android:layout_marginTop="24dp" />
-
-        <TextView
-            android:id="@+id/txtPendingEdits"
-            style="@style/BodyText"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/txtFailed"
-            style="@style/BodyText"
-            android:background="?attr/selectableItemBackground"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            android:textColor="@color/borrow"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/txtLocalData"
-            style="@style/BodyText"
-            android:textColor="@color/text_secondary" />
-
-        <TextView
-            android:id="@+id/txtLastSync"
-            style="@style/BodyText"
-            android:textColor="@color/text_secondary" />
-
-        <TextView
-            style="@style/BodyText"
-            android:layout_marginTop="24dp"
-            android:text="@string/usb_status_title"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/txtUsbStatus"
-            style="@style/BodyText"
-            android:lineSpacingExtra="4dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="start"
+                android:text="@string/main_subtitle"
+                android:textColor="@color/header_subtitle"
+                android:textDirection="rtl"
+                android:textSize="15sp" />
+        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/screen_padding">
+
+            <Button
+                android:id="@+id/btnScan"
+                style="@style/BigButton"
+                android:layout_height="88dp"
+                android:layout_marginTop="4dp"
+                android:text="@string/btn_scan"
+                android:textSize="26sp" />
+
+            <Button
+                android:id="@+id/btnManualEntry"
+                style="@style/Widget.AppCompat.Button.Borderless.Colored"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_manual_entry"
+                android:textSize="@dimen/body_text" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnDashboard"
+                    style="@style/BigButton"
+                    android:layout_width="0dp"
+                    android:layout_marginLeft="6dp"
+                    android:layout_weight="1"
+                    android:text="@string/btn_dashboard" />
+
+                <Button
+                    android:id="@+id/btnSoldierCard"
+                    style="@style/BigButton"
+                    android:layout_width="0dp"
+                    android:layout_marginRight="6dp"
+                    android:layout_weight="1"
+                    android:text="@string/btn_soldier_card" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnSync"
+                style="@style/BigButton"
+                android:text="@string/btn_manual_sync" />
+
+            <ProgressBar
+                android:id="@+id/syncProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:indeterminate="true"
+                android:visibility="gone" />
+
+            <!-- Local data and sync queue -->
+            <LinearLayout style="@style/Card">
+
+                <TextView
+                    style="@style/BodyText"
+                    android:layout_marginTop="0dp"
+                    android:text="@string/status_title"
+                    android:textColor="@color/primary"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txtPending"
+                    style="@style/BodyText" />
+
+                <TextView
+                    android:id="@+id/txtPendingEdits"
+                    style="@style/BodyText"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/txtFailed"
+                    style="@style/BodyText"
+                    android:background="?attr/selectableItemBackground"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
+                    android:textColor="@color/borrow"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/txtLocalData"
+                    style="@style/BodyText"
+                    android:textColor="@color/text_secondary" />
+
+                <TextView
+                    android:id="@+id/txtLastSync"
+                    style="@style/BodyText"
+                    android:textColor="@color/text_secondary" />
+            </LinearLayout>
+
+            <!-- Wired link to the server -->
+            <LinearLayout style="@style/Card">
+
+                <TextView
+                    style="@style/BodyText"
+                    android:layout_marginTop="0dp"
+                    android:text="@string/usb_status_title"
+                    android:textColor="@color/primary"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txtUsbStatus"
+                    style="@style/BodyText"
+                    android:lineSpacingExtra="4dp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnAdmin"
+                style="@style/Widget.AppCompat.Button.Borderless.Colored"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/btn_admin"
+                android:textSize="@dimen/body_text" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

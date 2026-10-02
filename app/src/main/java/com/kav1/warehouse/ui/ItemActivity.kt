@@ -7,7 +7,9 @@ import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.kav1.warehouse.R
 import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.ItemEntity
@@ -40,7 +42,26 @@ class ItemActivity : AppCompatActivity() {
             requireAdminPin { startActivity(AdminActivity.newItemIntent(this, qrId)) }
         }
         binding.btnBack.setOnClickListener { finish() }
+        binding.txtHolder.setOnClickListener {
+            item?.holderUserId?.let { startActivity(UserCardActivity.intent(this, it)) }
+        }
         setActionsEnabled(false)
+        observeHistory()
+    }
+
+    private fun observeHistory() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.repository.observeItemHistory(qrId).collect { rows ->
+                    val visible = if (rows.isEmpty() && item == null) View.GONE else View.VISIBLE
+                    binding.txtHistoryTitle.visibility = visible
+                    binding.listHistory.visibility = visible
+                    fillHistory(binding.listHistory, rows, byItem = false) { row ->
+                        startActivity(UserCardActivity.intent(this@ItemActivity, row.userId))
+                    }
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -63,18 +84,24 @@ class ItemActivity : AppCompatActivity() {
                 binding.txtName.text = qrId
                 binding.txtStatus.text = getString(R.string.label_status, getString(R.string.status_unknown))
                 binding.txtHolder.visibility = View.GONE
+                binding.txtCategory.visibility = View.GONE
                 binding.txtLastAction.visibility = View.GONE
                 binding.txtUnknown.visibility = View.VISIBLE
                 binding.btnRegister.visibility = View.VISIBLE
                 setActionsEnabled(false)
                 return@launch
             }
-            binding.txtName.text = getString(R.string.label_name, loaded.name)
+            binding.txtName.text = loaded.name
+            binding.txtCategory.visibility = View.VISIBLE
+            binding.txtCategory.text = getString(R.string.label_category, categoryLabel(loaded.category))
             binding.txtStatus.text = getString(R.string.label_status, statusLabel(loaded.currentStatus))
             binding.txtStatus.setTextColor(statusColor(loaded.currentStatus))
             val holder = loaded.holderUserId?.let { id -> app.repository.getUser(id)?.fullName ?: id }
             binding.txtHolder.visibility = if (holder != null) View.VISIBLE else View.GONE
-            binding.txtHolder.text = getString(R.string.label_holder, holder.orEmpty())
+            binding.txtHolder.text = getString(
+                R.string.label_holder,
+                getString(R.string.holder_open_card, holder.orEmpty()),
+            )
             binding.txtLastAction.visibility = if (loaded.lastActionAt != null) View.VISIBLE else View.GONE
             loaded.lastActionAt?.let {
                 binding.txtLastAction.text = getString(R.string.label_last_action, formatDateTime(it))

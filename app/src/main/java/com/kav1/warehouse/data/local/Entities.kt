@@ -40,6 +40,28 @@ data class ItemEntity(
     @ColumnInfo(name = "last_action_at") val lastActionAt: Long? = null,
     /** Created/renamed in the management screen and not yet sent to the server. */
     @ColumnInfo(name = "pending_upload", defaultValue = "0") val pendingUpload: Boolean = false,
+    /** Item type (e.g. "מכשיר קשר"); the QR / [qrId] is the unit's serial number. */
+    @ColumnInfo(name = "category", defaultValue = "''") val category: String = "",
+)
+
+/** An item type with its target quantity (תקן), from the server. */
+@Entity(tableName = "categories")
+data class CategoryEntity(
+    @PrimaryKey @ColumnInfo(name = "name") val name: String,
+    @ColumnInfo(name = "target_qty") val targetQty: Int?,
+)
+
+/** A past action already stored on the server (item history / soldier card). */
+@Entity(
+    tableName = "history",
+    indices = [Index(value = ["qr_id"]), Index(value = ["user_id"])],
+)
+data class HistoryEntity(
+    @PrimaryKey @ColumnInfo(name = "tx_id") val txId: String,
+    @ColumnInfo(name = "qr_id") val qrId: String,
+    @ColumnInfo(name = "user_id") val userId: String,
+    @ColumnInfo(name = "action_type") val actionType: String,
+    @ColumnInfo(name = "timestamp") val timestamp: Long,
 )
 
 @Entity(tableName = "users")
@@ -81,7 +103,40 @@ data class ItemWithHolder(
     @ColumnInfo(name = "holder_name") val holderName: String?,
     @ColumnInfo(name = "holder_unit") val holderUnit: String?,
     @ColumnInfo(name = "pending_upload") val pendingUpload: Boolean,
+    @ColumnInfo(name = "category") val category: String,
 )
+
+/** One action in a history list, with names resolved; [pending] = not yet on the server. */
+data class HistoryRow(
+    @ColumnInfo(name = "tx_id") val txId: String,
+    @ColumnInfo(name = "qr_id") val qrId: String,
+    @ColumnInfo(name = "user_id") val userId: String,
+    @ColumnInfo(name = "action_type") val actionType: String,
+    @ColumnInfo(name = "timestamp") val timestamp: Long,
+    @ColumnInfo(name = "pending") val pending: Boolean,
+    @ColumnInfo(name = "item_name") val itemName: String?,
+    @ColumnInfo(name = "category") val category: String?,
+    @ColumnInfo(name = "user_name") val userName: String?,
+)
+
+data class CategoryStatusCount(
+    @ColumnInfo(name = "category") val category: String,
+    @ColumnInfo(name = "status") val status: String,
+    @ColumnInfo(name = "count") val count: Int,
+)
+
+/** Dashboard row per item type. */
+data class CategorySummary(
+    val name: String,
+    val targetQty: Int?,
+    val total: Int,
+    val available: Int,
+    val borrowed: Int,
+    val issued: Int,
+) {
+    /** Units still missing to reach the target, or null without a target. */
+    val missing: Int? get() = targetQty?.let { (it - total).coerceAtLeast(0) }
+}
 
 data class StatusCount(
     @ColumnInfo(name = "status") val status: String,

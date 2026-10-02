@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnDashboard.setOnClickListener {
             startActivity(Intent(this, DashboardActivity::class.java))
         }
+        binding.btnSoldierCard.setOnClickListener { pickSoldierForCard() }
         binding.btnAdmin.setOnClickListener {
             requireAdminPin { startActivity(Intent(this, AdminActivity::class.java)) }
         }
@@ -67,6 +68,19 @@ class MainActivity : AppCompatActivity() {
             .setBeepEnabled(true)
             .setOrientationLocked(true)
         scanLauncher.launch(options)
+    }
+
+    private fun pickSoldierForCard() {
+        lifecycleScope.launch {
+            val users = app.repository.getUsers()
+            if (users.isEmpty()) {
+                toast(R.string.no_users)
+                return@launch
+            }
+            UserPickerDialog.show(this@MainActivity, users) { user ->
+                startActivity(UserCardActivity.intent(this@MainActivity, user.userId))
+            }
+        }
     }
 
     /** Fallback for damaged labels or devices whose camera can't focus. */
