@@ -1,4 +1,3 @@
-
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -61,6 +60,7 @@ class LogsDialog(QDialog):
 
     def _is_safe_path(self, path: str) -> bool:
         import os
+
         home_dir = os.path.expanduser("~")
         return os.path.commonpath([home_dir, os.path.abspath(path)]) == home_dir
 
@@ -86,12 +86,14 @@ class LogsDialog(QDialog):
                 ws.append(headers)
 
                 for log in self.logs_data:
-                    ws.append([
-                        log["Timestamp"],
-                        log["Visitor DBID"],
-                        log["Visitor Name"],
-                        log["Action"]
-                    ])
+                    ws.append(
+                        [
+                            log["Timestamp"],
+                            log["Visitor DBID"],
+                            log["Visitor Name"],
+                            log["Action"],
+                        ]
+                    )
 
                 for i, col in enumerate(headers, start=1):
                     ws.column_dimensions[get_column_letter(i)].width = 25

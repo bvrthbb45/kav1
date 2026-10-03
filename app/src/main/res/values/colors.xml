@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand: olive and gold, from the Olympus badge; the server's control panel uses the same. -->
+    <color name="primary">#434C2F</color>
+    <color name="primary_dark">#2F3621</color>
+    <color name="accent">#5A6440</color>
+    <color name="brand_gold">#C8A96A</color>
+    <color name="header_subtitle">#E6D7AE</color>
+    <color name="window_bg">#F3F2EC</color>
+    <color name="card_stroke">#E2DFD3</color>
+    <color name="tile_pressed">#ECE8DA</color>
+    <color name="borrow">#B23B3B</color>
+    <color name="return_green">#2E7D32</color>
+    <color name="text_secondary">#5F6368</color>
+    <color name="warning">#B26A00</color>
+    <color name="issued">#5B3E96</color>
+    <color name="tile_bg">#F0EEE6</color>
+    <color name="white">#FFFFFF</color>
+</resources>
