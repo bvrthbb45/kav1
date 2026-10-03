@@ -102,6 +102,8 @@ class InventoryRepository(private val db: AppDatabase) {
 
     fun observeItemHolders(qrId: String): Flow<List<ItemHolderRow>> = db.holdingDao().observeForItem(qrId)
 
+    fun observeUsers(query: String): Flow<List<UserEntity>> = db.userDao().observeFiltered(query.trim())
+
     fun observeItemHistory(qrId: String, limit: Int = 50): Flow<List<HistoryRow>> =
         db.historyDao().observe(qrId, null, limit)
 
