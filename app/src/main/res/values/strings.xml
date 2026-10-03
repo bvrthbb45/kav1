@@ -96,14 +96,25 @@
     <string name="usb_problem_not_seen">הכבל מחובר ואיתור באגים פעיל, אבל השרת עדיין לא מזהה את הטאבלט. נשלחה בקשת סנכרון, והיא תתבצע ברגע שהשרת יזהה אותו.\n\nלבדוק:\n• במסך הטאבלט הופיעה ההודעה \"לאפשר איתור באגים של USB?\" – לסמן \"אפשר תמיד ממחשב זה\" ולאשר\n• השרת פועל במחשב\n• במחשב השרת לפתוח את \"Olympus Control Panel\" – הוא מראה בדיוק מה חסר\n• אם השרת ב-VirtualBox: התפריט Devices ← USB ← SAMSUNG_Android מסומן</string>
 
     <!-- Quantities -->
-    <string name="label_stock">במלאי: %1$d · זמין: %2$d · מושאל: %3$d · מונפק: %4$d</string>
+    <string name="label_stock">במלאי: %1$d · זמין: %2$d · מושאל: %3$d</string>
+    <string name="label_stock_consumable">נותר במלאי: %1$d · ניפוקים: %2$d</string>
+    <string name="label_kind">סוג שימוש: %1$s</string>
+    <string name="kind_loan">מושאל</string>
+    <string name="kind_consumable">ניצרך</string>
+    <string name="kind_loan_long">מושאל – השאלה והחזרה, לא יורד מהמלאי</string>
+    <string name="kind_consumable_long">ניצרך – ניפוק בלבד, יורד מהמלאי</string>
+    <string name="status_in_stock">במלאי</string>
+    <string name="status_out_of_stock">אזל מהמלאי</string>
+    <string name="consumable_out_of_stock">שים לב: הפריט אזל מהמלאי.</string>
+    <string name="warn_consumable_not_enough">שים לב: נותרו במלאי רק %1$d יחידות.</string>
     <string name="holders_title">אצל חיילים</string>
     <string name="held_borrowed">מושאל %1$d</string>
-    <string name="held_issued">מונפק %1$d</string>
+    <string name="held_issued">נופק %1$d</string>
     <string name="quantity_hint">כמות</string>
     <string name="quantity_title_borrow">כמה להשאיל?</string>
     <string name="quantity_title_issue">כמה לנפק?</string>
     <string name="quantity_title_return">כמה הוחזרו?</string>
+    <string name="quantity_consumable_message">נותרו במלאי: %1$d</string>
     <string name="quantity_take_message">זמין: %1$d מתוך %2$d במלאי</string>
     <string name="quantity_return_message">רשום אצל %1$s: %2$d</string>
     <string name="quantity_invalid">יש להזין מספר שלם גדול מ-0</string>
@@ -160,7 +171,7 @@
     <string name="tile_total">סה\"כ</string>
     <string name="tile_available">זמינים</string>
     <string name="tile_borrowed">מושאלים</string>
-    <string name="tile_issued">מונפקים</string>
+    <string name="tile_issued">ניפוקים</string>
     <string name="dashboard_search_hint">חיפוש לפי פריט, קוד או מחזיק</string>
     <string name="dashboard_filter_all">מציג: כל הפריטים</string>
     <string name="dashboard_filter">מציג: %1$s</string>

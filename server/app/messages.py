@@ -11,6 +11,8 @@ TX_DUPLICATE = "הפעולה כבר נקלטה בעבר"
 TX_UNKNOWN_ITEM = "פריט לא קיים במערכת: {qr_id}"
 TX_UNKNOWN_USER = "משתמש לא קיים במערכת: {user_id}"
 TX_UNKNOWN_ACTION = "סוג פעולה לא חוקי: {action_type}"
+TX_CONSUMABLE_ONLY_ISSUE = "הפריט {qr_id} מוגדר כניצרך – אפשר רק לנפק אותו"
+TX_LOAN_ONLY_BORROW = "הפריט {qr_id} מוגדר כמושאל – אפשר רק להשאיל ולהחזיר אותו"
 
 UPSERT_OK = "נשמרו {count} רשומות"
 

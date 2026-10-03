@@ -14,6 +14,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.kav1.warehouse.R
 import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.ItemEntity
+import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
 import com.kav1.warehouse.databinding.ActivityItemBinding
@@ -120,19 +121,23 @@ class ItemActivity : AppCompatActivity() {
             }
             binding.txtName.text = loaded.name
             binding.txtCategory.visibility = View.VISIBLE
-            binding.txtCategory.text = getString(R.string.label_category, categoryLabel(loaded.category))
-            val multi = loaded.quantity > 1
+            binding.txtCategory.text = getString(R.string.label_category, categoryLabel(loaded.category)) +
+                " · " + getString(R.string.label_kind, kindLabel(loaded.kind))
+            val consumable = loaded.kind == ItemKind.CONSUMABLE
+            val multi = loaded.quantity > 1 || consumable
             binding.txtStatus.visibility = if (multi) View.GONE else View.VISIBLE
             binding.txtStatus.text = getString(R.string.label_status, statusLabel(loaded.currentStatus))
             binding.txtStatus.setTextColor(statusColor(loaded.currentStatus))
             binding.txtStock.visibility = if (multi) View.VISIBLE else View.GONE
-            binding.txtStock.text = getString(
-                R.string.label_stock,
-                loaded.quantity,
-                loaded.availableQty,
-                loaded.borrowedQty,
-                loaded.issuedQty,
-            )
+            binding.txtStock.text = if (consumable) {
+                getString(R.string.label_stock_consumable, loaded.quantity, loaded.issuedQty)
+            } else {
+                getString(R.string.label_stock, loaded.quantity, loaded.availableQty, loaded.borrowedQty)
+            }
+            // Loans are borrowed and returned; consumables are only issued.
+            binding.btnIssue.visibility = if (consumable) View.VISIBLE else View.GONE
+            binding.btnBorrow.visibility = if (consumable) View.GONE else View.VISIBLE
+            binding.btnReturn.visibility = if (consumable) View.GONE else View.VISIBLE
             val holder = if (multi) {
                 null
             } else {
@@ -203,7 +208,8 @@ class ItemActivity : AppCompatActivity() {
         held: Int,
         onQuantity: (Int) -> Unit,
     ) {
-        if (current.quantity <= 1) {
+        // Single-unit loans need no question; consumables are always counted.
+        if (current.quantity <= 1 && current.kind != ItemKind.CONSUMABLE) {
             onQuantity(1)
             return
         }
@@ -213,6 +219,8 @@ class ItemActivity : AppCompatActivity() {
         edit.setSelectAllOnFocus(true)
         val message = if (actionType == ActionType.RETURN) {
             getString(R.string.quantity_return_message, user?.fullName.orEmpty(), held)
+        } else if (current.kind == ItemKind.CONSUMABLE) {
+            getString(R.string.quantity_consumable_message, current.quantity)
         } else {
             getString(R.string.quantity_take_message, current.availableQty, current.quantity)
         }
@@ -245,7 +253,7 @@ class ItemActivity : AppCompatActivity() {
     }
 
     private fun confirmAction(item: ItemEntity, user: UserEntity, actionType: String, qty: Int, held: Int) {
-        val multi = item.quantity > 1
+        val multi = item.quantity > 1 || item.kind == ItemKind.CONSUMABLE
         val question = if (multi) {
             getString(
                 when (actionType) {
@@ -270,6 +278,9 @@ class ItemActivity : AppCompatActivity() {
         }
         val isReturn = actionType == ActionType.RETURN
         val warning = when {
+            item.kind == ItemKind.CONSUMABLE && item.quantity == 0 -> getString(R.string.consumable_out_of_stock)
+            item.kind == ItemKind.CONSUMABLE && qty > item.quantity ->
+                getString(R.string.warn_consumable_not_enough, item.quantity)
             multi && !isReturn && qty > item.availableQty -> getString(R.string.warn_not_enough, item.availableQty)
             multi && isReturn && qty > held -> getString(R.string.warn_return_more, held)
             multi -> null

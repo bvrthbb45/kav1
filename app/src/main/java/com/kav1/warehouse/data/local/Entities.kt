@@ -11,6 +11,14 @@ object ItemStatus {
     const val ISSUED = "ISSUED"
 }
 
+/** How an item is handed out. */
+object ItemKind {
+    /** מושאל: borrow and return only; the stock does not shrink. */
+    const val LOAN = "LOAN"
+    /** ניצרך: issue only; issued units leave the stock for good. */
+    const val CONSUMABLE = "CONSUMABLE"
+}
+
 object ActionType {
     /** Temporary loan (השאלה). */
     const val BORROW = "BORROW"
@@ -46,7 +54,10 @@ data class ItemEntity(
     @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
     @ColumnInfo(name = "available_qty", defaultValue = "1") val availableQty: Int = 1,
     @ColumnInfo(name = "borrowed_qty", defaultValue = "0") val borrowedQty: Int = 0,
+    /** Loans: issued units still out (legacy). Consumables: units issued so far (ניפוקים). */
     @ColumnInfo(name = "issued_qty", defaultValue = "0") val issuedQty: Int = 0,
+    /** [ItemKind]; for consumables [quantity] is what is left in stock. */
+    @ColumnInfo(name = "kind", defaultValue = "'LOAN'") val kind: String = ItemKind.LOAN,
 )
 
 /** Units of one item held by one soldier. */
@@ -128,6 +139,7 @@ data class ItemWithHolder(
     @ColumnInfo(name = "category") val category: String,
     @ColumnInfo(name = "quantity") val quantity: Int,
     @ColumnInfo(name = "available_qty") val availableQty: Int,
+    @ColumnInfo(name = "kind") val kind: String,
 )
 
 /** Soldier card row: units of an item a soldier holds. */

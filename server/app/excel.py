@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from . import catalog, messages, models, schemas, services
 
+KIND_LABELS = {models.KIND_LOAN: "מושאל", models.KIND_CONSUMABLE: "ניצרך"}
 STATUS_LABELS = {
     models.STATUS_AVAILABLE: "זמין",
     models.STATUS_BORROWED: "מושאל",
@@ -44,6 +45,7 @@ SERIAL = {
     "ברקוד",
 }
 ITEM_NAME = {"שםפריט", "פריט", "תיאור", "תיאורפריט", "itemname", "name", "שם"}
+KIND = {"סוגשימוש", "סיווג", "שימוש", "ניצרךמושאל", "מושאלניצרך", "kind"}
 QUANTITY = {"כמות", "כמותבמלאי", "מלאי", "quantity", "qty"}
 CATEGORY = {"סוגפריט", "סוג", "קטגוריה", "category", "type"}
 TARGET = {"כמותבתקן", "תקן", "כמות", "target", "targetqty"}
@@ -54,6 +56,16 @@ UNIT = {"יחידה", "פלוגה", "מחלקה", "unit"}
 
 def _normalize(title) -> str:
     return re.sub(r"[\s\"'׳״.\-_]", "", str(title or "")).lower()
+
+
+def _kind(text: str) -> Optional[str]:
+    """ "ניצרך" / "מושאל" (or empty = keep / default) to an item kind."""
+    t = text.strip().lower()
+    if not t:
+        return None
+    if any(w in t for w in ("ניצרך", "נצרך", "מתכלה", "consum")):
+        return models.KIND_CONSUMABLE
+    return models.KIND_LOAN
 
 
 def _cell(value) -> str:
@@ -127,6 +139,7 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
         if serial is not None:
             name = _find(header, ITEM_NAME)
             qty_col = _find(header, QUANTITY)
+            kind_col = _find(header, KIND)
             for row_no, row in body:
                 qr_id = value(row, serial)
                 if not qr_id:
@@ -138,7 +151,11 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
                     qty = int(float(raw_qty)) if raw_qty else None
                     items.append(
                         schemas.ItemIn(
-                            qr_id=qr_id, name=item_name, category=cat, quantity=qty
+                            qr_id=qr_id,
+                            name=item_name,
+                            category=cat,
+                            quantity=qty,
+                            kind=_kind(value(row, kind_col)),
                         )
                     )
                 except (ValueError, ValidationError):
@@ -247,6 +264,7 @@ def _inventory(wb: Workbook, db: Session) -> None:
                 i.qr_id,
                 i.name,
                 i.category or messages.NO_CATEGORY,
+                KIND_LABELS.get(i.kind, i.kind),
                 i.quantity,
                 i.available_qty,
                 i.borrowed_qty,
@@ -262,10 +280,11 @@ def _inventory(wb: Workbook, db: Session) -> None:
             "מספר סידורי",
             "שם פריט",
             "סוג פריט",
+            "סוג שימוש",
             "כמות במלאי",
             "זמין",
             "מושאל",
-            "מנופק",
+            "ניפוקים",
             "אצל חיילים",
             "פעולה אחרונה",
         ],
@@ -283,7 +302,7 @@ def _types(wb: Workbook, db: Session) -> None:
             "כמות במלאי",
             "זמינים",
             "מושאלים",
-            "מנופקים",
+            "ניפוקים",
             "חסרים לתקן",
         ],
         (
@@ -466,10 +485,10 @@ def template() -> bytes:
     _sheet(
         wb,
         "מלאי",
-        ["מספר סידורי", "שם פריט", "סוג פריט", "כמות"],
+        ["מספר סידורי", "שם פריט", "סוג פריט", "סוג שימוש", "כמות"],
         [
-            ["MK-0001", "מכשיר קשר 710", "מכשיר קשר", 1],
-            ["BAT-AA", "סוללות AA", "סוללות", 200],
+            ["MK-0001", "מכשיר קשר 710", "מכשיר קשר", "מושאל", 1],
+            ["BAT-AA", "סוללות AA", "סוללות", "ניצרך", 200],
         ],
     )
     return _finish(wb)

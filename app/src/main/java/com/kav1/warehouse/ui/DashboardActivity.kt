@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.kav1.warehouse.R
 import com.kav1.warehouse.data.local.CategorySummary
+import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.ItemWithHolder
 import com.kav1.warehouse.databinding.ActivityDashboardBinding
@@ -211,11 +212,11 @@ class DashboardActivity : AppCompatActivity() {
                     item.name
                 }
             row.findViewById<TextView>(R.id.txtItemStatus).apply {
-                text = context.statusLabel(item.currentStatus)
+                text = context.itemStatusLabel(item.kind, item.currentStatus)
                 setTextColor(context.statusColor(item.currentStatus))
             }
             val lastAction = item.lastActionAt?.let { context.formatDateTime(it) } ?: ""
-            val details = if (item.quantity > 1) {
+            val details = if (item.quantity > 1 || item.kind == ItemKind.CONSUMABLE) {
                 context.getString(R.string.dashboard_row_stock, item.qrId, item.availableQty, item.quantity)
             } else if (item.holderUserId != null) {
                 context.getString(

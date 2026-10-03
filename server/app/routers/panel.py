@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -184,7 +184,8 @@ class ItemForm(BaseModel):
     qr_id: str = Field(min_length=1, max_length=128)
     name: str = Field(default="", max_length=200)
     category: str = Field(default="", max_length=200)
-    quantity: int = Field(default=1, ge=1, le=1_000_000)
+    quantity: int = Field(default=1, ge=0, le=1_000_000)
+    kind: Literal["LOAN", "CONSUMABLE"] = "LOAN"
 
 
 class UserForm(BaseModel):
@@ -206,7 +207,9 @@ def save_item(form: ItemForm, db: Session = Depends(get_db)):
     name = form.name.strip() or form.category.strip()
     if not name:
         raise catalog.CatalogError("יש להזין שם פריט או סוג פריט")
-    created = catalog.save_item(db, form.qr_id, name, form.category, form.quantity)
+    created = catalog.save_item(
+        db, form.qr_id, name, form.category, form.quantity, form.kind
+    )
     verb = "נוסף פריט" if created else "עודכן פריט"
     events.add(events.INFO, f"{verb}: {name} ({form.qr_id.strip()})", "panel")
     return _ok(messages.ITEM_SAVED.format(qr_id=form.qr_id.strip()))

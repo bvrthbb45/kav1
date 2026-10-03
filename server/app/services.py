@@ -34,8 +34,12 @@ def push_transactions(
     user_ids = {tx.user_id for tx in transactions}
     tx_ids = {tx.tx_id for tx in transactions}
 
-    known_items: Set[str] = set(
-        db.scalars(select(models.Item.qr_id).where(models.Item.qr_id.in_(qr_ids)))
+    known_items: Dict[str, str] = dict(
+        db.execute(
+            select(models.Item.qr_id, models.Item.kind).where(
+                models.Item.qr_id.in_(qr_ids)
+            )
+        ).all()
     )
     known_users: Set[str] = set(
         db.scalars(select(models.User.user_id).where(models.User.user_id.in_(user_ids)))
@@ -64,6 +68,14 @@ def push_transactions(
                 reason = messages.TX_UNKNOWN_ITEM.format(qr_id=tx.qr_id)
             elif tx.user_id not in known_users:
                 reason = messages.TX_UNKNOWN_USER.format(user_id=tx.user_id)
+            elif tx.action_type not in models.ACTIONS_BY_KIND.get(
+                known_items[tx.qr_id], models.ACTIONS_BY_KIND[models.KIND_LOAN]
+            ):
+                reason = (
+                    messages.TX_CONSUMABLE_ONLY_ISSUE
+                    if known_items[tx.qr_id] == models.KIND_CONSUMABLE
+                    else messages.TX_LOAN_ONLY_BORROW
+                ).format(qr_id=tx.qr_id)
 
             if reason:
                 rejected.append(
@@ -176,6 +188,7 @@ def item_out(item: models.Item, state: stock.ItemState) -> schemas.ItemOut:
         name=item.name,
         current_status=state.status,
         category=item.category or "",
+        kind=state.kind,
         quantity=state.quantity,
         available_qty=state.available,
         borrowed_qty=state.borrowed,
@@ -183,6 +196,17 @@ def item_out(item: models.Item, state: stock.ItemState) -> schemas.ItemOut:
         holder_user_id=state.latest_holder,
         last_action_at=_to_epoch_ms(state.last_action) if state.last_action else None,
     )
+
+
+def stocked_quantity(db: Session, item: models.Item, stock_now: int) -> int:
+    """What to store in Item.quantity when an operator enters the current stock.
+
+    For consumables the column holds everything ever stocked (issued units are
+    subtracted when reading), so add back what was already issued.
+    """
+    if item.kind == models.KIND_CONSUMABLE and item.qr_id:
+        return stock_now + stock.consumed_units(db, item.qr_id)
+    return stock_now
 
 
 def upsert_users(db: Session, users: List[schemas.UserIn]) -> int:
@@ -202,24 +226,28 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
             item = db.get(models.Item, incoming.qr_id)
             category = (incoming.category or "").strip()
             if item is None:
-                db.add(
-                    models.Item(
-                        qr_id=incoming.qr_id,
-                        name=incoming.name,
-                        current_status=models.STATUS_AVAILABLE,
-                        category=category,
-                        quantity=incoming.quantity or 1,
-                    )
+                item = models.Item(
+                    qr_id=incoming.qr_id,
+                    name=incoming.name,
+                    current_status=models.STATUS_AVAILABLE,
+                    category=category,
+                    quantity=incoming.quantity or 1,
+                    kind=incoming.kind or models.KIND_LOAN,
                 )
+                db.add(item)
             else:
                 item.name = incoming.name
                 if incoming.category is not None:
                     item.category = category
+                if incoming.kind is not None:
+                    item.kind = incoming.kind
                 if incoming.quantity is not None:
-                    item.quantity = incoming.quantity
+                    item.quantity = stocked_quantity(db, item, incoming.quantity)
         db.flush()
-        # A new stock quantity can free up (or use up) units.
-        _recompute_item_status(db, {i.qr_id for i in items if i.quantity is not None})
+        # A new stock quantity or kind can free up (or use up) units.
+        _recompute_item_status(
+            db, {i.qr_id for i in items if i.quantity is not None or i.kind is not None}
+        )
         db.commit()
     except Exception:
         db.rollback()

@@ -22,10 +22,17 @@ abstract class ItemDao {
     abstract suspend fun insert(item: ItemEntity)
 
     @Query(
-        "UPDATE items SET name = :name, category = :category, quantity = :quantity, " +
+        "UPDATE items SET name = :name, category = :category, quantity = :quantity, kind = :kind, " +
             "pending_upload = 1 WHERE qr_id = :qrId",
     )
-    abstract suspend fun updateLocal(qrId: String, name: String, category: String, quantity: Int): Int
+    abstract suspend fun updateLocal(qrId: String, name: String, category: String, quantity: Int, kind: String): Int
+
+    /** Consumables: what is left in stock and how many were issued so far. */
+    @Query(
+        "UPDATE items SET quantity = :quantity, available_qty = :quantity, issued_qty = :issued, " +
+            "current_status = :status WHERE qr_id = :qrId",
+    )
+    abstract suspend fun updateConsumable(qrId: String, quantity: Int, issued: Int, status: String)
 
     @Query(
         "UPDATE items SET current_status = :status, holder_user_id = :holderUserId, " +
@@ -64,9 +71,15 @@ abstract class ItemDao {
     /** Clears the flag only if the row was not edited again meanwhile. */
     @Query(
         "UPDATE items SET pending_upload = 0 WHERE qr_id = :qrId AND name = :sentName " +
-            "AND category = :sentCategory AND quantity = :sentQuantity",
+            "AND category = :sentCategory AND quantity = :sentQuantity AND kind = :sentKind",
     )
-    abstract suspend fun markUploaded(qrId: String, sentName: String, sentCategory: String, sentQuantity: Int)
+    abstract suspend fun markUploaded(
+        qrId: String,
+        sentName: String,
+        sentCategory: String,
+        sentQuantity: Int,
+        sentKind: String,
+    )
 
     @Query("SELECT COUNT(*) FROM items")
     abstract fun observeCount(): Flow<Int>
@@ -93,7 +106,7 @@ abstract class ItemDao {
     @Query(
         """
         SELECT i.qr_id, i.name, i.current_status, i.holder_user_id, i.last_action_at,
-               i.pending_upload, i.category, i.quantity, i.available_qty,
+               i.pending_upload, i.category, i.quantity, i.available_qty, i.kind,
                u.full_name AS holder_name, u.unit AS holder_unit
         FROM items i LEFT JOIN users u ON u.user_id = i.holder_user_id
         WHERE (:status IS NULL
@@ -127,7 +140,7 @@ abstract class ItemDao {
         deleteAll()
         items.chunked(SQL_CHUNK).forEach { insertAll(it) }
         localEdits.forEach { edit ->
-            if (updateLocal(edit.qrId, edit.name, edit.category, edit.quantity) == 0) insert(edit)
+            if (updateLocal(edit.qrId, edit.name, edit.category, edit.quantity, edit.kind) == 0) insert(edit)
         }
     }
 }

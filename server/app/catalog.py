@@ -28,9 +28,17 @@ def _clean(value: Optional[str]) -> str:
 
 
 def save_item(
-    db: Session, qr_id: str, name: str, category: str, quantity: int = 1
+    db: Session,
+    qr_id: str,
+    name: str,
+    category: str,
+    quantity: int = 1,
+    kind: str = models.KIND_LOAN,
 ) -> bool:
-    """Create or update an item; who holds what is kept. True if created."""
+    """Create or update an item; who holds what is kept. True if created.
+
+    [quantity] is the stock now (for consumables: what is left).
+    """
     qr_id, name, category = _clean(qr_id), _clean(name), _clean(category)
     item = db.get(models.Item, qr_id)
     created = item is None
@@ -41,13 +49,15 @@ def save_item(
                 name=name,
                 category=category,
                 quantity=quantity,
+                kind=kind,
                 current_status=models.STATUS_AVAILABLE,
             )
         )
     else:
         item.name = name
         item.category = category
-        item.quantity = quantity
+        item.kind = kind
+        item.quantity = services.stocked_quantity(db, item, quantity)
     db.flush()
     services._recompute_item_status(db, {qr_id})
     db.commit()
@@ -266,6 +276,7 @@ def item_card(db: Session, qr_id: str) -> Dict:
             "qr_id": item.qr_id,
             "name": item.name,
             "category": item.category,
+            "kind": state.kind,
             "current_status": state.status,
             "quantity": state.quantity,
             "available_qty": state.available,

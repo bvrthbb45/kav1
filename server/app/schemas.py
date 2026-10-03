@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +16,8 @@ class ItemOut(BaseModel):
     name: str
     current_status: str
     category: str = ""
+    # LOAN (מושאל) or CONSUMABLE (ניצרך).
+    kind: str = "LOAN"
     # Units in stock and how many of them are where right now.
     quantity: int = 1
     available_qty: int = 1
@@ -105,7 +107,8 @@ class ItemIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     # None keeps the current type / quantity (older tablets do not send them).
     category: Optional[str] = Field(default=None, max_length=200)
-    quantity: Optional[int] = Field(default=None, ge=1, le=1_000_000)
+    quantity: Optional[int] = Field(default=None, ge=0, le=1_000_000)
+    kind: Optional[Literal["LOAN", "CONSUMABLE"]] = None
 
 
 class CategoryIn(BaseModel):

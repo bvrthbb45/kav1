@@ -14,6 +14,8 @@ import android.widget.AutoCompleteTextView
 import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +27,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.kav1.warehouse.BuildConfig
 import com.kav1.warehouse.R
+import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.remote.ApiClient
 import com.kav1.warehouse.databinding.ActivityAdminBinding
 import com.kav1.warehouse.domain.sync.SyncScheduler
@@ -68,7 +71,9 @@ class AdminActivity : AppCompatActivity() {
                 showUserDialog(row.id, row.title, row.unit)
             } else {
                 lifecycleScope.launch {
-                    app.repository.getItem(row.id)?.let { showItemDialog(it.qrId, it.name, it.category, it.quantity) }
+                    app.repository.getItem(row.id)?.let {
+                        showItemDialog(it.qrId, it.name, it.category, it.quantity, it.kind)
+                    }
                 }
             }
         }
@@ -133,10 +138,15 @@ class AdminActivity : AppCompatActivity() {
                 Row(
                     id = it.qrId,
                     title = it.name,
-                    subtitle = if (it.quantity > 1) {
-                        getString(R.string.dashboard_row_stock, "${categoryLabel(it.category)} · ${it.qrId}", it.availableQty, it.quantity)
+                    subtitle = if (it.quantity > 1 || it.kind == ItemKind.CONSUMABLE) {
+                        getString(
+                            R.string.dashboard_row_stock,
+                            "${kindLabel(it.kind)} · ${categoryLabel(it.category)} · ${it.qrId}",
+                            it.availableQty,
+                            it.quantity,
+                        )
                     } else {
-                        "${categoryLabel(it.category)} · ${it.qrId} · ${statusLabel(it.currentStatus)}"
+                        "${categoryLabel(it.category)} · ${it.qrId} · ${itemStatusLabel(it.kind, it.currentStatus)}"
                     },
                     unit = null,
                     pending = it.pendingUpload,
@@ -174,7 +184,7 @@ class AdminActivity : AppCompatActivity() {
             val existing = app.repository.getItem(qrId)
             if (existing != null) {
                 toast(R.string.item_exists_editing)
-                showItemDialog(existing.qrId, existing.name, existing.category, existing.quantity)
+                showItemDialog(existing.qrId, existing.name, existing.category, existing.quantity, existing.kind)
             } else {
                 showItemDialog(null, null, prefilledQr = qrId)
             }
@@ -186,6 +196,7 @@ class AdminActivity : AppCompatActivity() {
         name: String?,
         category: String? = null,
         quantity: Int = 1,
+        kind: String = ItemKind.LOAN,
         prefilledQr: String? = null,
     ) {
         lifecycleScope.launch {
@@ -194,6 +205,10 @@ class AdminActivity : AppCompatActivity() {
             val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr, enabled = qrId == null)
             val typeField = form.autocomplete(R.string.item_category_hint, category, types)
             val nameField = form.field(R.string.item_name_optional_hint, name)
+            val kindField = form.choice(
+                listOf(ItemKind.LOAN to R.string.kind_loan_long, ItemKind.CONSUMABLE to R.string.kind_consumable_long),
+                kind,
+            )
             val qtyField = form.field(R.string.item_quantity_hint, quantity.toString()).apply {
                 inputType = InputType.TYPE_CLASS_NUMBER
             }
@@ -206,7 +221,7 @@ class AdminActivity : AppCompatActivity() {
                     return@show false
                 }
                 val qty = qtyField.text.toString().trim().toIntOrNull()
-                if (qty == null || qty < 1 || qty > 1_000_000) {
+                if (qty == null || qty < 0 || qty > 1_000_000) {
                     qtyField.error = getString(R.string.quantity_invalid)
                     return@show false
                 }
@@ -214,7 +229,7 @@ class AdminActivity : AppCompatActivity() {
                     if (qrId == null && app.repository.getItem(code) != null) {
                         toast(R.string.item_exists_editing)
                     }
-                    app.repository.saveItem(code, itemName.ifEmpty { type }, type, qty)
+                    app.repository.saveItem(code, itemName.ifEmpty { type }, type, qty, kindField())
                     savedPendingSync()
                 }
                 true
@@ -361,6 +376,22 @@ class AdminActivity : AppCompatActivity() {
                 isEnabled = enabled
                 container.addView(this)
             }
+
+        /** Radio buttons; returns a getter for the selected key. */
+        fun choice(options: List<Pair<String, Int>>, selected: String): () -> String {
+            val group = RadioGroup(context).apply { orientation = RadioGroup.VERTICAL }
+            val ids = options.map { (key, label) ->
+                val button = RadioButton(context).apply {
+                    id = View.generateViewId()
+                    setText(label)
+                }
+                group.addView(button)
+                if (key == selected) group.check(button.id)
+                button.id to key
+            }.toMap()
+            container.addView(group)
+            return { ids[group.checkedRadioButtonId] ?: options.first().first }
+        }
 
         /** A field that suggests [suggestions] while typing. */
         fun autocomplete(hint: Int, value: String?, suggestions: List<String>): EditText =

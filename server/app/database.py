@@ -37,6 +37,7 @@ _ADDED_COLUMNS = {
     "items": {
         "category": "VARCHAR(200) NOT NULL DEFAULT ''",
         "quantity": "INTEGER NOT NULL DEFAULT 1",
+        "kind": "VARCHAR(16) NOT NULL DEFAULT 'LOAN'",
     },
     "transactions": {"quantity": "INTEGER NOT NULL DEFAULT 1"},
 }

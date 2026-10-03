@@ -51,9 +51,9 @@ class InventoryRepository(private val db: AppDatabase) {
     // --- Management (queued for upload on the next sync) ---
 
     /** Adds a new item, or edits an existing one; who holds what is kept. */
-    suspend fun saveItem(qrId: String, name: String, category: String, quantity: Int) {
+    suspend fun saveItem(qrId: String, name: String, category: String, quantity: Int, kind: String) {
         db.withTransaction {
-            if (db.itemDao().updateLocal(qrId, name, category, quantity) == 0) {
+            if (db.itemDao().updateLocal(qrId, name, category, quantity, kind) == 0) {
                 db.itemDao().insert(
                     ItemEntity(
                         qrId,
@@ -63,6 +63,7 @@ class InventoryRepository(private val db: AppDatabase) {
                         category = category,
                         quantity = quantity,
                         availableQty = quantity,
+                        kind = kind,
                     ),
                 )
             }

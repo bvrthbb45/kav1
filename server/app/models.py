@@ -16,6 +16,15 @@ ACTION_RETURN = "RETURN"
 # Permanent issue to a soldier (ניפוק), as opposed to a temporary loan.
 ACTION_ISSUE = "ISSUE"
 
+# How an item is handed out.
+KIND_LOAN = "LOAN"  # מושאל: borrow and return only; stock does not shrink
+KIND_CONSUMABLE = "CONSUMABLE"  # ניצרך: issue only; issued units leave the stock
+KINDS = (KIND_LOAN, KIND_CONSUMABLE)
+ACTIONS_BY_KIND = {
+    KIND_LOAN: (ACTION_BORROW, ACTION_RETURN),
+    KIND_CONSUMABLE: (ACTION_ISSUE,),
+}
+
 STATUS_BY_ACTION = {
     ACTION_BORROW: STATUS_BORROWED,
     ACTION_RETURN: STATUS_AVAILABLE,
@@ -42,6 +51,9 @@ class Item(Base):
     category: Mapped[str] = mapped_column(String(200), default="", server_default="")
     # Units in stock under this QR; actions take part of it (see stock.py).
     quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    kind: Mapped[str] = mapped_column(
+        String(16), default=KIND_LOAN, server_default=KIND_LOAN
+    )
 
 
 class Category(Base):

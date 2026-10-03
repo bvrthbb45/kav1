@@ -125,16 +125,16 @@ def test_category_rename_moves_items_and_blocks_delete(client):
 
 
 def test_soldier_and_item_cards(client):
-    _push(client, "t1", "q1", "u1", "ISSUE", 1_700_000_000_000)
+    _push(client, "t1", "q1", "u1", "BORROW", 1_700_000_000_000)
     card = client.get("/api/panel/users/card", params={"user_id": "u1"}).json()
     assert card["user"]["full_name"] == "ישראל ישראלי"
     assert [h["qr_id"] for h in card["holding"]] == ["q1"]
-    assert card["history"][0]["action_type"] == "ISSUE"
+    assert card["history"][0]["action_type"] == "BORROW"
 
     _push(client, "t2", "q1", "u1", "RETURN", 1_700_000_100_000)
     item = client.get("/api/panel/items/card", params={"qr_id": "q1"}).json()
     assert item["holders"] == []
-    assert [h["action_type"] for h in item["history"]] == ["RETURN", "ISSUE"]
+    assert [h["action_type"] for h in item["history"]] == ["RETURN", "BORROW"]
     assert (
         client.get("/api/panel/users/card", params={"user_id": "u1"}).json()["holding"]
         == []
@@ -157,7 +157,7 @@ def test_excel_exports(client):
         "חיילים",
         "יומן פעולות",
     ]
-    assert wb["מלאי"]["F2"].value == 1  # borrowed units
+    assert wb["מלאי"]["G2"].value == 1  # borrowed units
     assert wb["ציוד אצל חיילים"]["A2"].value == "ישראל ישראלי"
 
     r = client.get(

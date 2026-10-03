@@ -3,12 +3,14 @@ package com.kav1.warehouse.domain.sync
 import android.util.Log
 import androidx.room.withTransaction
 import com.google.gson.JsonParseException
+import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.AppDatabase
 import com.kav1.warehouse.data.local.AppPrefs
 import com.kav1.warehouse.data.local.CategoryEntity
 import com.kav1.warehouse.data.local.HistoryEntity
 import com.kav1.warehouse.data.local.HoldingEntity
 import com.kav1.warehouse.data.local.ItemEntity
+import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
 import com.kav1.warehouse.data.remote.ApiClient
@@ -80,12 +82,28 @@ class SyncManager(
         return SyncResult.Success(pushed, rejected, itemCount, userCount)
     }
 
+    /**
+     * The upload form of a locally edited item. A consumable's local stock
+     * already has this device's not-yet-pushed issues taken off, while the
+     * server subtracts them again when they arrive; add them back here.
+     */
+    private suspend fun upsertDto(items: List<ItemEntity>): List<ItemUpsertDto> {
+        val pendingIssues = db.pendingTransactionDao().getUnsynced()
+            .filter { it.actionType == ActionType.ISSUE }
+            .groupBy { it.qrId }
+            .mapValues { (_, txs) -> txs.sumOf { it.quantity } }
+        return items.map {
+            val stock = if (it.kind == ItemKind.CONSUMABLE) it.quantity + (pendingIssues[it.qrId] ?: 0) else it.quantity
+            ItemUpsertDto(it.qrId, it.name, it.category, stock, it.kind)
+        }
+    }
+
     private suspend fun pushManagementEdits() {
         val items = db.itemDao().getPendingUpload()
         for (batch in items.chunked(PUSH_BATCH_SIZE)) {
-            api.upsertItems(batch.map { ItemUpsertDto(it.qrId, it.name, it.category, it.quantity) }).bodyOrThrow()
+            api.upsertItems(upsertDto(batch)).bodyOrThrow()
             db.withTransaction {
-                batch.forEach { db.itemDao().markUploaded(it.qrId, it.name, it.category, it.quantity) }
+                batch.forEach { db.itemDao().markUploaded(it.qrId, it.name, it.category, it.quantity, it.kind) }
             }
         }
         val users = db.userDao().getPendingUpload()
@@ -155,6 +173,7 @@ class SyncManager(
                 availableQty = dto.availableQty ?: (1 - out),
                 borrowedQty = dto.borrowedQty ?: if (status == ItemStatus.BORROWED) 1 else 0,
                 issuedQty = dto.issuedQty ?: if (status == ItemStatus.ISSUED) 1 else 0,
+                kind = dto.kind ?: ItemKind.LOAN,
             )
         } ?: throw MalformedResponseException("items missing")
         val users = body.users?.mapNotNull { dto ->
@@ -219,7 +238,7 @@ class SyncManager(
             transactions = db.pendingTransactionDao().getUnsynced().map {
                 PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity)
             },
-            items = db.itemDao().getPendingUpload().map { ItemUpsertDto(it.qrId, it.name, it.category, it.quantity) },
+            items = upsertDto(db.itemDao().getPendingUpload()),
             users = db.userDao().getPendingUpload().map { UserUpsertDto(it.userId, it.fullName, it.unit) },
         )
     }
@@ -232,7 +251,13 @@ class SyncManager(
             }
             db.withTransaction {
                 inbox.itemsUploaded.orEmpty().forEach {
-                    db.itemDao().markUploaded(it.qrId, it.name, it.category.orEmpty(), it.quantity ?: 1)
+                    db.itemDao().markUploaded(
+                        it.qrId,
+                        it.name,
+                        it.category.orEmpty(),
+                        it.quantity ?: 1,
+                        it.kind ?: ItemKind.LOAN,
+                    )
                 }
                 inbox.usersUploaded.orEmpty().forEach {
                     db.userDao().markUploaded(it.userId, it.fullName, it.unit)

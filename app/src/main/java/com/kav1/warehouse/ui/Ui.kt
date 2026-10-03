@@ -16,6 +16,7 @@ import com.kav1.warehouse.R
 import com.kav1.warehouse.WarehouseApp
 import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.HistoryRow
+import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.domain.sync.SyncResult
 import java.util.Date
@@ -36,6 +37,17 @@ fun Context.statusLabel(status: String?): String = getString(
         else -> R.string.status_unknown
     },
 )
+
+/** Item status in words; consumables read "in stock" / "out of stock". */
+fun Context.itemStatusLabel(kind: String, status: String?): String =
+    if (kind == ItemKind.CONSUMABLE) {
+        getString(if (status == ItemStatus.ISSUED) R.string.status_out_of_stock else R.string.status_in_stock)
+    } else {
+        statusLabel(status)
+    }
+
+fun Context.kindLabel(kind: String): String =
+    getString(if (kind == ItemKind.CONSUMABLE) R.string.kind_consumable else R.string.kind_loan)
 
 fun Context.statusColor(status: String?): Int = ContextCompat.getColor(
     this,

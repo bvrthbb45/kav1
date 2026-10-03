@@ -44,6 +44,7 @@ data class ItemDto(
     @SerializedName("available_qty") val availableQty: Int?,
     @SerializedName("borrowed_qty") val borrowedQty: Int?,
     @SerializedName("issued_qty") val issuedQty: Int?,
+    @SerializedName("kind") val kind: String?,
 )
 
 data class HoldingDto(
@@ -92,6 +93,7 @@ data class ItemUpsertDto(
     // Nullable: Gson leaves it null when reading an older server's echo.
     @SerializedName("category") val category: String?,
     @SerializedName("quantity") val quantity: Int?,
+    @SerializedName("kind") val kind: String?,
 )
 
 data class UserUpsertDto(
