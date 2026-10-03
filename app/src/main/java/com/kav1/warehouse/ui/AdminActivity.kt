@@ -68,7 +68,7 @@ class AdminActivity : AppCompatActivity() {
                 showUserDialog(row.id, row.title, row.unit)
             } else {
                 lifecycleScope.launch {
-                    app.repository.getItem(row.id)?.let { showItemDialog(it.qrId, it.name, it.category) }
+                    app.repository.getItem(row.id)?.let { showItemDialog(it.qrId, it.name, it.category, it.quantity) }
                 }
             }
         }
@@ -133,7 +133,11 @@ class AdminActivity : AppCompatActivity() {
                 Row(
                     id = it.qrId,
                     title = it.name,
-                    subtitle = "${categoryLabel(it.category)} · ${it.qrId} · ${statusLabel(it.currentStatus)}",
+                    subtitle = if (it.quantity > 1) {
+                        getString(R.string.dashboard_row_stock, "${categoryLabel(it.category)} · ${it.qrId}", it.availableQty, it.quantity)
+                    } else {
+                        "${categoryLabel(it.category)} · ${it.qrId} · ${statusLabel(it.currentStatus)}"
+                    },
                     unit = null,
                     pending = it.pendingUpload,
                     isUser = false,
@@ -170,7 +174,7 @@ class AdminActivity : AppCompatActivity() {
             val existing = app.repository.getItem(qrId)
             if (existing != null) {
                 toast(R.string.item_exists_editing)
-                showItemDialog(existing.qrId, existing.name, existing.category)
+                showItemDialog(existing.qrId, existing.name, existing.category, existing.quantity)
             } else {
                 showItemDialog(null, null, prefilledQr = qrId)
             }
@@ -181,6 +185,7 @@ class AdminActivity : AppCompatActivity() {
         qrId: String?,
         name: String?,
         category: String? = null,
+        quantity: Int = 1,
         prefilledQr: String? = null,
     ) {
         lifecycleScope.launch {
@@ -189,6 +194,9 @@ class AdminActivity : AppCompatActivity() {
             val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr, enabled = qrId == null)
             val typeField = form.autocomplete(R.string.item_category_hint, category, types)
             val nameField = form.field(R.string.item_name_optional_hint, name)
+            val qtyField = form.field(R.string.item_quantity_hint, quantity.toString()).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+            }
             form.show(if (qrId == null) R.string.item_dialog_add else R.string.item_dialog_edit) {
                 val code = form.value(qrField, MAX_QR) ?: return@show false
                 val type = form.value(typeField, MAX_NAME, required = false) ?: return@show false
@@ -197,11 +205,16 @@ class AdminActivity : AppCompatActivity() {
                     nameField.error = getString(R.string.item_name_or_type_required)
                     return@show false
                 }
+                val qty = qtyField.text.toString().trim().toIntOrNull()
+                if (qty == null || qty < 1 || qty > 1_000_000) {
+                    qtyField.error = getString(R.string.quantity_invalid)
+                    return@show false
+                }
                 lifecycleScope.launch {
                     if (qrId == null && app.repository.getItem(code) != null) {
                         toast(R.string.item_exists_editing)
                     }
-                    app.repository.saveItem(code, itemName.ifEmpty { type }, type)
+                    app.repository.saveItem(code, itemName.ifEmpty { type }, type, qty)
                     savedPendingSync()
                 }
                 true

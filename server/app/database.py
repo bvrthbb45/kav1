@@ -34,7 +34,11 @@ def init_db() -> None:
 # Columns added after the first release; create_all() does not alter tables
 # that already exist, so older databases get them here.
 _ADDED_COLUMNS = {
-    "items": {"category": "VARCHAR(200) NOT NULL DEFAULT ''"},
+    "items": {
+        "category": "VARCHAR(200) NOT NULL DEFAULT ''",
+        "quantity": "INTEGER NOT NULL DEFAULT 1",
+    },
+    "transactions": {"quantity": "INTEGER NOT NULL DEFAULT 1"},
 }
 
 

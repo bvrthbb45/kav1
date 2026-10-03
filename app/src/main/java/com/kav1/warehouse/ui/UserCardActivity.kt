@@ -10,6 +10,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.kav1.warehouse.R
+import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.databinding.ActivityUserCardBinding
 import kotlinx.coroutines.launch
 
@@ -45,7 +46,8 @@ class UserCardActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     repo.observeHeldBy(userId).collect { items ->
-                        binding.txtHoldingTitle.text = getString(R.string.card_holding_title, items.size)
+                        val units = items.sumOf { it.borrowed + it.issued }
+                        binding.txtHoldingTitle.text = getString(R.string.card_holding_title, units)
                         val list = binding.listHolding
                         list.removeAllViews()
                         if (items.isEmpty()) {
@@ -59,13 +61,13 @@ class UserCardActivity : AppCompatActivity() {
                             )
                         }
                         items.forEach { item ->
-                            val since = item.lastActionAt?.let { formatDateTime(it) }
+                            val since = item.since?.let { formatDateTime(it) }
                                 ?: getString(R.string.card_since_unknown)
                             addListRow(
                                 list,
-                                item.name,
-                                statusLabel(item.currentStatus),
-                                statusColor(item.currentStatus),
+                                item.name ?: item.qrId,
+                                heldLabel(item.borrowed, item.issued),
+                                statusColor(if (item.borrowed > 0) ItemStatus.BORROWED else ItemStatus.ISSUED),
                                 getString(R.string.card_holding_row, categoryLabel(item.category), item.qrId, since),
                             ) { startActivity(ItemActivity.intent(this@UserCardActivity, item.qrId)) }
                         }

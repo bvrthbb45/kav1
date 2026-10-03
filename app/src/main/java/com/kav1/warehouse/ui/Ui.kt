@@ -184,10 +184,16 @@ fun Context.fillHistory(
         addListRow(
             container,
             title,
-            actionLabel(h.actionType),
+            if (h.quantity > 1) getString(R.string.history_action_qty, actionLabel(h.actionType), h.quantity) else actionLabel(h.actionType),
             actionColor(h.actionType),
             details,
             onRowClick?.let { click -> { click(h) } },
         )
     }
 }
+
+/** "מושאל 3 · מונפק 2" for a soldier's holding of an item. */
+fun Context.heldLabel(borrowed: Int, issued: Int): String = listOfNotNull(
+    if (borrowed > 0) getString(R.string.held_borrowed, borrowed) else null,
+    if (issued > 0) getString(R.string.held_issued, issued) else null,
+).joinToString(" · ")

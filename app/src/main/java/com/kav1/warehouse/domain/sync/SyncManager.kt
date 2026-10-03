@@ -3,11 +3,11 @@ package com.kav1.warehouse.domain.sync
 import android.util.Log
 import androidx.room.withTransaction
 import com.google.gson.JsonParseException
-import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.AppDatabase
 import com.kav1.warehouse.data.local.AppPrefs
 import com.kav1.warehouse.data.local.CategoryEntity
 import com.kav1.warehouse.data.local.HistoryEntity
+import com.kav1.warehouse.data.local.HoldingEntity
 import com.kav1.warehouse.data.local.ItemEntity
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
@@ -22,6 +22,7 @@ import com.kav1.warehouse.data.remote.UsbInboxDto
 import com.kav1.warehouse.data.remote.UsbOutboxDto
 import com.kav1.warehouse.data.remote.UserUpsertDto
 import com.kav1.warehouse.data.remote.WarehouseApi
+import com.kav1.warehouse.domain.stock.LocalStock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -82,9 +83,9 @@ class SyncManager(
     private suspend fun pushManagementEdits() {
         val items = db.itemDao().getPendingUpload()
         for (batch in items.chunked(PUSH_BATCH_SIZE)) {
-            api.upsertItems(batch.map { ItemUpsertDto(it.qrId, it.name, it.category) }).bodyOrThrow()
+            api.upsertItems(batch.map { ItemUpsertDto(it.qrId, it.name, it.category, it.quantity) }).bodyOrThrow()
             db.withTransaction {
-                batch.forEach { db.itemDao().markUploaded(it.qrId, it.name, it.category) }
+                batch.forEach { db.itemDao().markUploaded(it.qrId, it.name, it.category, it.quantity) }
             }
         }
         val users = db.userDao().getPendingUpload()
@@ -107,7 +108,7 @@ class SyncManager(
             val request = PushRequestDto(
                 deviceId = prefs.deviceId,
                 transactions = batch.map {
-                    PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp)
+                    PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity)
                 },
             )
             val body = api.push(request).bodyOrThrow()
@@ -140,13 +141,20 @@ class SyncManager(
     private suspend fun applyPull(body: PullResponseDto): Pair<Int, Int> {
         val items = body.items?.mapNotNull { dto ->
             val qrId = dto.qrId ?: return@mapNotNull null
+            val status = dto.currentStatus ?: ItemStatus.AVAILABLE
+            // Servers before 1.6 send no quantities: one unit, out if not available.
+            val out = if (status == ItemStatus.AVAILABLE) 0 else 1
             ItemEntity(
                 qrId = qrId,
                 name = dto.name.orEmpty(),
-                currentStatus = dto.currentStatus ?: ItemStatus.AVAILABLE,
+                currentStatus = status,
                 holderUserId = dto.holderUserId,
                 lastActionAt = dto.lastActionAt,
                 category = dto.category.orEmpty(),
+                quantity = dto.quantity ?: 1,
+                availableQty = dto.availableQty ?: (1 - out),
+                borrowedQty = dto.borrowedQty ?: if (status == ItemStatus.BORROWED) 1 else 0,
+                issuedQty = dto.issuedQty ?: if (status == ItemStatus.ISSUED) 1 else 0,
             )
         } ?: throw MalformedResponseException("items missing")
         val users = body.users?.mapNotNull { dto ->
@@ -163,7 +171,19 @@ class SyncManager(
                 userId = dto.userId ?: return@mapNotNull null,
                 actionType = dto.actionType ?: return@mapNotNull null,
                 timestamp = dto.timestamp ?: return@mapNotNull null,
+                quantity = dto.quantity ?: 1,
             )
+        }
+        val holdings = body.holdings?.mapNotNull { dto ->
+            HoldingEntity(
+                qrId = dto.qrId ?: return@mapNotNull null,
+                userId = dto.userId ?: return@mapNotNull null,
+                borrowed = dto.borrowed ?: 0,
+                issued = dto.issued ?: 0,
+                since = dto.since,
+            )
+        } ?: items.filter { it.holderUserId != null && it.currentStatus != ItemStatus.AVAILABLE }.map {
+            HoldingEntity(it.qrId, it.holderUserId!!, it.borrowedQty, it.issuedQty, it.lastActionAt)
         }
 
         db.withTransaction {
@@ -171,15 +191,14 @@ class SyncManager(
             db.userDao().replaceAll(users)
             db.categoryDao().replaceAll(categories)
             db.historyDao().replaceAll(history)
+            db.holdingDao().replaceAll(holdings)
+            val stock = LocalStock(db)
+            // Quantities edited here and not uploaded yet.
+            db.itemDao().getPendingUpload().forEach { stock.refresh(it.qrId) }
             // Actions recorded after the push started are not on the server
             // yet; re-apply them so the device keeps showing what it did.
             db.pendingTransactionDao().getUnsynced().forEach {
-                db.itemDao().applyAction(
-                    it.qrId,
-                    ActionType.resultingStatus(it.actionType),
-                    ActionType.resultingHolder(it.actionType, it.userId),
-                    it.timestamp,
-                )
+                stock.apply(it.qrId, it.userId, it.actionType, it.quantity, it.timestamp)
             }
         }
         return items.size to users.size
@@ -198,9 +217,9 @@ class SyncManager(
             requestId = requestId,
             deviceId = prefs.deviceId,
             transactions = db.pendingTransactionDao().getUnsynced().map {
-                PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp)
+                PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity)
             },
-            items = db.itemDao().getPendingUpload().map { ItemUpsertDto(it.qrId, it.name, it.category) },
+            items = db.itemDao().getPendingUpload().map { ItemUpsertDto(it.qrId, it.name, it.category, it.quantity) },
             users = db.userDao().getPendingUpload().map { UserUpsertDto(it.userId, it.fullName, it.unit) },
         )
     }
@@ -213,7 +232,7 @@ class SyncManager(
             }
             db.withTransaction {
                 inbox.itemsUploaded.orEmpty().forEach {
-                    db.itemDao().markUploaded(it.qrId, it.name, it.category.orEmpty())
+                    db.itemDao().markUploaded(it.qrId, it.name, it.category.orEmpty(), it.quantity ?: 1)
                 }
                 inbox.usersUploaded.orEmpty().forEach {
                     db.userDao().markUploaded(it.userId, it.fullName, it.unit)

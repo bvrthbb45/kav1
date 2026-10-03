@@ -1,0 +1,151 @@
+"""Items with a stock quantity: actions take or return part of it."""
+
+from datetime import datetime
+
+from app import models
+from app.stock import replay
+
+
+class Tx:
+    def __init__(self, ts, user, action, qty):
+        self.timestamp = datetime(2026, 1, 1, 0, 0, ts)
+        self.user_id = user
+        self.action_type = action
+        self.quantity = qty
+        self.tx_id = f"{ts}-{user}"
+
+
+def test_replay_splits_stock_between_soldiers():
+    state = replay(
+        50,
+        [
+            Tx(1, "a", "BORROW", 5),
+            Tx(2, "b", "ISSUE", 7),
+            Tx(3, "a", "RETURN", 2),
+        ],
+    )
+    assert state.available == 40
+    assert (state.holders["a"].borrowed, state.holders["b"].issued) == (3, 7)
+    assert state.status == models.STATUS_AVAILABLE
+
+
+def test_replay_single_unit_keeps_latest_action_wins():
+    state = replay(1, [Tx(1, "a", "BORROW", 1), Tx(2, "b", "BORROW", 1)])
+    assert list(state.holders) == ["b"]
+    assert state.status == models.STATUS_BORROWED
+    # A return by anyone brings the unit back.
+    state = replay(1, [Tx(1, "a", "ISSUE", 1), Tx(2, "c", "RETURN", 1)])
+    assert state.holders == {} and state.available == 1
+
+
+def test_replay_takes_missing_units_from_oldest_holder():
+    state = replay(
+        10, [Tx(1, "a", "BORROW", 6), Tx(2, "b", "BORROW", 4), Tx(3, "c", "ISSUE", 3)]
+    )
+    assert state.holders["a"].borrowed == 3
+    assert state.available == 0
+    assert state.status == models.STATUS_BORROWED
+
+
+def _push(client, tx_id, action, qty, ts, user="u1"):
+    r = client.post(
+        "/api/sync/push",
+        json={
+            "transactions": [
+                {
+                    "tx_id": tx_id,
+                    "qr_id": "BOX",
+                    "user_id": user,
+                    "action_type": action,
+                    "timestamp": ts,
+                    "quantity": qty,
+                }
+            ]
+        },
+    )
+    assert r.json()["accepted"] == [tx_id]
+
+
+def test_quantities_end_to_end(client):
+    client.post(
+        "/api/panel/items",
+        json={"qr_id": "BOX", "name": "סוללות", "category": "סוללות", "quantity": 50},
+    )
+    client.post(
+        "/api/admin/users", json=[{"user_id": "u2", "full_name": "דנה", "unit": "ב"}]
+    )
+    _push(client, "t1", "BORROW", 5, 1_700_000_000_000)
+    _push(client, "t2", "ISSUE", 7, 1_700_000_001_000, user="u2")
+
+    pulled = client.get("/api/sync/pull").json()
+    box = next(i for i in pulled["items"] if i["qr_id"] == "BOX")
+    assert (
+        box["quantity"],
+        box["available_qty"],
+        box["borrowed_qty"],
+        box["issued_qty"],
+    ) == (50, 38, 5, 7)
+    assert box["current_status"] == "AVAILABLE"
+    held = {(h["user_id"], h["borrowed"], h["issued"]) for h in pulled["holdings"]}
+    assert held == {("u1", 5, 0), ("u2", 0, 7)}
+    assert {h["quantity"] for h in pulled["history"]} == {5, 7}
+
+    card = client.get("/api/panel/users/card", params={"user_id": "u2"}).json()
+    assert card["holding"][0]["issued"] == 7
+    status = client.get("/api/panel/status").json()["counts"]
+    assert (status["items"], status["available"], status["issued"]) == (51, 39, 7)
+    summary = {c["name"]: c for c in client.get("/api/panel/data").json()["categories"]}
+    assert summary["סוללות"]["total"] == 50 and summary["סוללות"]["available"] == 38
+
+    # Lowering the stock below what is out marks the item as fully taken.
+    client.post(
+        "/api/panel/items",
+        json={"qr_id": "BOX", "name": "סוללות", "category": "סוללות", "quantity": 12},
+    )
+    box = next(
+        i for i in client.get("/api/sync/pull").json()["items"] if i["qr_id"] == "BOX"
+    )
+    assert box["available_qty"] == 0 and box["current_status"] == "BORROWED"
+
+
+def test_old_tablets_push_without_quantity(client):
+    r = client.post(
+        "/api/sync/push",
+        json={
+            "transactions": [
+                {
+                    "tx_id": "x",
+                    "qr_id": "q1",
+                    "user_id": "u1",
+                    "action_type": "BORROW",
+                    "timestamp": 1,
+                }
+            ]
+        },
+    )
+    assert r.json()["accepted"] == ["x"]
+    q1 = next(
+        i for i in client.get("/api/sync/pull").json()["items"] if i["qr_id"] == "q1"
+    )
+    assert q1["current_status"] == "BORROWED" and q1["holder_user_id"] == "u1"
+
+
+def test_excel_import_reads_quantity(client):
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["מספר סידורי", "שם פריט", "כמות במלאי"])
+    ws.append(["BAT", "סוללות", 200])
+    ws.append(["BAD", "שבור", "הרבה"])
+    out = io.BytesIO()
+    wb.save(out)
+    body = client.post("/api/panel/import", content=out.getvalue()).json()
+    assert body["message"].startswith("הייבוא הושלם: 0 חיילים, 1 פריטים")
+    assert len(body["errors"]) == 1
+    bat = next(
+        i for i in client.get("/api/sync/pull").json()["items"] if i["qr_id"] == "BAT"
+    )
+    assert bat["quantity"] == 200 and bat["available_qty"] == 200

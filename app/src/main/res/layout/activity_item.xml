@@ -31,6 +31,13 @@
             style="@style/BodyText" />
 
         <TextView
+            android:id="@+id/txtStock"
+            style="@style/BodyText"
+            android:textColor="@color/primary"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/txtHolder"
             style="@style/BodyText"
             android:background="?attr/selectableItemBackground"
@@ -86,6 +93,20 @@
             android:layout_marginTop="@dimen/gap"
             android:text="@string/btn_back"
             android:textSize="@dimen/body_text" />
+
+        <TextView
+            android:id="@+id/txtHoldersTitle"
+            style="@style/SectionTitle"
+            android:text="@string/holders_title"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/listHolders"
+            style="@style/Card"
+            android:layout_marginTop="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/txtHistoryTitle"

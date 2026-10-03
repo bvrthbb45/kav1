@@ -15,20 +15,45 @@ abstract class ItemDao {
     @Query("SELECT * FROM items WHERE qr_id = :qrId LIMIT 1")
     abstract suspend fun getById(qrId: String): ItemEntity?
 
-    @Query(
-        "UPDATE items SET current_status = :status, holder_user_id = :holderUserId, " +
-            "last_action_at = :at WHERE qr_id = :qrId",
-    )
-    abstract suspend fun applyAction(qrId: String, status: String, holderUserId: String?, at: Long)
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insertAll(items: List<ItemEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insert(item: ItemEntity)
 
-    @Query("UPDATE items SET name = :name, category = :category, pending_upload = 1 WHERE qr_id = :qrId")
-    abstract suspend fun updateLocal(qrId: String, name: String, category: String): Int
+    @Query(
+        "UPDATE items SET name = :name, category = :category, quantity = :quantity, " +
+            "pending_upload = 1 WHERE qr_id = :qrId",
+    )
+    abstract suspend fun updateLocal(qrId: String, name: String, category: String, quantity: Int): Int
+
+    @Query(
+        "UPDATE items SET current_status = :status, holder_user_id = :holderUserId, " +
+            "available_qty = :available, borrowed_qty = :borrowed, issued_qty = :issued WHERE qr_id = :qrId",
+    )
+    abstract suspend fun updateStock(
+        qrId: String,
+        status: String,
+        holderUserId: String?,
+        available: Int,
+        borrowed: Int,
+        issued: Int,
+    )
+
+    @Query("UPDATE items SET last_action_at = :at WHERE qr_id = :qrId")
+    abstract suspend fun setLastAction(qrId: String, at: Long)
+
+    @Query(
+        "SELECT '' AS category, IFNULL(SUM(quantity), 0) AS total, IFNULL(SUM(available_qty), 0) AS available, " +
+            "IFNULL(SUM(borrowed_qty), 0) AS borrowed, IFNULL(SUM(issued_qty), 0) AS issued FROM items",
+    )
+    abstract fun observeUnitTotals(): Flow<UnitTotals>
+
+    @Query(
+        "SELECT category, SUM(quantity) AS total, SUM(available_qty) AS available, " +
+            "SUM(borrowed_qty) AS borrowed, SUM(issued_qty) AS issued FROM items GROUP BY category",
+    )
+    abstract fun observeUnitTotalsByCategory(): Flow<List<UnitTotals>>
 
     @Query("DELETE FROM items")
     abstract suspend fun deleteAll()
@@ -39,9 +64,9 @@ abstract class ItemDao {
     /** Clears the flag only if the row was not edited again meanwhile. */
     @Query(
         "UPDATE items SET pending_upload = 0 WHERE qr_id = :qrId AND name = :sentName " +
-            "AND category = :sentCategory",
+            "AND category = :sentCategory AND quantity = :sentQuantity",
     )
-    abstract suspend fun markUploaded(qrId: String, sentName: String, sentCategory: String)
+    abstract suspend fun markUploaded(qrId: String, sentName: String, sentCategory: String, sentQuantity: Int)
 
     @Query("SELECT COUNT(*) FROM items")
     abstract fun observeCount(): Flow<Int>
@@ -68,9 +93,13 @@ abstract class ItemDao {
     @Query(
         """
         SELECT i.qr_id, i.name, i.current_status, i.holder_user_id, i.last_action_at,
-               i.pending_upload, i.category, u.full_name AS holder_name, u.unit AS holder_unit
+               i.pending_upload, i.category, i.quantity, i.available_qty,
+               u.full_name AS holder_name, u.unit AS holder_unit
         FROM items i LEFT JOIN users u ON u.user_id = i.holder_user_id
-        WHERE (:status IS NULL OR i.current_status = :status)
+        WHERE (:status IS NULL
+               OR (:status = 'AVAILABLE' AND i.available_qty > 0)
+               OR (:status = 'BORROWED' AND i.borrowed_qty > 0)
+               OR (:status = 'ISSUED' AND i.issued_qty > 0))
           AND (:category IS NULL OR i.category = :category)
           AND (:holderId IS NULL OR i.holder_user_id = :holderId)
           AND (:query = '' OR i.name LIKE '%' || :query || '%'
@@ -98,7 +127,7 @@ abstract class ItemDao {
         deleteAll()
         items.chunked(SQL_CHUNK).forEach { insertAll(it) }
         localEdits.forEach { edit ->
-            if (updateLocal(edit.qrId, edit.name, edit.category) == 0) insert(edit)
+            if (updateLocal(edit.qrId, edit.name, edit.category, edit.quantity) == 0) insert(edit)
         }
     }
 }
@@ -230,13 +259,13 @@ abstract class HistoryDao {
     /** Server history plus this device's not-yet-synced actions, newest first. */
     @Query(
         """
-        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.pending,
+        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.quantity, h.pending,
                i.name AS item_name, i.category AS category, u.full_name AS user_name
         FROM (
-            SELECT tx_id, qr_id, user_id, action_type, timestamp, 0 AS pending
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 0 AS pending
             FROM history WHERE (:qrId IS NULL OR qr_id = :qrId) AND (:userId IS NULL OR user_id = :userId)
             UNION ALL
-            SELECT tx_id, qr_id, user_id, action_type, timestamp, 1 AS pending
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 1 AS pending
             FROM pending_transactions
             WHERE sync_error IS NULL AND (:qrId IS NULL OR qr_id = :qrId)
               AND (:userId IS NULL OR user_id = :userId)
@@ -248,4 +277,51 @@ abstract class HistoryDao {
         """,
     )
     abstract fun observe(qrId: String?, userId: String?, limit: Int): Flow<List<HistoryRow>>
+}
+
+@Dao
+abstract class HoldingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertAll(rows: List<HoldingEntity>)
+
+    @Query("DELETE FROM holdings")
+    abstract suspend fun deleteAll()
+
+    @Query("SELECT * FROM holdings WHERE qr_id = :qrId")
+    abstract suspend fun getForItem(qrId: String): List<HoldingEntity>
+
+    @Query("DELETE FROM holdings WHERE qr_id = :qrId")
+    abstract suspend fun deleteForItem(qrId: String)
+
+    @Transaction
+    open suspend fun replaceAll(rows: List<HoldingEntity>) {
+        deleteAll()
+        rows.chunked(SQL_CHUNK).forEach { insertAll(it) }
+    }
+
+    @Transaction
+    open suspend fun replaceForItem(qrId: String, rows: List<HoldingEntity>) {
+        deleteForItem(qrId)
+        insertAll(rows)
+    }
+
+    @Query(
+        """
+        SELECT h.qr_id, i.name, i.category, h.borrowed, h.issued, h.since
+        FROM holdings h LEFT JOIN items i ON i.qr_id = h.qr_id
+        WHERE h.user_id = :userId
+        ORDER BY i.category, i.name
+        """,
+    )
+    abstract fun observeForUser(userId: String): Flow<List<HeldItemRow>>
+
+    @Query(
+        """
+        SELECT h.user_id, u.full_name, u.unit, h.borrowed, h.issued, h.since
+        FROM holdings h LEFT JOIN users u ON u.user_id = h.user_id
+        WHERE h.qr_id = :qrId
+        ORDER BY h.since DESC
+        """,
+    )
+    abstract fun observeForItem(qrId: String): Flow<List<ItemHolderRow>>
 }

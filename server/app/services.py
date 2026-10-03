@@ -7,7 +7,7 @@ from typing import Dict, List, Set
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import messages, models, schemas
+from . import messages, models, schemas, stock
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +78,7 @@ def push_transactions(
                     user_id=tx.user_id,
                     action_type=tx.action_type,
                     timestamp=_to_datetime(tx.timestamp),
+                    quantity=tx.quantity,
                 )
             )
             seen_tx_ids.add(tx.tx_id)
@@ -102,39 +103,17 @@ def push_transactions(
     )
 
 
-def _latest_actions(db: Session, qr_ids=None) -> Dict[str, models.Transaction]:
-    """Most recent transaction (by device time) per item."""
-    latest = select(
-        models.Transaction.qr_id,
-        func.max(models.Transaction.timestamp).label("ts"),
-    ).group_by(models.Transaction.qr_id)
-    if qr_ids is not None:
-        latest = latest.where(models.Transaction.qr_id.in_(qr_ids))
-    latest = latest.subquery()
-    rows = db.scalars(
-        select(models.Transaction)
-        .join(
-            latest,
-            (models.Transaction.qr_id == latest.c.qr_id)
-            & (models.Transaction.timestamp == latest.c.ts),
-        )
-        .order_by(models.Transaction.tx_id)
-    ).all()
-    # Ties on timestamp: the last tx_id wins, deterministically.
-    return {tx.qr_id: tx for tx in rows}
-
-
 def _recompute_item_status(db: Session, qr_ids: Set[str]) -> None:
-    """Set each item's status from its most recent action (by device time).
+    """Set each item's status from its replayed actions (see stock.py).
 
-    Devices sync out of order, so an older action that arrives late must not
-    override a newer one that was already synced by another device.
+    Devices sync out of order, so an older action that arrives late is
+    replayed in device-time order rather than applied on top.
     """
     if not qr_ids:
         return
-    latest = _latest_actions(db, qr_ids)
-    for item in db.scalars(select(models.Item).where(models.Item.qr_id.in_(latest))):
-        item.current_status = models.STATUS_BY_ACTION[latest[item.qr_id].action_type]
+    states = stock.item_states(db, qr_ids)
+    for item in db.scalars(select(models.Item).where(models.Item.qr_id.in_(qr_ids))):
+        item.current_status = states[item.qr_id].status
 
 
 def _to_epoch_ms(value: datetime) -> int:
@@ -154,18 +133,29 @@ def pull_state(db: Session) -> schemas.PullResponse:
         .order_by(models.Transaction.timestamp.desc())
         .limit(HISTORY_LIMIT)
     )
-    latest = _latest_actions(db)
+    states = stock.item_states(db)
     return schemas.PullResponse(
         success=True,
         message=messages.PULL_OK,
         server_time=int(datetime.now(timezone.utc).timestamp() * 1000),
-        items=[_item_out(i, latest.get(i.qr_id)) for i in items],
+        items=[item_out(i, states[i.qr_id]) for i in items],
         users=[schemas.UserOut.model_validate(u) for u in users],
         categories=[
             schemas.CategoryOut(name=c.name, target_qty=c.target_qty)
             for c in categories
         ],
         history=[history_out(t) for t in history],
+        holdings=[
+            schemas.HoldingOut(
+                qr_id=qr_id,
+                user_id=user_id,
+                borrowed=h.borrowed,
+                issued=h.issued,
+                since=_to_epoch_ms(h.since) if h.since else None,
+            )
+            for qr_id, state in states.items()
+            for user_id, h in state.holders.items()
+        ],
     )
 
 
@@ -176,20 +166,22 @@ def history_out(tx: models.Transaction) -> schemas.HistoryOut:
         user_id=tx.user_id,
         action_type=tx.action_type,
         timestamp=_to_epoch_ms(tx.timestamp),
+        quantity=tx.quantity or 1,
     )
 
 
-def _item_out(item: models.Item, last_tx) -> schemas.ItemOut:
-    holder = None
-    if last_tx is not None and last_tx.action_type != models.ACTION_RETURN:
-        holder = last_tx.user_id
+def item_out(item: models.Item, state: stock.ItemState) -> schemas.ItemOut:
     return schemas.ItemOut(
         qr_id=item.qr_id,
         name=item.name,
-        current_status=item.current_status,
+        current_status=state.status,
         category=item.category or "",
-        holder_user_id=holder,
-        last_action_at=_to_epoch_ms(last_tx.timestamp) if last_tx else None,
+        quantity=state.quantity,
+        available_qty=state.available,
+        borrowed_qty=state.borrowed,
+        issued_qty=state.issued,
+        holder_user_id=state.latest_holder,
+        last_action_at=_to_epoch_ms(state.last_action) if state.last_action else None,
     )
 
 
@@ -216,12 +208,18 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
                         name=incoming.name,
                         current_status=models.STATUS_AVAILABLE,
                         category=category,
+                        quantity=incoming.quantity or 1,
                     )
                 )
             else:
                 item.name = incoming.name
                 if incoming.category is not None:
                     item.category = category
+                if incoming.quantity is not None:
+                    item.quantity = incoming.quantity
+        db.flush()
+        # A new stock quantity can free up (or use up) units.
+        _recompute_item_status(db, {i.qr_id for i in items if i.quantity is not None})
         db.commit()
     except Exception:
         db.rollback()

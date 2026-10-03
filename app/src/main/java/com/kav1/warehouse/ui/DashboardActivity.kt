@@ -89,12 +89,12 @@ class DashboardActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    repo.observeStatusCounts().collect { counts ->
-                        val byStatus = counts.associate { it.status to it.count }
-                        binding.countTotal.text = counts.sumOf { it.count }.toString()
-                        binding.countAvailable.text = (byStatus[ItemStatus.AVAILABLE] ?: 0).toString()
-                        binding.countBorrowed.text = (byStatus[ItemStatus.BORROWED] ?: 0).toString()
-                        binding.countIssued.text = (byStatus[ItemStatus.ISSUED] ?: 0).toString()
+                    // Units, not item rows: one QR can stock many.
+                    repo.observeUnitTotals().collect { totals ->
+                        binding.countTotal.text = totals.total.toString()
+                        binding.countAvailable.text = totals.available.toString()
+                        binding.countBorrowed.text = totals.borrowed.toString()
+                        binding.countIssued.text = totals.issued.toString()
                     }
                 }
                 launch {
@@ -215,7 +215,9 @@ class DashboardActivity : AppCompatActivity() {
                 setTextColor(context.statusColor(item.currentStatus))
             }
             val lastAction = item.lastActionAt?.let { context.formatDateTime(it) } ?: ""
-            val details = if (item.holderUserId != null) {
+            val details = if (item.quantity > 1) {
+                context.getString(R.string.dashboard_row_stock, item.qrId, item.availableQty, item.quantity)
+            } else if (item.holderUserId != null) {
                 context.getString(
                     R.string.dashboard_row_holder,
                     item.holderName ?: item.holderUserId,

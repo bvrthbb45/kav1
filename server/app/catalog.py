@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import messages, models, services
+from . import messages, models, services, stock
 
 
 class CatalogError(Exception):
@@ -27,8 +27,10 @@ def _clean(value: Optional[str]) -> str:
 # --- Items -----------------------------------------------------------------
 
 
-def save_item(db: Session, qr_id: str, name: str, category: str) -> bool:
-    """Create or update an item; status is never touched. True if created."""
+def save_item(
+    db: Session, qr_id: str, name: str, category: str, quantity: int = 1
+) -> bool:
+    """Create or update an item; who holds what is kept. True if created."""
     qr_id, name, category = _clean(qr_id), _clean(name), _clean(category)
     item = db.get(models.Item, qr_id)
     created = item is None
@@ -38,12 +40,16 @@ def save_item(db: Session, qr_id: str, name: str, category: str) -> bool:
                 qr_id=qr_id,
                 name=name,
                 category=category,
+                quantity=quantity,
                 current_status=models.STATUS_AVAILABLE,
             )
         )
     else:
         item.name = name
         item.category = category
+        item.quantity = quantity
+    db.flush()
+    services._recompute_item_status(db, {qr_id})
     db.commit()
     return created
 
@@ -129,19 +135,22 @@ def delete_category(db: Session, name: str) -> None:
 
 
 def category_summary(db: Session) -> List[Dict]:
-    """Per type: target quantity and how many units are in each status."""
+    """Per type: target quantity and how many units are where."""
+    states = stock.item_states(db)
     counts: Dict[str, Counter] = {}
-    for category, status, count in db.execute(
-        select(models.Item.category, models.Item.current_status, func.count()).group_by(
-            models.Item.category, models.Item.current_status
-        )
-    ):
-        counts.setdefault(category or "", Counter())[status] += count
+    for item in db.scalars(select(models.Item)):
+        state = states[item.qr_id]
+        c = counts.setdefault(item.category or "", Counter())
+        c["total"] += state.quantity
+        c["available"] += state.available
+        c["borrowed"] += state.borrowed
+        c["issued"] += state.issued
+        c["serials"] += 1
     targets = {c.name: c.target_qty for c in db.scalars(select(models.Category))}
     rows = []
     for name in sorted(set(counts) | set(targets), key=lambda n: (n == "", n)):
         c = counts.get(name, Counter())
-        total = sum(c.values())
+        total = c["total"]
         target = targets.get(name)
         rows.append(
             {
@@ -149,9 +158,10 @@ def category_summary(db: Session) -> List[Dict]:
                 "label": name or messages.NO_CATEGORY,
                 "target_qty": target,
                 "total": total,
-                "available": c[models.STATUS_AVAILABLE],
-                "borrowed": c[models.STATUS_BORROWED],
-                "issued": c[models.STATUS_ISSUED],
+                "serials": c["serials"],
+                "available": c["available"],
+                "borrowed": c["borrowed"],
+                "issued": c["issued"],
                 # Units still missing to reach the target (תקן).
                 "missing": max(target - total, 0) if target is not None else None,
             }
@@ -190,36 +200,38 @@ def _history_rows(db: Session, where, items, users, limit: Optional[int] = None)
                 "user_id": tx.user_id,
                 "user_name": user.full_name if user else tx.user_id,
                 "unit": user.unit if user else "",
+                "quantity": tx.quantity or 1,
             }
         )
     return rows
 
 
 def holdings(db: Session, user_id: Optional[str] = None) -> List[Dict]:
-    """Items currently held (borrowed or issued), with who holds them since when."""
+    """Units currently held per soldier and item (borrowed and issued)."""
     items, users = _names(db)
-    latest = services._latest_actions(db)
     rows = []
-    for qr_id, tx in latest.items():
-        if tx.action_type == models.ACTION_RETURN:
-            continue
-        if user_id is not None and tx.user_id != user_id:
-            continue
-        item, user = items.get(qr_id), users.get(tx.user_id)
-        if item is None:
-            continue
-        rows.append(
-            {
-                "qr_id": qr_id,
-                "item_name": item.name,
-                "category": item.category,
-                "status": item.current_status,
-                "user_id": tx.user_id,
-                "user_name": user.full_name if user else tx.user_id,
-                "unit": user.unit if user else "",
-                "since": _epoch_ms(tx.timestamp),
-            }
-        )
+    for qr_id, state in stock.item_states(db).items():
+        item = items.get(qr_id)
+        for holder_id, h in state.holders.items():
+            if user_id is not None and holder_id != user_id:
+                continue
+            user = users.get(holder_id)
+            rows.append(
+                {
+                    "qr_id": qr_id,
+                    "item_name": item.name,
+                    "category": item.category,
+                    "borrowed": h.borrowed,
+                    "issued": h.issued,
+                    "status": (
+                        models.STATUS_BORROWED if h.borrowed else models.STATUS_ISSUED
+                    ),
+                    "user_id": holder_id,
+                    "user_name": user.full_name if user else holder_id,
+                    "unit": user.unit if user else "",
+                    "since": _epoch_ms(h.since),
+                }
+            )
     rows.sort(key=lambda r: (r["user_name"], r["category"], r["item_name"]))
     return rows
 
@@ -248,21 +260,35 @@ def item_card(db: Session, qr_id: str) -> Dict:
         raise CatalogError(messages.ITEM_NOT_FOUND.format(qr_id=qr_id))
     items, users = _names(db)
     history = _history_rows(db, models.Transaction.qr_id == qr_id, items, users)
-    holder = None
-    if history and history[0]["action_type"] != models.ACTION_RETURN:
-        holder = {
-            k: history[0][k] for k in ("user_id", "user_name", "unit", "timestamp")
-        }
+    state = stock.item_states(db, [qr_id])[qr_id]
     return {
         "item": {
             "qr_id": item.qr_id,
             "name": item.name,
             "category": item.category,
-            "current_status": item.current_status,
+            "current_status": state.status,
+            "quantity": state.quantity,
+            "available_qty": state.available,
+            "borrowed_qty": state.borrowed,
+            "issued_qty": state.issued,
         },
-        "holder": holder,
+        "holders": holdings_of(db, qr_id, state, users),
         "history": history,
     }
+
+
+def holdings_of(db: Session, qr_id: str, state, users) -> List[Dict]:
+    return [
+        {
+            "user_id": uid,
+            "user_name": users[uid].full_name if uid in users else uid,
+            "unit": users[uid].unit if uid in users else "",
+            "borrowed": h.borrowed,
+            "issued": h.issued,
+            "since": _epoch_ms(h.since),
+        }
+        for uid, h in state.holders.items()
+    ]
 
 
 def transactions(

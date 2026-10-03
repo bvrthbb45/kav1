@@ -40,6 +40,8 @@ class Item(Base):
     current_status: Mapped[str] = mapped_column(String(32), default=STATUS_AVAILABLE)
     # Item type (e.g. "מכשיר קשר"); many serials share one type.
     category: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    # Units in stock under this QR; actions take part of it (see stock.py).
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class Category(Base):
@@ -66,3 +68,5 @@ class Transaction(Base):
     action_type: Mapped[str] = mapped_column(String(16))
     # Time the action happened on the device (UTC), not the time it was synced.
     timestamp: Mapped[datetime] = mapped_column(DateTime)
+    # Units borrowed / issued / returned by this action.
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")

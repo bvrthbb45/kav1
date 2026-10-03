@@ -16,6 +16,11 @@ class ItemOut(BaseModel):
     name: str
     current_status: str
     category: str = ""
+    # Units in stock and how many of them are where right now.
+    quantity: int = 1
+    available_qty: int = 1
+    borrowed_qty: int = 0
+    issued_qty: int = 0
     # Who holds the item (borrowed/issued), from its latest action.
     holder_user_id: Optional[str] = None
     # Device time (epoch ms) of the item's latest action.
@@ -29,6 +34,8 @@ class PendingTransaction(BaseModel):
     action_type: str
     # Epoch milliseconds (UTC) as recorded on the device.
     timestamp: int = Field(ge=0, le=253402300799999)
+    # Units; older apps do not send it.
+    quantity: int = Field(default=1, ge=1, le=1_000_000)
 
 
 class PushRequest(BaseModel):
@@ -62,6 +69,18 @@ class HistoryOut(BaseModel):
     user_id: str
     action_type: str
     timestamp: int
+    quantity: int = 1
+
+
+class HoldingOut(BaseModel):
+    """Units of one item held by one soldier."""
+
+    qr_id: str
+    user_id: str
+    borrowed: int
+    issued: int
+    # Epoch ms of the soldier's latest action on the item.
+    since: Optional[int] = None
 
 
 class PullResponse(BaseModel):
@@ -72,6 +91,7 @@ class PullResponse(BaseModel):
     users: List[UserOut]
     categories: List[CategoryOut] = []
     history: List[HistoryOut] = []
+    holdings: List[HoldingOut] = []
 
 
 class UserIn(BaseModel):
@@ -83,8 +103,9 @@ class UserIn(BaseModel):
 class ItemIn(BaseModel):
     qr_id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=200)
-    # None keeps the current type (older tablets do not send it).
+    # None keeps the current type / quantity (older tablets do not send them).
     category: Optional[str] = Field(default=None, max_length=200)
+    quantity: Optional[int] = Field(default=None, ge=1, le=1_000_000)
 
 
 class CategoryIn(BaseModel):

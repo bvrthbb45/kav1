@@ -38,7 +38,7 @@ def test_process_outbox_applies_edits_before_actions(client):
     assert inbox["push"]["accepted"] == ["t1"]
     assert inbox["push"]["rejected"][0]["tx_id"] == "bad"
     assert inbox["items_uploaded"] == [
-        {"qr_id": "new-item", "name": "אפוד", "category": None}
+        {"qr_id": "new-item", "name": "אפוד", "category": None, "quantity": None}
     ]
     items = {i["qr_id"]: i for i in inbox["state"]["items"]}
     assert items["new-item"]["current_status"] == "ISSUED"

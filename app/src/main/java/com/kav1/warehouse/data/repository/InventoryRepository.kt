@@ -1,16 +1,19 @@
 package com.kav1.warehouse.data.repository
 
 import androidx.room.withTransaction
-import com.kav1.warehouse.data.local.ActionType
 import com.kav1.warehouse.data.local.AppDatabase
 import com.kav1.warehouse.data.local.CategorySummary
+import com.kav1.warehouse.data.local.HeldItemRow
 import com.kav1.warehouse.data.local.HistoryRow
+import com.kav1.warehouse.data.local.HoldingEntity
+import com.kav1.warehouse.data.local.ItemHolderRow
+import com.kav1.warehouse.data.local.UnitTotals
 import com.kav1.warehouse.data.local.ItemEntity
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.ItemWithHolder
 import com.kav1.warehouse.data.local.PendingTransactionEntity
-import com.kav1.warehouse.data.local.StatusCount
 import com.kav1.warehouse.data.local.UserEntity
+import com.kav1.warehouse.domain.stock.LocalStock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.util.UUID
@@ -25,38 +28,45 @@ class InventoryRepository(private val db: AppDatabase) {
     suspend fun getUser(userId: String): UserEntity? = db.userDao().getById(userId)
 
     /**
-     * Records a borrow/issue/return in the outbox and optimistically updates
-     * the local item, atomically.
+     * Records a borrow/issue/return of [quantity] units in the outbox and
+     * optimistically updates the local stock, atomically.
      */
-    suspend fun recordAction(qrId: String, userId: String, actionType: String) {
+    suspend fun recordAction(qrId: String, userId: String, actionType: String, quantity: Int = 1) {
         val tx = PendingTransactionEntity(
             txId = UUID.randomUUID().toString(),
             qrId = qrId,
             userId = userId,
             actionType = actionType,
             timestamp = System.currentTimeMillis(),
+            quantity = quantity.coerceAtLeast(1),
         )
         db.withTransaction {
             db.pendingTransactionDao().insert(tx)
-            db.itemDao().applyAction(
-                qrId,
-                ActionType.resultingStatus(actionType),
-                ActionType.resultingHolder(actionType, userId),
-                tx.timestamp,
-            )
+            LocalStock(db).apply(qrId, userId, actionType, tx.quantity, tx.timestamp)
         }
     }
 
+    suspend fun getHoldingsForItem(qrId: String): List<HoldingEntity> = db.holdingDao().getForItem(qrId)
+
     // --- Management (queued for upload on the next sync) ---
 
-    /** Adds a new item, or edits an existing one without touching its status. */
-    suspend fun saveItem(qrId: String, name: String, category: String) {
+    /** Adds a new item, or edits an existing one; who holds what is kept. */
+    suspend fun saveItem(qrId: String, name: String, category: String, quantity: Int) {
         db.withTransaction {
-            if (db.itemDao().updateLocal(qrId, name, category) == 0) {
+            if (db.itemDao().updateLocal(qrId, name, category, quantity) == 0) {
                 db.itemDao().insert(
-                    ItemEntity(qrId, name, ItemStatus.AVAILABLE, pendingUpload = true, category = category),
+                    ItemEntity(
+                        qrId,
+                        name,
+                        ItemStatus.AVAILABLE,
+                        pendingUpload = true,
+                        category = category,
+                        quantity = quantity,
+                        availableQty = quantity,
+                    ),
                 )
             }
+            LocalStock(db).refresh(qrId)
         }
     }
 
@@ -82,13 +92,15 @@ class InventoryRepository(private val db: AppDatabase) {
 
     fun observePendingUserEdits(): Flow<Int> = db.userDao().observePendingUploadCount()
 
-    fun observeStatusCounts(): Flow<List<StatusCount>> = db.itemDao().observeStatusCounts()
+    /** Units (not item rows) per status, over all items. */
+    fun observeUnitTotals(): Flow<UnitTotals> = db.itemDao().observeUnitTotals()
 
     fun observeItems(status: String?, query: String, category: String? = null): Flow<List<ItemWithHolder>> =
         db.itemDao().observeWithHolder(status, category, query.trim(), null)
 
-    fun observeHeldBy(userId: String): Flow<List<ItemWithHolder>> =
-        db.itemDao().observeWithHolder(null, null, "", userId)
+    fun observeHeldBy(userId: String): Flow<List<HeldItemRow>> = db.holdingDao().observeForUser(userId)
+
+    fun observeItemHolders(qrId: String): Flow<List<ItemHolderRow>> = db.holdingDao().observeForItem(qrId)
 
     fun observeItemHistory(qrId: String, limit: Int = 50): Flow<List<HistoryRow>> =
         db.historyDao().observe(qrId, null, limit)
@@ -99,27 +111,25 @@ class InventoryRepository(private val db: AppDatabase) {
     /** Per item type: target and units per status; types without units are included. */
     fun observeCategorySummaries(): Flow<List<CategorySummary>> =
         combine(
-            db.itemDao().observeCategoryStatusCounts(),
+            db.itemDao().observeUnitTotalsByCategory(),
             db.categoryDao().observeAll(),
-        ) { counts, categories ->
-            val byType = counts.groupBy { it.category }
+        ) { totals, categories ->
+            val byType = totals.associateBy { it.category }
             val targets = categories.associate { it.name to it.targetQty }
             (byType.keys + targets.keys).distinct()
                 .sortedWith(compareBy({ it.isEmpty() }, { it }))
                 .map { name ->
-                    val c = byType[name].orEmpty().associate { it.status to it.count }
+                    val t = byType[name]
                     CategorySummary(
                         name = name,
                         targetQty = targets[name],
-                        total = c.values.sum(),
-                        available = c[ItemStatus.AVAILABLE] ?: 0,
-                        borrowed = c[ItemStatus.BORROWED] ?: 0,
-                        issued = c[ItemStatus.ISSUED] ?: 0,
+                        total = t?.total ?: 0,
+                        available = t?.available ?: 0,
+                        borrowed = t?.borrowed ?: 0,
+                        issued = t?.issued ?: 0,
                     )
                 }
         }
-
-    fun observeUsers(query: String): Flow<List<UserEntity>> = db.userDao().observeFiltered(query.trim())
 
     // --- Rejected transactions ---
 

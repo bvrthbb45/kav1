@@ -3,6 +3,7 @@ package com.kav1.warehouse.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AlertDialog
@@ -20,7 +21,10 @@ import com.kav1.warehouse.domain.sync.SyncScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Post-scan screen: item details plus borrow / issue / return. */
+/**
+ * Post-scan screen: item details, stock and holders, plus borrow / issue /
+ * return. Items stocked in more than one unit ask how many units first.
+ */
 class ItemActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityItemBinding
@@ -46,12 +50,34 @@ class ItemActivity : AppCompatActivity() {
             item?.holderUserId?.let { startActivity(UserCardActivity.intent(this, it)) }
         }
         setActionsEnabled(false)
-        observeHistory()
+        observeHoldersAndHistory()
     }
 
-    private fun observeHistory() {
+    private fun observeHoldersAndHistory() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    app.repository.observeItemHolders(qrId).collect { holders ->
+                        // Single-unit items show the holder line instead.
+                        val show = holders.isNotEmpty() && (item?.quantity ?: 1) > 1
+                        binding.txtHoldersTitle.visibility = if (show) View.VISIBLE else View.GONE
+                        binding.listHolders.visibility = if (show) View.VISIBLE else View.GONE
+                        binding.listHolders.removeAllViews()
+                        holders.forEach { h ->
+                            addListRow(
+                                binding.listHolders,
+                                h.fullName ?: h.userId,
+                                heldLabel(h.borrowed, h.issued),
+                                statusColor(if (h.borrowed > 0) ItemStatus.BORROWED else ItemStatus.ISSUED),
+                                getString(
+                                    R.string.history_row_user,
+                                    h.since?.let { formatDateTime(it) } ?: getString(R.string.card_since_unknown),
+                                    h.userId,
+                                ),
+                            ) { startActivity(UserCardActivity.intent(this@ItemActivity, h.userId)) }
+                        }
+                    }
+                }
                 app.repository.observeItemHistory(qrId).collect { rows ->
                     val visible = if (rows.isEmpty() && item == null) View.GONE else View.VISIBLE
                     binding.txtHistoryTitle.visibility = visible
@@ -83,6 +109,7 @@ class ItemActivity : AppCompatActivity() {
             if (loaded == null) {
                 binding.txtName.text = qrId
                 binding.txtStatus.text = getString(R.string.label_status, getString(R.string.status_unknown))
+                binding.txtStock.visibility = View.GONE
                 binding.txtHolder.visibility = View.GONE
                 binding.txtCategory.visibility = View.GONE
                 binding.txtLastAction.visibility = View.GONE
@@ -94,9 +121,23 @@ class ItemActivity : AppCompatActivity() {
             binding.txtName.text = loaded.name
             binding.txtCategory.visibility = View.VISIBLE
             binding.txtCategory.text = getString(R.string.label_category, categoryLabel(loaded.category))
+            val multi = loaded.quantity > 1
+            binding.txtStatus.visibility = if (multi) View.GONE else View.VISIBLE
             binding.txtStatus.text = getString(R.string.label_status, statusLabel(loaded.currentStatus))
             binding.txtStatus.setTextColor(statusColor(loaded.currentStatus))
-            val holder = loaded.holderUserId?.let { id -> app.repository.getUser(id)?.fullName ?: id }
+            binding.txtStock.visibility = if (multi) View.VISIBLE else View.GONE
+            binding.txtStock.text = getString(
+                R.string.label_stock,
+                loaded.quantity,
+                loaded.availableQty,
+                loaded.borrowedQty,
+                loaded.issuedQty,
+            )
+            val holder = if (multi) {
+                null
+            } else {
+                loaded.holderUserId?.let { id -> app.repository.getUser(id)?.fullName ?: id }
+            }
             binding.txtHolder.visibility = if (holder != null) View.VISIBLE else View.GONE
             binding.txtHolder.text = getString(
                 R.string.label_holder,
@@ -120,35 +161,118 @@ class ItemActivity : AppCompatActivity() {
 
     private fun startAction(actionType: String) {
         val current = item ?: return
+        if (actionType == ActionType.RETURN) {
+            // Who returns first; the amount defaults to what they hold.
+            pickUser(current, actionType) { user, held ->
+                askQuantity(current, actionType, user, held) { qty -> confirmAction(current, user, actionType, qty, held) }
+            }
+        } else {
+            // "How many?" right after the scan, then the soldier.
+            askQuantity(current, actionType, null, 0) { qty ->
+                pickUser(current, actionType) { user, held -> confirmAction(current, user, actionType, qty, held) }
+            }
+        }
+    }
+
+    /** Opens the soldier picker; [onPicked] gets the soldier and how many units they hold now. */
+    private fun pickUser(current: ItemEntity, actionType: String, onPicked: (UserEntity, Int) -> Unit) {
         lifecycleScope.launch {
             var users = app.repository.getUsers()
             if (users.isEmpty()) {
                 toast(R.string.no_users)
                 return@launch
             }
-            // On return, the current holder is the most likely pick: list them first.
-            current.holderUserId?.let { holderId ->
-                val (holder, others) = users.partition { it.userId == holderId }
-                users = holder + others
+            val holdings = app.repository.getHoldingsForItem(current.qrId).associateBy { it.userId }
+            if (actionType == ActionType.RETURN && holdings.isNotEmpty()) {
+                // Current holders are the likeliest pick: list them first.
+                val (holders, others) = users.partition { it.userId in holdings }
+                users = holders + others
             }
             UserPickerDialog.show(this@ItemActivity, users) { user ->
-                confirmAction(current, user, actionType)
+                val held = holdings[user.userId]?.let { it.borrowed + it.issued } ?: 0
+                onPicked(user, held)
             }
         }
     }
 
-    private fun confirmAction(item: ItemEntity, user: UserEntity, actionType: String) {
-        val question = getString(
-            when (actionType) {
-                ActionType.BORROW -> R.string.confirm_borrow
-                ActionType.ISSUE -> R.string.confirm_issue
-                else -> R.string.confirm_return
-            },
-            item.name,
-            user.fullName,
-        )
+    /** Asks for the number of units; single-unit items skip the question. */
+    private fun askQuantity(
+        current: ItemEntity,
+        actionType: String,
+        user: UserEntity?,
+        held: Int,
+        onQuantity: (Int) -> Unit,
+    ) {
+        if (current.quantity <= 1) {
+            onQuantity(1)
+            return
+        }
+        val (view, edit) = dialogEditText(R.string.quantity_hint, InputType.TYPE_CLASS_NUMBER)
+        val suggested = if (actionType == ActionType.RETURN) held.coerceAtLeast(1) else 1
+        edit.setText(suggested.toString())
+        edit.setSelectAllOnFocus(true)
+        val message = if (actionType == ActionType.RETURN) {
+            getString(R.string.quantity_return_message, user?.fullName.orEmpty(), held)
+        } else {
+            getString(R.string.quantity_take_message, current.availableQty, current.quantity)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(
+                when (actionType) {
+                    ActionType.BORROW -> R.string.quantity_title_borrow
+                    ActionType.ISSUE -> R.string.quantity_title_issue
+                    else -> R.string.quantity_title_return
+                },
+            )
+            .setMessage(message)
+            .setView(view)
+            .setPositiveButton(R.string.btn_continue, null)
+            .setNegativeButton(R.string.btn_cancel, null)
+            .create()
+        dialog.setOnShowListener {
+            edit.requestFocus()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val qty = edit.text.toString().trim().toIntOrNull()
+                if (qty == null || qty < 1 || qty > MAX_QUANTITY) {
+                    edit.error = getString(R.string.quantity_invalid)
+                } else {
+                    dialog.dismiss()
+                    onQuantity(qty)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun confirmAction(item: ItemEntity, user: UserEntity, actionType: String, qty: Int, held: Int) {
+        val multi = item.quantity > 1
+        val question = if (multi) {
+            getString(
+                when (actionType) {
+                    ActionType.BORROW -> R.string.confirm_borrow_qty
+                    ActionType.ISSUE -> R.string.confirm_issue_qty
+                    else -> R.string.confirm_return_qty
+                },
+                qty,
+                item.name,
+                user.fullName,
+            )
+        } else {
+            getString(
+                when (actionType) {
+                    ActionType.BORROW -> R.string.confirm_borrow
+                    ActionType.ISSUE -> R.string.confirm_issue
+                    else -> R.string.confirm_return
+                },
+                item.name,
+                user.fullName,
+            )
+        }
         val isReturn = actionType == ActionType.RETURN
         val warning = when {
+            multi && !isReturn && qty > item.availableQty -> getString(R.string.warn_not_enough, item.availableQty)
+            multi && isReturn && qty > held -> getString(R.string.warn_return_more, held)
+            multi -> null
             !isReturn && item.currentStatus != ItemStatus.AVAILABLE ->
                 getString(R.string.warn_not_available, statusLabel(item.currentStatus))
             isReturn && item.currentStatus == ItemStatus.AVAILABLE ->
@@ -158,16 +282,16 @@ class ItemActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.confirm_title)
             .setMessage(if (warning == null) question else "$warning\n\n$question")
-            .setPositiveButton(R.string.btn_confirm) { _, _ -> save(item, user, actionType) }
+            .setPositiveButton(R.string.btn_confirm) { _, _ -> save(item, user, actionType, qty) }
             .setNegativeButton(R.string.btn_cancel, null)
             .show()
     }
 
-    private fun save(item: ItemEntity, user: UserEntity, actionType: String) {
+    private fun save(item: ItemEntity, user: UserEntity, actionType: String, qty: Int) {
         setActionsEnabled(false)
         lifecycleScope.launch {
             try {
-                app.repository.recordAction(item.qrId, user.userId, actionType)
+                app.repository.recordAction(item.qrId, user.userId, actionType, qty)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -185,6 +309,7 @@ class ItemActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "ItemActivity"
         private const val EXTRA_QR_ID = "qr_id"
+        private const val MAX_QUANTITY = 1_000_000
 
         fun intent(context: Context, qrId: String): Intent =
             Intent(context, ItemActivity::class.java).putExtra(EXTRA_QR_ID, qrId)

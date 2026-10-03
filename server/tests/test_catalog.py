@@ -133,7 +133,7 @@ def test_soldier_and_item_cards(client):
 
     _push(client, "t2", "q1", "u1", "RETURN", 1_700_000_100_000)
     item = client.get("/api/panel/items/card", params={"qr_id": "q1"}).json()
-    assert item["holder"] is None
+    assert item["holders"] == []
     assert [h["action_type"] for h in item["history"]] == ["RETURN", "ISSUE"]
     assert (
         client.get("/api/panel/users/card", params={"user_id": "u1"}).json()["holding"]
@@ -157,7 +157,7 @@ def test_excel_exports(client):
         "חיילים",
         "יומן פעולות",
     ]
-    assert wb["מלאי"]["D2"].value == "מושאל"
+    assert wb["מלאי"]["F2"].value == 1  # borrowed units
     assert wb["ציוד אצל חיילים"]["A2"].value == "ישראל ישראלי"
 
     r = client.get(

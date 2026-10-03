@@ -95,6 +95,28 @@
     <string name="usb_problem_debug_off">הכבל מחובר, אבל איתור באגים של USB כבוי ולכן השרת לא יכול לגשת לטאבלט.\n\nהגדרות ← אפשרויות מפתחים ← לסמן \"איתור באגים של USB\", ואז לנתק ולחבר את הכבל.\n\n(אם \"אפשרויות מפתחים\" לא מופיע: הגדרות ← אודות המכשיר ← ללחוץ 7 פעמים על \"מספר גרסת Build\")</string>
     <string name="usb_problem_not_seen">הכבל מחובר ואיתור באגים פעיל, אבל השרת עדיין לא מזהה את הטאבלט. נשלחה בקשת סנכרון, והיא תתבצע ברגע שהשרת יזהה אותו.\n\nלבדוק:\n• במסך הטאבלט הופיעה ההודעה \"לאפשר איתור באגים של USB?\" – לסמן \"אפשר תמיד ממחשב זה\" ולאשר\n• השרת פועל במחשב\n• במחשב השרת לפתוח את \"Olympus Control Panel\" – הוא מראה בדיוק מה חסר\n• אם השרת ב-VirtualBox: התפריט Devices ← USB ← SAMSUNG_Android מסומן</string>
 
+    <!-- Quantities -->
+    <string name="label_stock">במלאי: %1$d · זמין: %2$d · מושאל: %3$d · מונפק: %4$d</string>
+    <string name="holders_title">אצל חיילים</string>
+    <string name="held_borrowed">מושאל %1$d</string>
+    <string name="held_issued">מונפק %1$d</string>
+    <string name="quantity_hint">כמות</string>
+    <string name="quantity_title_borrow">כמה להשאיל?</string>
+    <string name="quantity_title_issue">כמה לנפק?</string>
+    <string name="quantity_title_return">כמה הוחזרו?</string>
+    <string name="quantity_take_message">זמין: %1$d מתוך %2$d במלאי</string>
+    <string name="quantity_return_message">רשום אצל %1$s: %2$d</string>
+    <string name="quantity_invalid">יש להזין מספר שלם גדול מ-0</string>
+    <string name="btn_continue">המשך</string>
+    <string name="confirm_borrow_qty">להשאיל %1$d × \"%2$s\" ל%3$s?</string>
+    <string name="confirm_issue_qty">לנפק %1$d × \"%2$s\" ל%3$s?</string>
+    <string name="confirm_return_qty">לרשום החזרה של %1$d × \"%2$s\" מ%3$s?</string>
+    <string name="warn_not_enough">שים לב: זמינות רק %1$d יחידות. ההפרש יירשם כאילו נלקח מחיילים אחרים שמחזיקים בפריט.</string>
+    <string name="warn_return_more">שים לב: אצל החייל רשומות רק %1$d יחידות. השאר יירשמו כהחזרה מחיילים אחרים.</string>
+    <string name="item_quantity_hint">כמות במלאי</string>
+    <string name="dashboard_row_stock">%1$s · זמין %2$d מתוך %3$d</string>
+    <string name="history_action_qty">%1$s ×%2$d</string>
+
     <!-- Item types, history and soldier card -->
     <string name="label_category">סוג: %1$s</string>
     <string name="no_category">ללא סוג</string>

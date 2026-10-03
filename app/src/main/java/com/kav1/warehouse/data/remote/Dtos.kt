@@ -11,6 +11,7 @@ data class PendingTransactionDto(
     @SerializedName("user_id") val userId: String,
     @SerializedName("action_type") val actionType: String,
     @SerializedName("timestamp") val timestamp: Long,
+    @SerializedName("quantity") val quantity: Int,
 )
 
 data class PushRequestDto(
@@ -38,6 +39,19 @@ data class ItemDto(
     @SerializedName("holder_user_id") val holderUserId: String?,
     @SerializedName("last_action_at") val lastActionAt: Long?,
     @SerializedName("category") val category: String?,
+    // Missing from servers older than 1.6.
+    @SerializedName("quantity") val quantity: Int?,
+    @SerializedName("available_qty") val availableQty: Int?,
+    @SerializedName("borrowed_qty") val borrowedQty: Int?,
+    @SerializedName("issued_qty") val issuedQty: Int?,
+)
+
+data class HoldingDto(
+    @SerializedName("qr_id") val qrId: String?,
+    @SerializedName("user_id") val userId: String?,
+    @SerializedName("borrowed") val borrowed: Int?,
+    @SerializedName("issued") val issued: Int?,
+    @SerializedName("since") val since: Long?,
 )
 
 data class UserDto(
@@ -55,6 +69,7 @@ data class PullResponseDto(
     /** Missing from servers older than 1.5; treated as empty. */
     @SerializedName("categories") val categories: List<CategoryDto>?,
     @SerializedName("history") val history: List<HistoryDto>?,
+    @SerializedName("holdings") val holdings: List<HoldingDto>?,
 )
 
 data class CategoryDto(
@@ -68,6 +83,7 @@ data class HistoryDto(
     @SerializedName("user_id") val userId: String?,
     @SerializedName("action_type") val actionType: String?,
     @SerializedName("timestamp") val timestamp: Long?,
+    @SerializedName("quantity") val quantity: Int?,
 )
 
 data class ItemUpsertDto(
@@ -75,6 +91,7 @@ data class ItemUpsertDto(
     @SerializedName("name") val name: String,
     // Nullable: Gson leaves it null when reading an older server's echo.
     @SerializedName("category") val category: String?,
+    @SerializedName("quantity") val quantity: Int?,
 )
 
 data class UserUpsertDto(

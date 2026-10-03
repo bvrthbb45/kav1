@@ -26,6 +26,7 @@ from .. import (
     models,
     schemas,
     services,
+    stock,
     usb_sync,
 )
 from ..config import DATABASE_URL, PORT
@@ -76,13 +77,7 @@ def _epoch_ms(value: datetime) -> int:
 def status(after: int = 0, db: Session = Depends(get_db)):
     agent = usb_sync.current_agent
     snapshot = agent.snapshot() if agent is not None else None
-    by_status = dict(
-        db.execute(
-            select(models.Item.current_status, func.count()).group_by(
-                models.Item.current_status
-            )
-        ).all()
-    )
+    states = stock.item_states(db).values()
     day_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
     return {
         "server": {
@@ -101,10 +96,11 @@ def status(after: int = 0, db: Session = Depends(get_db)):
             "check": diagnostics.check(snapshot, usb_sync.disabled_reason),
         },
         "counts": {
-            "items": sum(by_status.values()),
-            "available": by_status.get(models.STATUS_AVAILABLE, 0),
-            "borrowed": by_status.get(models.STATUS_BORROWED, 0),
-            "issued": by_status.get(models.STATUS_ISSUED, 0),
+            # Units, not item rows: one QR can stock many.
+            "items": sum(st.quantity for st in states),
+            "available": sum(st.available for st in states),
+            "borrowed": sum(st.borrowed for st in states),
+            "issued": sum(st.issued for st in states),
             "users": db.scalar(select(func.count()).select_from(models.User)),
             "transactions": db.scalar(
                 select(func.count()).select_from(models.Transaction)
@@ -124,6 +120,13 @@ def data(db: Session = Depends(get_db)):
     state = services.pull_state(db)
     names = {u.user_id: u.full_name for u in state.users}
     item_names = {i.qr_id: i.name for i in state.items}
+    holders = {}
+    for h in state.holdings:
+        name = names.get(h.user_id, h.user_id)
+        count = h.borrowed + h.issued
+        holders.setdefault(h.qr_id, []).append(
+            f"{name} ×{count}" if count > 1 else name
+        )
     recent = db.scalars(
         select(models.Transaction)
         .order_by(models.Transaction.timestamp.desc())
@@ -134,7 +137,7 @@ def data(db: Session = Depends(get_db)):
         "items": [
             {
                 **i.model_dump(),
-                "holder_name": names.get(i.holder_user_id, i.holder_user_id or ""),
+                "holder_name": ", ".join(holders.get(i.qr_id, [])),
             }
             for i in state.items
         ],
@@ -148,6 +151,7 @@ def data(db: Session = Depends(get_db)):
                 "user_name": names.get(t.user_id, t.user_id),
                 "action_type": t.action_type,
                 "timestamp": _epoch_ms(t.timestamp),
+                "quantity": t.quantity or 1,
             }
             for t in recent
         ],
@@ -180,6 +184,7 @@ class ItemForm(BaseModel):
     qr_id: str = Field(min_length=1, max_length=128)
     name: str = Field(default="", max_length=200)
     category: str = Field(default="", max_length=200)
+    quantity: int = Field(default=1, ge=1, le=1_000_000)
 
 
 class UserForm(BaseModel):
@@ -201,7 +206,7 @@ def save_item(form: ItemForm, db: Session = Depends(get_db)):
     name = form.name.strip() or form.category.strip()
     if not name:
         raise catalog.CatalogError("יש להזין שם פריט או סוג פריט")
-    created = catalog.save_item(db, form.qr_id, name, form.category)
+    created = catalog.save_item(db, form.qr_id, name, form.category, form.quantity)
     verb = "נוסף פריט" if created else "עודכן פריט"
     events.add(events.INFO, f"{verb}: {name} ({form.qr_id.strip()})", "panel")
     return _ok(messages.ITEM_SAVED.format(qr_id=form.qr_id.strip()))

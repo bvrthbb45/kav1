@@ -40,8 +40,28 @@ data class ItemEntity(
     @ColumnInfo(name = "last_action_at") val lastActionAt: Long? = null,
     /** Created/renamed in the management screen and not yet sent to the server. */
     @ColumnInfo(name = "pending_upload", defaultValue = "0") val pendingUpload: Boolean = false,
-    /** Item type (e.g. "מכשיר קשר"); the QR / [qrId] is the unit's serial number. */
+    /** Item type (e.g. "מכשיר קשר"); the QR / [qrId] is the item's serial number. */
     @ColumnInfo(name = "category", defaultValue = "''") val category: String = "",
+    /** Units in stock under this QR, and where they are now (see StockRules). */
+    @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
+    @ColumnInfo(name = "available_qty", defaultValue = "1") val availableQty: Int = 1,
+    @ColumnInfo(name = "borrowed_qty", defaultValue = "0") val borrowedQty: Int = 0,
+    @ColumnInfo(name = "issued_qty", defaultValue = "0") val issuedQty: Int = 0,
+)
+
+/** Units of one item held by one soldier. */
+@Entity(
+    tableName = "holdings",
+    primaryKeys = ["qr_id", "user_id"],
+    indices = [Index(value = ["user_id"])],
+)
+data class HoldingEntity(
+    @ColumnInfo(name = "qr_id") val qrId: String,
+    @ColumnInfo(name = "user_id") val userId: String,
+    @ColumnInfo(name = "borrowed") val borrowed: Int,
+    @ColumnInfo(name = "issued") val issued: Int,
+    /** Epoch ms of the soldier's latest action on the item. */
+    @ColumnInfo(name = "since") val since: Long?,
 )
 
 /** An item type with its target quantity (תקן), from the server. */
@@ -62,6 +82,7 @@ data class HistoryEntity(
     @ColumnInfo(name = "user_id") val userId: String,
     @ColumnInfo(name = "action_type") val actionType: String,
     @ColumnInfo(name = "timestamp") val timestamp: Long,
+    @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
 )
 
 @Entity(tableName = "users")
@@ -91,6 +112,7 @@ data class PendingTransactionEntity(
     /** Epoch milliseconds when the action happened on the device. */
     @ColumnInfo(name = "timestamp") val timestamp: Long,
     @ColumnInfo(name = "sync_error") val syncError: String? = null,
+    @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
 )
 
 /** Dashboard row: an item plus the name of whoever holds it. */
@@ -104,6 +126,37 @@ data class ItemWithHolder(
     @ColumnInfo(name = "holder_unit") val holderUnit: String?,
     @ColumnInfo(name = "pending_upload") val pendingUpload: Boolean,
     @ColumnInfo(name = "category") val category: String,
+    @ColumnInfo(name = "quantity") val quantity: Int,
+    @ColumnInfo(name = "available_qty") val availableQty: Int,
+)
+
+/** Soldier card row: units of an item a soldier holds. */
+data class HeldItemRow(
+    @ColumnInfo(name = "qr_id") val qrId: String,
+    @ColumnInfo(name = "name") val name: String?,
+    @ColumnInfo(name = "category") val category: String?,
+    @ColumnInfo(name = "borrowed") val borrowed: Int,
+    @ColumnInfo(name = "issued") val issued: Int,
+    @ColumnInfo(name = "since") val since: Long?,
+)
+
+/** Item screen row: a soldier holding units of the item. */
+data class ItemHolderRow(
+    @ColumnInfo(name = "user_id") val userId: String,
+    @ColumnInfo(name = "full_name") val fullName: String?,
+    @ColumnInfo(name = "unit") val unit: String?,
+    @ColumnInfo(name = "borrowed") val borrowed: Int,
+    @ColumnInfo(name = "issued") val issued: Int,
+    @ColumnInfo(name = "since") val since: Long?,
+)
+
+/** Units per status, summed over items (optionally per type). */
+data class UnitTotals(
+    @ColumnInfo(name = "category") val category: String,
+    @ColumnInfo(name = "total") val total: Int,
+    @ColumnInfo(name = "available") val available: Int,
+    @ColumnInfo(name = "borrowed") val borrowed: Int,
+    @ColumnInfo(name = "issued") val issued: Int,
 )
 
 /** One action in a history list, with names resolved; [pending] = not yet on the server. */
@@ -113,6 +166,7 @@ data class HistoryRow(
     @ColumnInfo(name = "user_id") val userId: String,
     @ColumnInfo(name = "action_type") val actionType: String,
     @ColumnInfo(name = "timestamp") val timestamp: Long,
+    @ColumnInfo(name = "quantity") val quantity: Int,
     @ColumnInfo(name = "pending") val pending: Boolean,
     @ColumnInfo(name = "item_name") val itemName: String?,
     @ColumnInfo(name = "category") val category: String?,

@@ -44,6 +44,7 @@ SERIAL = {
     "ברקוד",
 }
 ITEM_NAME = {"שםפריט", "פריט", "תיאור", "תיאורפריט", "itemname", "name", "שם"}
+QUANTITY = {"כמות", "כמותבמלאי", "מלאי", "quantity", "qty"}
 CATEGORY = {"סוגפריט", "סוג", "קטגוריה", "category", "type"}
 TARGET = {"כמותבתקן", "תקן", "כמות", "target", "targetqty"}
 USER_ID = {"מספראישי", "מא", "מסאישי", "אישי", "userid", "id", "תז"}
@@ -125,18 +126,23 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
         body = list(enumerate(rows[start + 1 :], start=start + 2))
         if serial is not None:
             name = _find(header, ITEM_NAME)
+            qty_col = _find(header, QUANTITY)
             for row_no, row in body:
                 qr_id = value(row, serial)
                 if not qr_id:
                     continue
                 cat = value(row, category)
                 item_name = value(row, name) or cat
+                raw_qty = value(row, qty_col)
                 try:
+                    qty = int(float(raw_qty)) if raw_qty else None
                     items.append(
-                        schemas.ItemIn(qr_id=qr_id, name=item_name, category=cat)
+                        schemas.ItemIn(
+                            qr_id=qr_id, name=item_name, category=cat, quantity=qty
+                        )
                     )
-                except ValidationError:
-                    error(sheet, row_no, "חסר שם פריט או סוג פריט")
+                except (ValueError, ValidationError):
+                    error(sheet, row_no, "חסר שם פריט או סוג פריט, או כמות לא תקינה")
                     continue
                 if cat:
                     categories.setdefault(cat, None)
@@ -230,18 +236,22 @@ def _sheet(wb: Workbook, title: str, headers: List[str], rows: Iterable[list]):
 def _inventory(wb: Workbook, db: Session) -> None:
     state = services.pull_state(db)
     users = {u.user_id: u for u in state.users}
+    holders: Dict[str, List[str]] = {}
+    for h in state.holdings:
+        name = users[h.user_id].full_name if h.user_id in users else h.user_id
+        holders.setdefault(h.qr_id, []).append(f"{name} ({h.borrowed + h.issued})")
     rows = []
     for i in sorted(state.items, key=lambda i: (i.category, i.name, i.qr_id)):
-        holder = users.get(i.holder_user_id) if i.holder_user_id else None
         rows.append(
             [
                 i.qr_id,
                 i.name,
                 i.category or messages.NO_CATEGORY,
-                STATUS_LABELS.get(i.current_status, i.current_status),
-                holder.full_name if holder else (i.holder_user_id or ""),
-                i.holder_user_id or "",
-                holder.unit if holder else "",
+                i.quantity,
+                i.available_qty,
+                i.borrowed_qty,
+                i.issued_qty,
+                ", ".join(holders.get(i.qr_id, [])),
                 _local(i.last_action_at),
             ]
         )
@@ -252,10 +262,11 @@ def _inventory(wb: Workbook, db: Session) -> None:
             "מספר סידורי",
             "שם פריט",
             "סוג פריט",
-            "סטטוס",
-            "מחזיק",
-            "מספר אישי",
-            "יחידה",
+            "כמות במלאי",
+            "זמין",
+            "מושאל",
+            "מנופק",
+            "אצל חיילים",
             "פעולה אחרונה",
         ],
         rows,
@@ -269,7 +280,7 @@ def _types(wb: Workbook, db: Session) -> None:
         [
             "סוג פריט",
             "כמות בתקן",
-            "רשומים במערכת",
+            "כמות במלאי",
             "זמינים",
             "מושאלים",
             "מנופקים",
@@ -303,7 +314,8 @@ def _holders(
             "שם פריט",
             "סוג פריט",
             "מספר סידורי",
-            "סטטוס",
+            "כמות מושאלת",
+            "כמות מנופקת",
             "מתאריך",
         ],
         (
@@ -314,7 +326,8 @@ def _holders(
                 r["item_name"],
                 r["category"],
                 r["qr_id"],
-                STATUS_LABELS.get(r["status"], r["status"]),
+                r["borrowed"],
+                r["issued"],
                 _local(r["since"]),
             ]
             for r in catalog.holdings(db, user_id)
@@ -332,6 +345,7 @@ def _history(wb: Workbook, rows: List[Dict], title: str) -> None:
             "שם פריט",
             "סוג פריט",
             "מספר סידורי",
+            "כמות",
             "חייל",
             "מספר אישי",
             "יחידה",
@@ -343,6 +357,7 @@ def _history(wb: Workbook, rows: List[Dict], title: str) -> None:
                 r["item_name"],
                 r["category"],
                 r["qr_id"],
+                r["quantity"],
                 r["user_name"],
                 r["user_id"],
                 r["unit"],
@@ -451,7 +466,10 @@ def template() -> bytes:
     _sheet(
         wb,
         "מלאי",
-        ["מספר סידורי", "שם פריט", "סוג פריט"],
-        [["MK-0001", "מכשיר קשר 710", "מכשיר קשר"], ["BN-0001", "משקפת 7x50", "משקפת"]],
+        ["מספר סידורי", "שם פריט", "סוג פריט", "כמות"],
+        [
+            ["MK-0001", "מכשיר קשר 710", "מכשיר קשר", 1],
+            ["BAT-AA", "סוללות AA", "סוללות", 200],
+        ],
     )
     return _finish(wb)
