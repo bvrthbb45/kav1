@@ -18,6 +18,15 @@ if errorlevel 1 (
 
 set "PATCH=%~dp0patch"
 if exist "%PATCH%\main.py" goto have_patch
+REM The update files were copied straight into the server folder (and
+REM update.bat with them): they are already in place, so only back up,
+REM check and restart.
+if exist "%~dp0python\python.exe" if exist "%~dp0main.py" if exist "%~dp0app\main.py" (
+    echo The update files are already in the server folder: %~dp0
+    set "TARGET=%~dp0"
+    set "INPLACE=1"
+    goto have_patch
+)
 REM update.bat was opened from inside the zip (Windows copies only that one
 REM file to a temp folder) or moved away from its "patch" folder: find the
 REM update zip in the usual places and extract it ourselves.
@@ -37,6 +46,7 @@ exit /b 1
 :have_patch
 
 echo [1/6] Finding the installed server...
+if defined INPLACE goto have_target
 set "TARGET="
 REM The folder the startup task runs from (set by install.bat).
 for /f "usebackq delims=" %%d in (`powershell -NoProfile -Command "try { $x=[xml](schtasks /Query /TN WarehouseSyncServer /XML 2>$null | Out-String); Split-Path ($x.Task.Actions.Exec.Command.Trim([char]34)) } catch {}"`) do set "TARGET=%%d"
@@ -46,6 +56,8 @@ if not defined TARGET (
     echo Enter the folder that contains start_server.bat and warehouse.db
     set /p "TARGET=Folder: "
 )
+
+:have_target
 set "TARGET=%TARGET:"=%"
 if "%TARGET:~-1%"=="\" set "TARGET=%TARGET:~0,-1%"
 if not exist "%TARGET%\python\python.exe" (
@@ -78,6 +90,11 @@ if exist "%TARGET%\warehouse.db" (
     echo       No database yet - nothing to back up.
 )
 
+if defined INPLACE (
+    echo [4/6] Files already copied - skipping.
+    echo [5/6] Checking the updated server...
+    goto check
+)
 echo [4/6] Saving the current program files...
 set "OLD=%TARGET%\backups\program_before_update_%TS%"
 robocopy "%TARGET%\app" "%OLD%\app" /E /XD __pycache__ /NJH /NJS /NFL /NDL /NP >nul
@@ -93,9 +110,15 @@ if errorlevel 8 (
     echo         back into %TARGET%
     goto restart
 )
+:check
 pushd "%TARGET%"
 "%PY%" -c "import app.main" || (
     popd
+    if defined INPLACE (
+        echo [ERROR] The server does not start with these files. Copy the folders
+        echo         app and the file main.py from the update into %TARGET% again.
+        goto restart
+    )
     echo [ERROR] The updated server does not start. Rolling back the program files...
     robocopy "%OLD%" "%TARGET%" /E /NJH /NJS /NFL /NDL /NP >nul
     goto restart
