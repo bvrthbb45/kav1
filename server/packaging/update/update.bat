@@ -17,11 +17,24 @@ if errorlevel 1 (
 )
 
 set "PATCH=%~dp0patch"
-if not exist "%PATCH%\main.py" (
-    echo [ERROR] The "patch" folder is missing. Extract the whole zip and run update.bat from it.
-    pause
-    exit /b 1
+if exist "%PATCH%\main.py" goto have_patch
+REM update.bat was opened from inside the zip (Windows copies only that one
+REM file to a temp folder) or moved away from its "patch" folder: find the
+REM update zip in the usual places and extract it ourselves.
+echo Looking for Olympus-Server-Update.zip ...
+set "PATCH="
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$dirs=@('%~dp0','%~dp0..','%~dp0..\..',[Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('CommonDesktopDirectory'),(Join-Path $env:USERPROFILE 'Downloads'),(Join-Path $env:USERPROFILE 'Desktop'),(Join-Path $env:USERPROFILE 'OneDrive\Desktop')); $z=$dirs | Where-Object { $_ -and (Test-Path $_) } | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter 'Olympus-Server-Update*.zip' -File -ErrorAction SilentlyContinue } | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($z) { $d=Join-Path $env:TEMP 'OlympusUpdate_extract'; Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue; Expand-Archive -LiteralPath $z.FullName -DestinationPath $d -Force; $m=Get-ChildItem -LiteralPath $d -Recurse -Filter main.py -File | Where-Object { $_.Directory.Name -eq 'patch' } | Select-Object -First 1; if ($m) { $m.DirectoryName } }"`) do set "PATCH=%%p"
+if defined PATCH if exist "%PATCH%\main.py" (
+    echo       Using: %PATCH%
+    goto have_patch
 )
+echo [ERROR] The update files were not found.
+echo         Right-click Olympus-Server-Update.zip, choose "Extract All",
+echo         then open the extracted OlympusUpdate folder and run update.bat there.
+pause
+exit /b 1
+
+:have_patch
 
 echo [1/6] Finding the installed server...
 set "TARGET="
