@@ -31,6 +31,7 @@ import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.remote.ApiClient
 import com.kav1.warehouse.databinding.ActivityAdminBinding
 import com.kav1.warehouse.domain.sync.SyncScheduler
+import com.kav1.warehouse.domain.sync.UsbLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -301,17 +302,33 @@ class AdminActivity : AppCompatActivity() {
         binding.btnTestConnection.isEnabled = false
         binding.btnTestConnection.text = getString(R.string.connection_testing, url)
         lifecycleScope.launch {
+            // Wired sync does not use the network address at all, so check the cable first.
+            val link = UsbLink.status(this@AdminActivity)
+            val lastUsb = app.prefs.lastUsbSync
+            val usbLine = if (link.serverSeen()) {
+                getString(
+                    R.string.connection_usb_ok,
+                    if (lastUsb == 0L) getString(R.string.usb_never_synced) else formatDateTime(lastUsb),
+                )
+            } else {
+                getString(R.string.connection_usb_none)
+            }
             val message = try {
                 val response = app.api().health()
                 if (response.isSuccessful) {
-                    getString(R.string.connection_ok, url, response.body()?.message.orEmpty())
+                    getString(R.string.connection_ok, url, response.body()?.message.orEmpty()) + "\n\n" + usbLine
                 } else {
-                    getString(R.string.connection_http_error, url, response.code())
+                    usbLine + "\n\n" + getString(R.string.connection_http_error, url, response.code())
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                getString(R.string.connection_failed, url, "${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+                if (link.serverSeen()) {
+                    usbLine + "\n\n" + getString(R.string.connection_network_not_needed, url)
+                } else {
+                    usbLine + "\n\n" +
+                        getString(R.string.connection_failed, url, "${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+                }
             }
             binding.btnTestConnection.isEnabled = true
             binding.btnTestConnection.setText(R.string.admin_test_connection)

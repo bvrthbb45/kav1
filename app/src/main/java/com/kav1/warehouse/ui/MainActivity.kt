@@ -227,7 +227,13 @@ class MainActivity : AppCompatActivity() {
                         binding.txtPending.text = getString(R.string.status_pending, pending)
                         binding.txtFailed.text = getString(R.string.status_failed, failed)
                         binding.txtFailed.visibility = if (failed > 0) View.VISIBLE else View.GONE
-                        binding.txtLocalData.text = getString(R.string.status_local_data, items, users)
+                        binding.txtLocalData.text = if (items == 0 && users == 0 && app.prefs.lastSuccessfulSync > 0) {
+                            // Synced fine, but the server has nothing yet.
+                            getString(R.string.status_local_data, items, users) + "\n" +
+                                getString(R.string.status_server_empty)
+                        } else {
+                            getString(R.string.status_local_data, items, users)
+                        }
                         // A background sync may have just finished.
                         renderLastSync()
                     }

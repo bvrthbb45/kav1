@@ -193,10 +193,14 @@
     <string name="admin_server_url">כתובת שרת</string>
     <string name="admin_change_pin">שינוי קוד מנהל</string>
     <string name="admin_test_connection">בדיקת חיבור לשרת</string>
+    <string name="connection_usb_ok">✔ מחובר לשרת בכבל USB\nהסנכרון עובר דרך הכבל. סנכרון אחרון בכבל: %1$s</string>
+    <string name="connection_usb_none">✘ אין חיבור לשרת בכבל USB</string>
+    <string name="connection_network_not_needed">חיבור ברשת (%1$s): אין – זה תקין, כי הטאבלט מסתנכרן בכבל ולא צריך רשת</string>
+    <string name="status_server_empty">השרת עדיין ריק: מוסיפים פריטים וחיילים במרכז הבקרה במחשב (או מייבאים מאקסל), והם יגיעו לטאבלט בסנכרון הבא</string>
     <string name="connection_testing">בודק חיבור ל-%1$s…</string>
     <string name="connection_ok">החיבור לשרת תקין ✔\n%1$s\n\nתשובת השרת: %2$s</string>
     <string name="connection_http_error">השרת ענה עם שגיאה %2$d\n%1$s</string>
-    <string name="connection_failed">אין חיבור לשרת ✘\n%1$s\n\nפרטי השגיאה: %2$s\n\nבדיקות:\n• הטאבלט מחובר לאותה רשת של השרת (USB או WiFi)\n• השרת פועל במחשב\n• כתובת השרת נכונה (ממשק ניהול ← כתובת שרת)\n• פורט 8000 פתוח בחומת האש</string>
+    <string name="connection_failed">אין חיבור לשרת ברשת ✘\n%1$s\n\nפרטי השגיאה: %2$s\n\nבדיקות:\n• הטאבלט מחובר לאותה רשת של השרת (USB או WiFi)\n• השרת פועל במחשב\n• כתובת השרת נכונה (ממשק ניהול ← כתובת שרת)\n• פורט 8000 פתוח בחומת האש</string>
     <string name="admin_pending_mark">ממתין לסנכרון</string>
     <string name="admin_list_hint">לחיצה על שורה לעריכה</string>
     <string name="item_dialog_add">פריט חדש</string>

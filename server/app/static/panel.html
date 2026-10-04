@@ -124,6 +124,12 @@
     <div class="tile" style="border-top-color:#8a94a6"><div class="label">פעולות ב-24 שעות</div><div class="value" id="c24h">–</div></div>
   </div>
 
+  <div class="next" id="emptyNotice" hidden style="margin-top:16px">
+    <b>השרת עדיין ריק.</b> הטאבלטים מסתנכרנים, אבל אין עדיין פריטים או חיילים לשלוח אליהם.
+    מוסיפים בלשוניות "מלאי" ו"חיילים", או מייבאים קובץ אקסל –
+    <button class="primary" onclick="switchTab('excel'); document.querySelector('[data-tab=excel]').scrollIntoView()">ייבוא מאקסל</button>
+  </div>
+
   <div class="grid2">
     <section class="card">
       <h2>חיבור טאבלטים בכבל (USB)<span class="spacer"></span>
@@ -299,6 +305,7 @@ function renderCounts(c) {
   $("cItems").textContent = c.items; $("cAvailable").textContent = c.available;
   $("cBorrowed").textContent = c.borrowed; $("cIssued").textContent = c.issued;
   $("cUsers").textContent = c.users; $("c24h").textContent = c.transactions_24h;
+  $("emptyNotice").hidden = !(c.items === 0 && c.users === 0);
 }
 function renderUsb(usb, now) {
   const steps = usb.check.steps;
