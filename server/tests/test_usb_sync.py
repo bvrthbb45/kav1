@@ -156,3 +156,26 @@ def test_unreachable_adb_is_reported(client, tmp_path):
     snap = agent.snapshot()
     assert snap["adb_ok"] is False
     assert snap["adb_error"]
+
+
+def test_process_outbox_applies_changes_first(client):
+    from app.database import SessionLocal
+    from app.usb_sync import process_outbox
+
+    client.post("/api/admin/items", json=[{"qr_id": "old", "name": "אפוד"}])
+    outbox = {
+        "request_id": "r2",
+        "device_id": "tab-1",
+        "changes": [
+            {"op_id": "c1", "op": "RENAME_ITEM", "target_id": "old", "new_id": "new"}
+        ],
+        # Edited after the change, so it already uses the new serial.
+        "items": [{"qr_id": "new", "name": "אפוד קרמי"}],
+        "users": [],
+        "transactions": [],
+    }
+    with SessionLocal() as db:
+        inbox = process_outbox(db, outbox)
+    assert inbox["changes"]["results"][0]["applied"]
+    items = {i["qr_id"]: i for i in inbox["state"]["items"]}
+    assert "old" not in items and items["new"]["name"] == "אפוד קרמי"

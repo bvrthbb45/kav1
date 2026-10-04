@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CategoryEntity::class,
         HistoryEntity::class,
         HoldingEntity::class,
+        CatalogChangeEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,6 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun historyDao(): HistoryDao
     abstract fun holdingDao(): HoldingDao
+    abstract fun catalogDao(): CatalogDao
 
     companion object {
         @Volatile
@@ -96,13 +98,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v6: queue of deletes and serial / personal number changes. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS catalog_changes (op_id TEXT NOT NULL, op TEXT NOT NULL, " +
+                        "target_id TEXT NOT NULL, new_id TEXT, created_at INTEGER NOT NULL, PRIMARY KEY(op_id))",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "warehouse.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
             }
     }
 }

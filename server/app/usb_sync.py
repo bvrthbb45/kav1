@@ -66,7 +66,17 @@ def process_outbox(db: Session, outbox: dict) -> dict:
     transactions = [
         schemas.PendingTransaction(**t) for t in outbox.get("transactions") or []
     ]
-    # New users/items first: transactions may reference them.
+    changes = [schemas.ChangeIn(**c) for c in outbox.get("changes") or []]
+    # Deletes and id changes first, then new users/items: later edits and
+    # transactions use the new ids.
+    applied = services.apply_changes(db, changes) if changes else None
+    if applied:
+        for r in applied.results:
+            events.add(
+                events.INFO if r.applied else events.WARNING,
+                f"שינוי מטאבלט: {r.message}",
+                SOURCE,
+            )
     if users:
         services.upsert_users(db, users)
     if items:
@@ -78,6 +88,7 @@ def process_outbox(db: Session, outbox: dict) -> dict:
         "push": push.model_dump(),
         "items_uploaded": [i.model_dump() for i in items],
         "users_uploaded": [u.model_dump() for u in users],
+        "changes": applied.model_dump() if applied else None,
         "state": state.model_dump(),
     }
 

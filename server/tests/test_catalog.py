@@ -99,11 +99,12 @@ def test_item_and_user_management(client):
     )
     assert item["current_status"] == "BORROWED" and item["name"] == "משקפת 7x50"
 
-    # Items/soldiers with history cannot be deleted.
-    r = client.delete("/api/panel/items", params={"qr_id": "S-9"})
-    assert r.status_code == 400 and "היסטוריית" in r.json()["message"]
-    r = client.delete("/api/panel/users", params={"user_id": "u9"})
-    assert r.status_code == 400
+    # Deleting a soldier returns what they borrowed; their history goes too.
+    assert client.delete("/api/panel/users", params={"user_id": "u9"}).json()["success"]
+    state = client.get("/api/sync/pull").json()
+    item = next(i for i in state["items"] if i["qr_id"] == "S-9")
+    assert item["current_status"] == "AVAILABLE" and state["history"] == []
+    assert client.delete("/api/panel/items", params={"qr_id": "S-9"}).json()["success"]
     client.post("/api/panel/items", json={"qr_id": "S-10", "category": "משקפת"})
     assert client.delete("/api/panel/items", params={"qr_id": "S-10"}).json()["success"]
 
@@ -207,3 +208,107 @@ def test_old_database_gets_category_column(tmp_path, monkeypatch):
     init_db()
     with SessionLocal() as db:
         assert services.pull_state(db).items[0].category == ""
+
+
+def _item(client, qr_id):
+    items = client.get("/api/sync/pull").json()["items"]
+    return next((i for i in items if i["qr_id"] == qr_id), None)
+
+
+def test_change_serial_and_personal_number_keeps_history(client):
+    client.post("/api/admin/users", json=[{"user_id": "u1", "full_name": "דני"}])
+    client.post(
+        "/api/panel/items",
+        json={"qr_id": "OLD-1", "category": "קסדה", "quantity": 2},
+    )
+    _push(client, "t1", "OLD-1", "u1", "BORROW", 1_700_000_000_000)
+
+    r = client.post(
+        "/api/panel/items",
+        json={
+            "qr_id": "NEW-1",
+            "category": "קסדה",
+            "quantity": 2,
+            "old_qr_id": "OLD-1",
+        },
+    )
+    assert r.json()["success"]
+    assert _item(client, "OLD-1") is None
+    assert _item(client, "NEW-1")["borrowed_qty"] == 1
+
+    r = client.post(
+        "/api/panel/users",
+        json={"user_id": "u2", "full_name": "דני כהן", "old_user_id": "u1"},
+    )
+    assert r.json()["success"]
+    card = client.get("/api/panel/users/card", params={"user_id": "u2"}).json()
+    assert card["holding"][0]["qr_id"] == "NEW-1"
+    assert card["history"][0]["qr_id"] == "NEW-1"
+
+    # A tablet that has not synced yet still sends the old ids.
+    _push(client, "t2", "OLD-1", "u1", "RETURN", 1_700_000_100_000)
+    assert _item(client, "NEW-1")["available_qty"] == 2
+
+    # The new id must be free.
+    client.post("/api/panel/items", json={"qr_id": "X", "category": "קסדה"})
+    r = client.post(
+        "/api/panel/items",
+        json={"qr_id": "X", "category": "קסדה", "old_qr_id": "NEW-1"},
+    )
+    assert r.status_code == 400 and "כבר קיים" in r.json()["message"]
+
+
+def test_deleting_soldier_keeps_consumable_stock(client):
+    client.post("/api/admin/users", json=[{"user_id": "u1", "full_name": "א"}])
+    client.post(
+        "/api/panel/items",
+        json={
+            "qr_id": "B-1",
+            "category": "סוללה",
+            "quantity": 10,
+            "kind": "CONSUMABLE",
+        },
+    )
+    r = client.post(
+        "/api/sync/push",
+        json={
+            "device_id": "d",
+            "transactions": [
+                {
+                    "tx_id": "t1",
+                    "qr_id": "B-1",
+                    "user_id": "u1",
+                    "action_type": "ISSUE",
+                    "timestamp": 1_700_000_000_000,
+                    "quantity": 4,
+                }
+            ],
+        },
+    )
+    assert r.json()["accepted"] == ["t1"]
+    assert _item(client, "B-1")["quantity"] == 6
+    client.delete("/api/panel/users", params={"user_id": "u1"})
+    assert _item(client, "B-1")["quantity"] == 6
+
+
+def test_tablet_changes_endpoint(client):
+    client.post("/api/admin/users", json=[{"user_id": "u1", "full_name": "א"}])
+    client.post("/api/admin/items", json=[{"qr_id": "A", "name": "פנס"}])
+    client.post("/api/admin/items", json=[{"qr_id": "B", "name": "פנס"}])
+    changes = [
+        {"op_id": "c1", "op": "RENAME_ITEM", "target_id": "A", "new_id": "A2"},
+        {"op_id": "c2", "op": "DELETE_ITEM", "target_id": "B"},
+        {"op_id": "c3", "op": "RENAME_USER", "target_id": "u1", "new_id": "u7"},
+        {"op_id": "c4", "op": "DELETE_USER", "target_id": "nobody"},
+        {"op_id": "c5", "op": "RENAME_ITEM", "target_id": "A2", "new_id": "A2"},
+    ]
+    body = client.post("/api/admin/changes", json=changes).json()
+    assert [r["applied"] for r in body["results"]] == [True] * 5
+    # Sent again (lost answer): still fine.
+    body = client.post("/api/admin/changes", json=changes).json()
+    assert all(r["applied"] for r in body["results"])
+    state = client.get("/api/sync/pull").json()
+    qr_ids = {i["qr_id"] for i in state["items"]}
+    user_ids = {u["user_id"] for u in state["users"]}
+    assert "A2" in qr_ids and not {"A", "B"} & qr_ids
+    assert "u7" in user_ids and "u1" not in user_ids

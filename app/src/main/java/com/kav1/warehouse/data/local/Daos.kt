@@ -338,3 +338,83 @@ abstract class HoldingDao {
     )
     abstract fun observeForItem(qrId: String): Flow<List<ItemHolderRow>>
 }
+
+/** Deletes and id changes: the local side, and the queue sent to the server. */
+@Dao
+abstract class CatalogDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun queue(change: CatalogChangeEntity)
+
+    @Query("SELECT * FROM catalog_changes ORDER BY created_at, op_id")
+    abstract suspend fun getQueued(): List<CatalogChangeEntity>
+
+    @Query("DELETE FROM catalog_changes WHERE op_id IN (:opIds)")
+    abstract suspend fun dropQueued(opIds: List<String>)
+
+    @Query("SELECT COUNT(*) FROM catalog_changes")
+    abstract fun observeQueuedCount(): Flow<Int>
+
+    // --- Items ---
+
+    @Query("DELETE FROM items WHERE qr_id = :qrId")
+    abstract suspend fun deleteItemRow(qrId: String)
+
+    @Query("DELETE FROM holdings WHERE qr_id = :qrId")
+    abstract suspend fun deleteItemHoldings(qrId: String)
+
+    @Query("DELETE FROM history WHERE qr_id = :qrId")
+    abstract suspend fun deleteItemHistory(qrId: String)
+
+    @Query("DELETE FROM pending_transactions WHERE qr_id = :qrId")
+    abstract suspend fun deleteItemPending(qrId: String)
+
+    @Query("UPDATE items SET qr_id = :newId WHERE qr_id = :oldId")
+    abstract suspend fun renameItemRow(oldId: String, newId: String)
+
+    @Query("UPDATE holdings SET qr_id = :newId WHERE qr_id = :oldId")
+    abstract suspend fun renameItemHoldings(oldId: String, newId: String)
+
+    @Query("UPDATE history SET qr_id = :newId WHERE qr_id = :oldId")
+    abstract suspend fun renameItemHistory(oldId: String, newId: String)
+
+    @Query("UPDATE pending_transactions SET qr_id = :newId WHERE qr_id = :oldId")
+    abstract suspend fun renameItemPending(oldId: String, newId: String)
+
+    // --- Users ---
+
+    @Query("DELETE FROM users WHERE user_id = :userId")
+    abstract suspend fun deleteUserRow(userId: String)
+
+    @Query("SELECT DISTINCT qr_id FROM holdings WHERE user_id = :userId")
+    abstract suspend fun itemsHeldBy(userId: String): List<String>
+
+    @Query("DELETE FROM holdings WHERE user_id = :userId")
+    abstract suspend fun deleteUserHoldings(userId: String)
+
+    @Query("DELETE FROM history WHERE user_id = :userId")
+    abstract suspend fun deleteUserHistory(userId: String)
+
+    @Query("DELETE FROM pending_transactions WHERE user_id = :userId")
+    abstract suspend fun deleteUserPending(userId: String)
+
+    @Query("UPDATE users SET user_id = :newId WHERE user_id = :oldId")
+    abstract suspend fun renameUserRow(oldId: String, newId: String)
+
+    @Query("UPDATE holdings SET user_id = :newId WHERE user_id = :oldId")
+    abstract suspend fun renameUserHoldings(oldId: String, newId: String)
+
+    @Query("UPDATE history SET user_id = :newId WHERE user_id = :oldId")
+    abstract suspend fun renameUserHistory(oldId: String, newId: String)
+
+    @Query("UPDATE pending_transactions SET user_id = :newId WHERE user_id = :oldId")
+    abstract suspend fun renameUserPending(oldId: String, newId: String)
+
+    @Query("UPDATE items SET holder_user_id = :newId WHERE holder_user_id = :oldId")
+    abstract suspend fun renameItemHolder(oldId: String, newId: String)
+
+    @Query("SELECT COUNT(*) FROM items WHERE qr_id = :qrId")
+    abstract suspend fun itemExists(qrId: String): Int
+
+    @Query("SELECT COUNT(*) FROM users WHERE user_id = :userId")
+    abstract suspend fun userExists(userId: String): Int
+}

@@ -216,6 +216,16 @@
     <string name="error_too_long">ארוך מדי (עד %1$d תווים)</string>
     <string name="item_exists_editing">הפריט כבר קיים – עבר לעריכה</string>
     <string name="saved_pending_sync">נשמר. יישלח לשרת בסנכרון הבא</string>
+    <string name="btn_delete">מחיקה</string>
+    <string name="item_delete_title">מחיקת פריט</string>
+    <string name="item_delete_confirm">למחוק את %1$s (%2$s)?\nגם היסטוריית הפעולות של הפריט תימחק. לא ניתן לבטל.</string>
+    <string name="user_delete_title">מחיקת חייל</string>
+    <string name="user_delete_confirm">למחוק את %1$s (%2$s)?\nהיסטוריית הפעולות שלו תימחק, ופריטים מושאלים שבידיו ייחשבו כמוחזרים למלאי. לא ניתן לבטל.</string>
+    <string name="deleted_pending_sync">נמחק. המחיקה תישלח לשרת בסנכרון הבא</string>
+    <string name="item_id_taken">כבר קיים פריט עם המספר הסידורי %1$s</string>
+    <string name="user_id_taken">כבר קיים חייל עם המספר האישי %1$s</string>
+    <string name="item_id_changed">המספר הסידורי שונה ל-%1$s. יש להדביק על הפריט מדבקת QR חדשה</string>
+    <string name="user_id_changed">המספר האישי שונה ל-%1$s</string>
     <string name="server_url_hint">לדוגמה: 192.168.42.100:8000</string>
     <string name="server_url_invalid">כתובת לא תקינה</string>
     <string name="server_url_saved">כתובת השרת עודכנה</string>

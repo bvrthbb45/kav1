@@ -82,3 +82,21 @@ class Transaction(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime)
     # Units borrowed / issued / returned by this action.
     quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+
+ALIAS_ITEM = "ITEM"
+ALIAS_USER = "USER"
+
+
+class IdAlias(Base):
+    """An old serial / personal number that was changed to [new_id].
+
+    Tablets that have not synced since the change still send the old id;
+    their actions are moved to the new one.
+    """
+
+    __tablename__ = "id_aliases"
+
+    kind: Mapped[str] = mapped_column(String(8), primary_key=True)
+    old_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    new_id: Mapped[str] = mapped_column(String(128))

@@ -186,12 +186,15 @@ class ItemForm(BaseModel):
     category: str = Field(default="", max_length=200)
     quantity: int = Field(default=1, ge=0, le=1_000_000)
     kind: Literal["LOAN", "CONSUMABLE"] = "LOAN"
+    # The serial before editing; differs from qr_id when the serial changed.
+    old_qr_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class UserForm(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     full_name: str = Field(min_length=1, max_length=200)
     unit: str = Field(default="", max_length=200)
+    old_user_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class CategoryForm(schemas.CategoryIn):
@@ -208,10 +211,17 @@ def save_item(form: ItemForm, db: Session = Depends(get_db)):
     if not name:
         raise catalog.CatalogError("יש להזין שם פריט או סוג פריט")
     created = catalog.save_item(
-        db, form.qr_id, name, form.category, form.quantity, form.kind
+        db, form.qr_id, name, form.category, form.quantity, form.kind, form.old_qr_id
     )
     verb = "נוסף פריט" if created else "עודכן פריט"
     events.add(events.INFO, f"{verb}: {name} ({form.qr_id.strip()})", "panel")
+    old = (form.old_qr_id or "").strip()
+    if old and old != form.qr_id.strip():
+        events.add(
+            events.INFO,
+            messages.ITEM_RENAMED.format(old=old, new=form.qr_id.strip()),
+            "panel",
+        )
     return _ok(messages.ITEM_SAVED.format(qr_id=form.qr_id.strip()))
 
 
@@ -229,8 +239,15 @@ def item_card(qr_id: str, db: Session = Depends(get_db)):
 
 @router.post("/api/panel/users")
 def save_user(form: UserForm, db: Session = Depends(get_db)):
-    catalog.save_user(db, form.user_id, form.full_name, form.unit)
+    catalog.save_user(db, form.user_id, form.full_name, form.unit, form.old_user_id)
     events.add(events.INFO, f"נשמר חייל: {form.full_name} ({form.user_id})", "panel")
+    old = (form.old_user_id or "").strip()
+    if old and old != form.user_id.strip():
+        events.add(
+            events.INFO,
+            messages.USER_RENAMED.format(old=old, new=form.user_id.strip()),
+            "panel",
+        )
     return _ok(messages.USER_SAVED.format(user_id=form.user_id.strip()))
 
 

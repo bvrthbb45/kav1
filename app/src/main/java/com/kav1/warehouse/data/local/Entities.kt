@@ -208,3 +208,24 @@ data class StatusCount(
     @ColumnInfo(name = "status") val status: String,
     @ColumnInfo(name = "count") val count: Int,
 )
+
+/** Kinds of [CatalogChangeEntity]; must match server/app/services.py. */
+object CatalogOp {
+    const val DELETE_ITEM = "DELETE_ITEM"
+    const val DELETE_USER = "DELETE_USER"
+    const val RENAME_ITEM = "RENAME_ITEM"
+    const val RENAME_USER = "RENAME_USER"
+}
+
+/**
+ * A delete or serial / personal number change made on this device, sent to
+ * the server (in order) before the other edits on the next sync.
+ */
+@Entity(tableName = "catalog_changes")
+data class CatalogChangeEntity(
+    @PrimaryKey @ColumnInfo(name = "op_id") val opId: String,
+    @ColumnInfo(name = "op") val op: String,
+    @ColumnInfo(name = "target_id") val targetId: String,
+    @ColumnInfo(name = "new_id") val newId: String?,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+)

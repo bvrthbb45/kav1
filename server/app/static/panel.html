@@ -462,20 +462,20 @@ function formDialog(title, fields, onSubmit) {
 function editItem(qr) {
   const i = data.items.find((x) => x.qr_id === qr) || {};
   formDialog(qr ? "עריכת פריט" : "פריט חדש", [
-    { name: "qr_id", label: "מספר סידורי (QR)", value: qr, required: true, readonly: !!qr, hint: qr ? "" : "המספר שמודפס על המדבקה" },
+    { name: "qr_id", label: "מספר סידורי (QR)", value: qr, required: true, hint: qr ? "שינוי המספר מעביר אליו את כל ההיסטוריה. יש להדפיס מדבקה חדשה" : "המספר שמודפס על המדבקה" },
     { name: "category", label: "סוג פריט", value: i.category, list: "typeList", hint: "לדוגמה: מכשיר קשר" },
     { name: "name", label: "שם / תיאור", value: i.name, hint: "ריק = כמו הסוג" },
     { name: "kind", label: "סוג שימוש", value: i.kind || "LOAN", options: [["LOAN", "מושאל – השאלה והחזרה, לא יורד מהמלאי"], ["CONSUMABLE", "ניצרך – ניפוק בלבד, יורד מהמלאי"]] },
     { name: "quantity", label: "כמות במלאי", value: i.quantity ?? 1, type: "number", required: true, hint: "כמה יחידות יש עכשיו במחסן" },
-  ], (v) => send("POST", "/api/panel/items", Object.assign(v, { quantity: Math.max(0, parseInt(v.quantity, 10) || 0) })));
+  ], (v) => send("POST", "/api/panel/items", Object.assign(v, { quantity: Math.max(0, parseInt(v.quantity, 10) || 0), old_qr_id: qr || null })));
 }
 function editUser(id) {
   const u = data.users.find((x) => x.user_id === id) || {};
   formDialog(id ? "עריכת חייל" : "חייל חדש", [
-    { name: "user_id", label: "מספר אישי", value: id, required: true, readonly: !!id },
+    { name: "user_id", label: "מספר אישי", value: id, required: true, hint: id ? "שינוי המספר מעביר אליו את כל ההיסטוריה" : "" },
     { name: "full_name", label: "שם מלא", value: u.full_name, required: true },
     { name: "unit", label: "יחידה", value: u.unit },
-  ], (v) => send("POST", "/api/panel/users", v));
+  ], (v) => send("POST", "/api/panel/users", Object.assign(v, { old_user_id: id || null })));
 }
 function editType(name) {
   const c = data.categories.find((x) => x.name === name) || {};
@@ -578,9 +578,9 @@ document.addEventListener("click", (e) => {
   if (!t || e.target.closest("a")) return;
   const d = t.dataset;
   if (d.editItem !== undefined) editItem(d.editItem);
-  else if (d.delItem !== undefined) { if (confirm("למחוק את הפריט " + d.delItem + "?")) act(send("DELETE", "/api/panel/items?qr_id=" + encodeURIComponent(d.delItem))); }
+  else if (d.delItem !== undefined) { if (confirm("למחוק את הפריט " + d.delItem + "?\nגם היסטוריית הפעולות של הפריט תימחק. לא ניתן לבטל.")) act(send("DELETE", "/api/panel/items?qr_id=" + encodeURIComponent(d.delItem))); }
   else if (d.editUser !== undefined) editUser(d.editUser);
-  else if (d.delUser !== undefined) { if (confirm("למחוק את החייל " + userName(d.delUser) + "?")) act(send("DELETE", "/api/panel/users?user_id=" + encodeURIComponent(d.delUser))); }
+  else if (d.delUser !== undefined) { if (confirm("למחוק את החייל " + userName(d.delUser) + "?\nהיסטוריית הפעולות שלו תימחק, ופריטים מושאלים שבידיו ייחשבו כמוחזרים למלאי. לא ניתן לבטל.")) act(send("DELETE", "/api/panel/users?user_id=" + encodeURIComponent(d.delUser))); }
   else if (d.editType !== undefined) editType(d.editType);
   else if (d.delType !== undefined) { if (confirm("למחוק את סוג הפריט \"" + d.delType + "\"?")) act(send("DELETE", "/api/panel/categories?name=" + encodeURIComponent(d.delType))); }
   else if (d.user !== undefined) showUserCard(d.user);

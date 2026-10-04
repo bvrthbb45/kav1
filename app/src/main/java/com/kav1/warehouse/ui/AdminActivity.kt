@@ -203,7 +203,10 @@ class AdminActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val types = app.repository.getCategoryNames()
             val form = Form(this@AdminActivity)
-            val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr, enabled = qrId == null)
+            // Editable when editing too: changing it changes the item's serial.
+            val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr).apply {
+                textDirection = View.TEXT_DIRECTION_LTR
+            }
             val typeField = form.autocomplete(R.string.item_category_hint, category, types)
             val nameField = form.field(R.string.item_name_optional_hint, name)
             val kindField = form.choice(
@@ -213,7 +216,8 @@ class AdminActivity : AppCompatActivity() {
             val qtyField = form.field(R.string.item_quantity_hint, quantity.toString()).apply {
                 inputType = InputType.TYPE_CLASS_NUMBER
             }
-            form.show(if (qrId == null) R.string.item_dialog_add else R.string.item_dialog_edit) {
+            val onDelete = qrId?.let { id -> { confirmDeleteItem(id, name.orEmpty()) } }
+            form.show(if (qrId == null) R.string.item_dialog_add else R.string.item_dialog_edit, onDelete) {
                 val code = form.value(qrField, MAX_QR) ?: return@show false
                 val type = form.value(typeField, MAX_NAME, required = false) ?: return@show false
                 val itemName = form.value(nameField, MAX_NAME, required = false) ?: return@show false
@@ -226,11 +230,20 @@ class AdminActivity : AppCompatActivity() {
                     qtyField.error = getString(R.string.quantity_invalid)
                     return@show false
                 }
+                val itemKind = kindField()
                 lifecycleScope.launch {
-                    if (qrId == null && app.repository.getItem(code) != null) {
+                    val repo = app.repository
+                    if (qrId != null && code != qrId) {
+                        if (!repo.isItemIdFree(code, qrId)) {
+                            toast(getString(R.string.item_id_taken, code))
+                            return@launch
+                        }
+                        repo.renameItem(qrId, code)
+                        toast(getString(R.string.item_id_changed, code))
+                    } else if (qrId == null && repo.getItem(code) != null) {
                         toast(R.string.item_exists_editing)
                     }
-                    app.repository.saveItem(code, itemName.ifEmpty { type }, type, qty, kindField())
+                    repo.saveItem(code, itemName.ifEmpty { type }, type, qty, itemKind)
                     savedPendingSync()
                 }
                 true
@@ -238,23 +251,69 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    private fun confirmDeleteItem(qrId: String, name: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.item_delete_title)
+            .setMessage(getString(R.string.item_delete_confirm, name, qrId))
+            .setPositiveButton(R.string.btn_delete) { _, _ ->
+                lifecycleScope.launch {
+                    app.repository.deleteItem(qrId)
+                    deletedPendingSync()
+                }
+            }
+            .setNegativeButton(R.string.btn_cancel, null)
+            .show()
+    }
+
     // --- Users ---
 
     private fun showUserDialog(userId: String?, fullName: String?, unit: String?) {
         val form = Form(this)
-        val idField = form.field(R.string.user_id_hint, userId, enabled = userId == null)
+        // Editable when editing too: changing it changes the personal number.
+        val idField = form.field(R.string.user_id_hint, userId).apply {
+            textDirection = View.TEXT_DIRECTION_LTR
+        }
         val nameField = form.field(R.string.user_name_hint, fullName)
         val unitField = form.field(R.string.user_unit_hint, unit)
-        form.show(if (userId == null) R.string.user_dialog_add else R.string.user_dialog_edit) {
+        val onDelete = userId?.let { id -> { confirmDeleteUser(id, fullName.orEmpty()) } }
+        form.show(if (userId == null) R.string.user_dialog_add else R.string.user_dialog_edit, onDelete) {
             val id = form.value(idField, MAX_USER_ID) ?: return@show false
             val name = form.value(nameField, MAX_NAME) ?: return@show false
             val userUnit = form.value(unitField, MAX_NAME, required = false) ?: return@show false
             lifecycleScope.launch {
-                app.repository.saveUser(id, name, userUnit)
+                val repo = app.repository
+                if (userId != null && id != userId) {
+                    if (!repo.isUserIdFree(id, userId)) {
+                        toast(getString(R.string.user_id_taken, id))
+                        return@launch
+                    }
+                    repo.renameUser(userId, id)
+                    toast(getString(R.string.user_id_changed, id))
+                }
+                repo.saveUser(id, name, userUnit)
                 savedPendingSync()
             }
             true
         }
+    }
+
+    private fun confirmDeleteUser(userId: String, name: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.user_delete_title)
+            .setMessage(getString(R.string.user_delete_confirm, name, userId))
+            .setPositiveButton(R.string.btn_delete) { _, _ ->
+                lifecycleScope.launch {
+                    app.repository.deleteUser(userId)
+                    deletedPendingSync()
+                }
+            }
+            .setNegativeButton(R.string.btn_cancel, null)
+            .show()
+    }
+
+    private fun deletedPendingSync() {
+        toast(R.string.deleted_pending_sync)
+        SyncScheduler.requestSoon(applicationContext)
     }
 
     private fun savedPendingSync() {
@@ -437,14 +496,15 @@ class AdminActivity : AppCompatActivity() {
             }
         }
 
-        /** [onSave] returns true to close the dialog. */
-        fun show(title: Int, onSave: () -> Boolean) {
-            val dialog = AlertDialog.Builder(context)
+        /** [onSave] returns true to close the dialog; [onDelete] adds a delete button. */
+        fun show(title: Int, onDelete: (() -> Unit)? = null, onSave: () -> Boolean) {
+            val builder = AlertDialog.Builder(context)
                 .setTitle(title)
                 .setView(container)
                 .setPositiveButton(R.string.btn_confirm, null)
                 .setNegativeButton(R.string.btn_cancel, null)
-                .create()
+            if (onDelete != null) builder.setNeutralButton(R.string.btn_delete) { _, _ -> onDelete() }
+            val dialog = builder.create()
             dialog.setOnShowListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                     if (onSave()) dialog.dismiss()

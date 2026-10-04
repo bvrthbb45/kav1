@@ -108,6 +108,25 @@ data class UpsertResponseDto(
     @SerializedName("count") val count: Int?,
 )
 
+data class CatalogChangeDto(
+    @SerializedName("op_id") val opId: String,
+    @SerializedName("op") val op: String,
+    @SerializedName("target_id") val targetId: String,
+    @SerializedName("new_id") val newId: String?,
+)
+
+data class ChangeResultDto(
+    @SerializedName("op_id") val opId: String?,
+    @SerializedName("applied") val applied: Boolean?,
+    @SerializedName("message") val message: String?,
+)
+
+data class ChangesResponseDto(
+    @SerializedName("success") val success: Boolean?,
+    @SerializedName("message") val message: String?,
+    @SerializedName("results") val results: List<ChangeResultDto>?,
+)
+
 /** Shape of every error body returned by the server. */
 data class ErrorDto(
     @SerializedName("message") val message: String?,
@@ -122,6 +141,8 @@ data class UsbOutboxDto(
     @SerializedName("transactions") val transactions: List<PendingTransactionDto>,
     @SerializedName("items") val items: List<ItemUpsertDto>,
     @SerializedName("users") val users: List<UserUpsertDto>,
+    /** Nullable: an outbox.json written by an older version has none. */
+    @SerializedName("changes") val changes: List<CatalogChangeDto>?,
 )
 
 /** inbox.json, written by the PC agent with the server's answers. */
@@ -130,5 +151,7 @@ data class UsbInboxDto(
     @SerializedName("push") val push: PushResponseDto?,
     @SerializedName("items_uploaded") val itemsUploaded: List<ItemUpsertDto>?,
     @SerializedName("users_uploaded") val usersUploaded: List<UserUpsertDto>?,
+    /** Missing from servers older than 1.9 (they ignore the changes). */
+    @SerializedName("changes") val changes: ChangesResponseDto?,
     @SerializedName("state") val state: PullResponseDto?,
 )

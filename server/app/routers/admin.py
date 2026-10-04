@@ -5,7 +5,7 @@ from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from .. import messages, schemas, services
+from .. import events, messages, schemas, services
 from ..database import get_db
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -25,3 +25,16 @@ def upsert_items(items: List[schemas.ItemIn], db: Session = Depends(get_db)):
     return schemas.UpsertResponse(
         success=True, message=messages.UPSERT_OK.format(count=count), count=count
     )
+
+
+@router.post("/changes", response_model=schemas.ChangesResponse)
+def apply_changes(changes: List[schemas.ChangeIn], db: Session = Depends(get_db)):
+    """Deletes and serial / personal number changes made on a tablet."""
+    result = services.apply_changes(db, changes)
+    for r in result.results:
+        events.add(
+            events.INFO if r.applied else events.WARNING,
+            f"שינוי מטאבלט: {r.message}",
+            "network",
+        )
+    return result

@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from . import messages, models, services, stock
@@ -34,12 +34,17 @@ def save_item(
     category: str,
     quantity: int = 1,
     kind: str = models.KIND_LOAN,
+    old_qr_id: Optional[str] = None,
 ) -> bool:
     """Create or update an item; who holds what is kept. True if created.
 
     [quantity] is the stock now (for consumables: what is left).
+    [old_qr_id] set and different from [qr_id] changes the item's serial.
     """
     qr_id, name, category = _clean(qr_id), _clean(name), _clean(category)
+    old_qr_id = _clean(old_qr_id)
+    if old_qr_id and old_qr_id != qr_id:
+        rename_item(db, old_qr_id, qr_id, commit=False)
     item = db.get(models.Item, qr_id)
     created = item is None
     if created:
@@ -64,42 +69,154 @@ def save_item(
     return created
 
 
-def _count_transactions(db: Session, column, value: str) -> int:
-    return db.scalar(
-        select(func.count()).select_from(models.Transaction).where(column == value)
-    )
-
-
-def delete_item(db: Session, qr_id: str) -> None:
+def delete_item(db: Session, qr_id: str, commit: bool = True) -> None:
+    """Delete an item together with its history."""
     item = db.get(models.Item, qr_id)
     if item is None:
         raise CatalogError(messages.ITEM_NOT_FOUND.format(qr_id=qr_id))
-    if _count_transactions(db, models.Transaction.qr_id, qr_id):
-        raise CatalogError(messages.ITEM_HAS_HISTORY.format(qr_id=qr_id))
+    db.execute(delete(models.Transaction).where(models.Transaction.qr_id == qr_id))
+    db.execute(
+        delete(models.IdAlias).where(
+            models.IdAlias.kind == models.ALIAS_ITEM, models.IdAlias.new_id == qr_id
+        )
+    )
     db.delete(item)
-    db.commit()
+    if commit:
+        db.commit()
+
+
+def _add_alias(db: Session, kind: str, old_id: str, new_id: str) -> None:
+    # Earlier names of the old id now lead to the new one as well.
+    db.execute(
+        update(models.IdAlias)
+        .where(models.IdAlias.kind == kind, models.IdAlias.new_id == old_id)
+        .values(new_id=new_id)
+    )
+    db.execute(
+        delete(models.IdAlias).where(
+            models.IdAlias.kind == kind, models.IdAlias.old_id.in_([old_id, new_id])
+        )
+    )
+    db.add(models.IdAlias(kind=kind, old_id=old_id, new_id=new_id))
+
+
+def rename_item(db: Session, old_qr_id: str, new_qr_id: str, commit: bool = True):
+    """Change an item's serial (QR); its history and holders move with it."""
+    old_qr_id, new_qr_id = _clean(old_qr_id), _clean(new_qr_id)
+    if old_qr_id == new_qr_id:
+        return
+    item = db.get(models.Item, old_qr_id)
+    if item is None:
+        raise CatalogError(messages.ITEM_NOT_FOUND.format(qr_id=old_qr_id))
+    if db.get(models.Item, new_qr_id) is not None:
+        raise CatalogError(messages.ITEM_EXISTS.format(qr_id=new_qr_id))
+    db.add(
+        models.Item(
+            qr_id=new_qr_id,
+            name=item.name,
+            category=item.category,
+            quantity=item.quantity,
+            kind=item.kind,
+            current_status=item.current_status,
+        )
+    )
+    db.flush()
+    db.execute(
+        update(models.Transaction)
+        .where(models.Transaction.qr_id == old_qr_id)
+        .values(qr_id=new_qr_id)
+    )
+    db.delete(item)
+    _add_alias(db, models.ALIAS_ITEM, old_qr_id, new_qr_id)
+    db.flush()
+    if commit:
+        db.commit()
 
 
 # --- Users -----------------------------------------------------------------
 
 
-def save_user(db: Session, user_id: str, full_name: str, unit: str) -> None:
+def save_user(
+    db: Session,
+    user_id: str,
+    full_name: str,
+    unit: str,
+    old_user_id: Optional[str] = None,
+) -> None:
+    user_id, old_user_id = _clean(user_id), _clean(old_user_id)
+    if old_user_id and old_user_id != user_id:
+        rename_user(db, old_user_id, user_id, commit=False)
     db.merge(
-        models.User(
-            user_id=_clean(user_id), full_name=_clean(full_name), unit=_clean(unit)
-        )
+        models.User(user_id=user_id, full_name=_clean(full_name), unit=_clean(unit))
     )
     db.commit()
 
 
-def delete_user(db: Session, user_id: str) -> None:
+def delete_user(db: Session, user_id: str, commit: bool = True) -> None:
+    """Delete a soldier and their history.
+
+    Loaned units they still hold count as returned. Consumables issued to
+    them stay issued: the item's received total shrinks by the same amount,
+    so its stock does not change.
+    """
     user = db.get(models.User, user_id)
     if user is None:
         raise CatalogError(messages.USER_NOT_FOUND.format(user_id=user_id))
-    if _count_transactions(db, models.Transaction.user_id, user_id):
-        raise CatalogError(messages.USER_HAS_HISTORY.format(user_id=user_id))
+    issued = db.execute(
+        select(models.Transaction.qr_id, func.sum(models.Transaction.quantity))
+        .join(models.Item, models.Item.qr_id == models.Transaction.qr_id)
+        .where(
+            models.Transaction.user_id == user_id,
+            models.Transaction.action_type == models.ACTION_ISSUE,
+            models.Item.kind == models.KIND_CONSUMABLE,
+        )
+        .group_by(models.Transaction.qr_id)
+    ).all()
+    for qr_id, units in issued:
+        item = db.get(models.Item, qr_id)
+        item.quantity = max((item.quantity or 0) - (units or 0), 0)
+    touched = set(
+        db.scalars(
+            select(models.Transaction.qr_id)
+            .where(models.Transaction.user_id == user_id)
+            .distinct()
+        )
+    )
+    db.execute(delete(models.Transaction).where(models.Transaction.user_id == user_id))
+    db.execute(
+        delete(models.IdAlias).where(
+            models.IdAlias.kind == models.ALIAS_USER, models.IdAlias.new_id == user_id
+        )
+    )
     db.delete(user)
-    db.commit()
+    db.flush()
+    services._recompute_item_status(db, touched)
+    if commit:
+        db.commit()
+
+
+def rename_user(db: Session, old_user_id: str, new_user_id: str, commit: bool = True):
+    """Change a soldier's personal number; their history moves with it."""
+    old_user_id, new_user_id = _clean(old_user_id), _clean(new_user_id)
+    if old_user_id == new_user_id:
+        return
+    user = db.get(models.User, old_user_id)
+    if user is None:
+        raise CatalogError(messages.USER_NOT_FOUND.format(user_id=old_user_id))
+    if db.get(models.User, new_user_id) is not None:
+        raise CatalogError(messages.USER_EXISTS.format(user_id=new_user_id))
+    db.add(models.User(user_id=new_user_id, full_name=user.full_name, unit=user.unit))
+    db.flush()
+    db.execute(
+        update(models.Transaction)
+        .where(models.Transaction.user_id == old_user_id)
+        .values(user_id=new_user_id)
+    )
+    db.delete(user)
+    _add_alias(db, models.ALIAS_USER, old_user_id, new_user_id)
+    db.flush()
+    if commit:
+        db.commit()
 
 
 # --- Item types --------------------------------------------------------------

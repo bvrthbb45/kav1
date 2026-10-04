@@ -13,7 +13,10 @@ import com.kav1.warehouse.data.local.ItemEntity
 import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
+import com.kav1.warehouse.data.local.CatalogChangeEntity
 import com.kav1.warehouse.data.remote.ApiClient
+import com.kav1.warehouse.data.remote.CatalogChangeDto
+import com.kav1.warehouse.data.remote.ChangesResponseDto
 import com.kav1.warehouse.data.remote.ErrorDto
 import com.kav1.warehouse.data.remote.ItemUpsertDto
 import com.kav1.warehouse.data.remote.PendingTransactionDto
@@ -24,6 +27,7 @@ import com.kav1.warehouse.data.remote.UsbInboxDto
 import com.kav1.warehouse.data.remote.UsbOutboxDto
 import com.kav1.warehouse.data.remote.UserUpsertDto
 import com.kav1.warehouse.data.remote.WarehouseApi
+import com.kav1.warehouse.domain.stock.CatalogChanges
 import com.kav1.warehouse.domain.stock.LocalStock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -73,8 +77,10 @@ class SyncManager(
 
     private suspend fun runSync(): SyncResult {
         api = apiProvider()
-        // Management edits first: new items/users must exist on the server
-        // before actions that reference them.
+        // Deletes and id changes first (later edits use the new ids), then
+        // management edits: new items/users must exist on the server before
+        // actions that reference them.
+        pushCatalogChanges()
         pushManagementEdits()
         val (pushed, rejected) = pushPending()
         val (itemCount, userCount) = pullState()
@@ -96,6 +102,27 @@ class SyncManager(
             val stock = if (it.kind == ItemKind.CONSUMABLE) it.quantity + (pendingIssues[it.qrId] ?: 0) else it.quantity
             ItemUpsertDto(it.qrId, it.name, it.category, stock, it.kind)
         }
+    }
+
+    private fun CatalogChangeEntity.toDto() = CatalogChangeDto(opId, op, targetId, newId)
+
+    private suspend fun pushCatalogChanges() {
+        val changes = db.catalogDao().getQueued()
+        for (batch in changes.chunked(PUSH_BATCH_SIZE)) {
+            applyChangesResult(batch, api.applyChanges(batch.map { it.toDto() }).bodyOrThrow())
+        }
+    }
+
+    /**
+     * Drops the changes the server answered. A refused change (e.g. the new
+     * serial is taken on the server) is dropped too: the next pull brings
+     * back the server's version.
+     */
+    private suspend fun applyChangesResult(sent: List<CatalogChangeEntity>, body: ChangesResponseDto) {
+        val results = body.results ?: throw MalformedResponseException("results missing")
+        results.filter { it.applied == false }.forEach { Log.w(TAG, "change refused: ${it.message}") }
+        val sentIds = sent.mapTo(HashSet()) { it.opId }
+        db.catalogDao().dropQueued(results.mapNotNull { it.opId }.filter { it in sentIds })
     }
 
     private suspend fun pushManagementEdits() {
@@ -211,6 +238,9 @@ class SyncManager(
             db.categoryDao().replaceAll(categories)
             db.historyDao().replaceAll(history)
             db.holdingDao().replaceAll(holdings)
+            // Deletes and id changes made here after the outbox was sent.
+            val changes = CatalogChanges(db)
+            db.catalogDao().getQueued().forEach { changes.apply(it) }
             val stock = LocalStock(db)
             // Quantities edited here and not uploaded yet.
             db.itemDao().getPendingUpload().forEach { stock.refresh(it.qrId) }
@@ -240,6 +270,7 @@ class SyncManager(
             },
             items = upsertDto(db.itemDao().getPendingUpload()),
             users = db.userDao().getPendingUpload().map { UserUpsertDto(it.userId, it.fullName, it.unit) },
+            changes = db.catalogDao().getQueued().map { it.toDto() },
         )
     }
 
@@ -248,6 +279,12 @@ class SyncManager(
         try {
             if (inbox.requestId != outbox.requestId) {
                 throw MalformedResponseException("request id mismatch")
+            }
+            inbox.changes?.let { answered ->
+                val sent = outbox.changes.orEmpty().map {
+                    CatalogChangeEntity(it.opId, it.op, it.targetId, it.newId, 0)
+                }
+                applyChangesResult(sent, answered)
             }
             db.withTransaction {
                 inbox.itemsUploaded.orEmpty().forEach {

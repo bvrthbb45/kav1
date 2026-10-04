@@ -30,8 +30,13 @@ def push_transactions(
             success=True, message=messages.PUSH_EMPTY, accepted=[], rejected=[]
         )
 
+    # Tablets that missed a serial / personal number change still use the old one.
+    item_aliases = _aliases(db, models.ALIAS_ITEM)
+    user_aliases = _aliases(db, models.ALIAS_USER)
     qr_ids = {tx.qr_id for tx in transactions}
     user_ids = {tx.user_id for tx in transactions}
+    qr_ids |= {item_aliases[q] for q in qr_ids if q in item_aliases}
+    user_ids |= {user_aliases[u] for u in user_ids if u in user_aliases}
     tx_ids = {tx.tx_id for tx in transactions}
 
     known_items: Dict[str, str] = dict(
@@ -57,6 +62,10 @@ def push_transactions(
     try:
         for tx in sorted(transactions, key=lambda t: t.timestamp):
             reason = None
+            if tx.qr_id not in known_items and tx.qr_id in item_aliases:
+                tx = tx.model_copy(update={"qr_id": item_aliases[tx.qr_id]})
+            if tx.user_id not in known_users and tx.user_id in user_aliases:
+                tx = tx.model_copy(update={"user_id": user_aliases[tx.user_id]})
             if tx.tx_id in seen_tx_ids:
                 # Already stored (e.g. the device lost the previous response).
                 # Report as accepted so the device can drop it.
@@ -112,6 +121,77 @@ def push_transactions(
         message = messages.PUSH_ALL_OK.format(count=len(accepted))
     return schemas.PushResponse(
         success=not rejected, message=message, accepted=accepted, rejected=rejected
+    )
+
+
+def _aliases(db: Session, kind: str) -> Dict[str, str]:
+    return dict(
+        db.execute(
+            select(models.IdAlias.old_id, models.IdAlias.new_id).where(
+                models.IdAlias.kind == kind
+            )
+        ).all()
+    )
+
+
+CHANGE_DELETE_ITEM = "DELETE_ITEM"
+CHANGE_DELETE_USER = "DELETE_USER"
+CHANGE_RENAME_ITEM = "RENAME_ITEM"
+CHANGE_RENAME_USER = "RENAME_USER"
+
+
+def apply_changes(
+    db: Session, changes: List[schemas.ChangeIn]
+) -> schemas.ChangesResponse:
+    """Apply deletes and id changes from a tablet, in order.
+
+    Each change commits on its own. A change already done (the tablet lost
+    the answer and sent it again) counts as applied.
+    """
+    from . import catalog  # catalog imports this module
+
+    results: List[schemas.ChangeResult] = []
+    for change in changes:
+        target, new_id = change.target_id.strip(), (change.new_id or "").strip()
+        try:
+            if change.op == CHANGE_DELETE_ITEM:
+                if db.get(models.Item, target) is not None:
+                    catalog.delete_item(db, target)
+                message = messages.ITEM_DELETED.format(qr_id=target)
+            elif change.op == CHANGE_DELETE_USER:
+                if db.get(models.User, target) is not None:
+                    catalog.delete_user(db, target)
+                message = messages.USER_DELETED.format(user_id=target)
+            elif change.op in (CHANGE_RENAME_ITEM, CHANGE_RENAME_USER):
+                if not new_id:
+                    raise catalog.CatalogError(messages.CHANGE_NO_NEW_ID)
+                is_item = change.op == CHANGE_RENAME_ITEM
+                model = models.Item if is_item else models.User
+                # Not on the server (created on the tablet, or already
+                # renamed): the tablet uploads it under the new id.
+                if db.get(model, target) is not None:
+                    if is_item:
+                        catalog.rename_item(db, target, new_id)
+                    else:
+                        catalog.rename_user(db, target, new_id)
+                message = (
+                    messages.ITEM_RENAMED if is_item else messages.USER_RENAMED
+                ).format(old=target, new=new_id)
+            else:
+                raise catalog.CatalogError(messages.CHANGE_UNKNOWN.format(op=change.op))
+            results.append(
+                schemas.ChangeResult(op_id=change.op_id, applied=True, message=message)
+            )
+        except catalog.CatalogError as e:
+            db.rollback()
+            results.append(
+                schemas.ChangeResult(op_id=change.op_id, applied=False, message=str(e))
+            )
+    applied = sum(r.applied for r in results)
+    return schemas.ChangesResponse(
+        success=applied == len(results),
+        message=messages.UPSERT_OK.format(count=applied),
+        results=results,
     )
 
 

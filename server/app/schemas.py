@@ -120,3 +120,25 @@ class UpsertResponse(BaseModel):
     success: bool
     message: str
     count: int
+
+
+class ChangeIn(BaseModel):
+    """A delete or id change made on a tablet, sent before its other edits."""
+
+    op_id: str = Field(min_length=1, max_length=64)
+    # DELETE_ITEM, DELETE_USER, RENAME_ITEM or RENAME_USER.
+    op: str
+    target_id: str = Field(min_length=1, max_length=128)
+    new_id: Optional[str] = Field(default=None, max_length=128)
+
+
+class ChangeResult(BaseModel):
+    op_id: str
+    applied: bool
+    message: str
+
+
+class ChangesResponse(BaseModel):
+    success: bool
+    message: str
+    results: List[ChangeResult]

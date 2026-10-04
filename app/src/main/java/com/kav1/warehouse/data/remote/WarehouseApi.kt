@@ -20,6 +20,9 @@ interface WarehouseApi {
     @POST("api/admin/items")
     suspend fun upsertItems(@Body items: List<ItemUpsertDto>): Response<UpsertResponseDto>
 
+    @POST("api/admin/changes")
+    suspend fun applyChanges(@Body changes: List<CatalogChangeDto>): Response<ChangesResponseDto>
+
     @POST("api/admin/users")
     suspend fun upsertUsers(@Body users: List<UserUpsertDto>): Response<UpsertResponseDto>
 }
