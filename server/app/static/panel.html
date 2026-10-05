@@ -310,7 +310,8 @@ async function act(promise) {
 function renderServer(s) {
   const pill = $("serverPill"); pill.className = "pill ok"; pill.textContent = "השרת פעיל";
   $("serverMeta").innerHTML = "פועל " + esc(ago(s.now - s.started_at).replace("לפני ", "")) +
-    " · <span class='ltr'>" + esc((s.addresses.length ? s.addresses : ["127.0.0.1"]).map((a) => a + ":" + s.port).join(", ")) + "</span>";
+    " · <span class='ltr'>" + esc((s.addresses.length ? s.addresses : ["127.0.0.1"]).map((a) => a + ":" + s.port).join(", ")) + "</span>" +
+    (s.version ? " · גרסה <span class='ltr'>" + esc(s.version) + "</span>" : "");
 }
 function renderCounts(c) {
   $("cItems").textContent = c.items; $("cAvailable").textContent = c.available;

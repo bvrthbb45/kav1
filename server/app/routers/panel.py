@@ -29,7 +29,7 @@ from .. import (
     stock,
     usb_sync,
 )
-from ..config import DATABASE_URL, PORT
+from ..config import BASE_DIR, DATABASE_URL, PORT
 from ..database import get_db
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -49,9 +49,24 @@ def local_only(request: Request) -> None:
 router = APIRouter(dependencies=[Depends(local_only)], include_in_schema=False)
 
 
+# Never cached: after an update the browser must load the new panel.
+NO_CACHE = {"Cache-Control": "no-store, max-age=0"}
+
+
 @router.get("/panel")
 def panel_page():
-    return FileResponse(STATIC_DIR / "panel.html", media_type="text/html")
+    return FileResponse(
+        STATIC_DIR / "panel.html", media_type="text/html", headers=NO_CACHE
+    )
+
+
+def _version() -> str:
+    """The installed version (VERSION.txt from the package), or ""."""
+    try:
+        text = (BASE_DIR / "VERSION.txt").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text.split(":", 1)[-1].strip()
 
 
 @router.get("/panel/logo.png")
@@ -88,6 +103,7 @@ def status(after: int = 0, db: Session = Depends(get_db)):
             "port": PORT,
             "database": DATABASE_URL.replace("sqlite:///", ""),
             "python": platform.python_version(),
+            "version": _version(),
         },
         "usb": {
             "enabled": agent is not None,

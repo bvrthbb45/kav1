@@ -53,8 +53,10 @@ cp -r "$SERVER_DIR/app" "$SERVER_DIR/main.py" "$SERVER_DIR/seed.py" \
 find "$PKG/app" -name '__pycache__' -prune -exec rm -rf {} +
 cp -r "$SERVER_DIR/packaging/windows/." "$PKG/"
 mkdir -p "$PKG/logs"
+VERSION="$(git -C "$SERVER_DIR/.." log -1 --format='%h %cd' --date=format:'%Y-%m-%d %H:%M')"
+printf 'Olympus server version: %s\n' "$VERSION" > "$PKG/VERSION.txt"
 # Windows batch files need CRLF line endings.
-for f in "$PKG"/*.bat "$PKG"/README_HE.txt; do
+for f in "$PKG"/*.bat "$PKG"/README_HE.txt "$PKG"/VERSION.txt; do
     sed -i 's/\r$//; s/$/\r/' "$f"
 done
 
