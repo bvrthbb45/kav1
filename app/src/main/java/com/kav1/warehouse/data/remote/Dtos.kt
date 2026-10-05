@@ -12,6 +12,7 @@ data class PendingTransactionDto(
     @SerializedName("action_type") val actionType: String,
     @SerializedName("timestamp") val timestamp: Long,
     @SerializedName("quantity") val quantity: Int,
+    @SerializedName("note") val note: String?,
 )
 
 data class PushRequestDto(
@@ -45,6 +46,9 @@ data class ItemDto(
     @SerializedName("borrowed_qty") val borrowedQty: Int?,
     @SerializedName("issued_qty") val issuedQty: Int?,
     @SerializedName("kind") val kind: String?,
+    // Missing from servers older than 2.0.
+    @SerializedName("location") val location: String?,
+    @SerializedName("department") val department: String?,
 )
 
 data class HoldingDto(
@@ -85,6 +89,7 @@ data class HistoryDto(
     @SerializedName("action_type") val actionType: String?,
     @SerializedName("timestamp") val timestamp: Long?,
     @SerializedName("quantity") val quantity: Int?,
+    @SerializedName("note") val note: String?,
 )
 
 data class ItemUpsertDto(
@@ -94,6 +99,8 @@ data class ItemUpsertDto(
     @SerializedName("category") val category: String?,
     @SerializedName("quantity") val quantity: Int?,
     @SerializedName("kind") val kind: String?,
+    @SerializedName("location") val location: String?,
+    @SerializedName("department") val department: String?,
 )
 
 data class UserUpsertDto(

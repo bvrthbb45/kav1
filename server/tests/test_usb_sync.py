@@ -44,6 +44,8 @@ def test_process_outbox_applies_edits_before_actions(client):
             "category": None,
             "quantity": None,
             "kind": None,
+            "location": None,
+            "department": None,
         }
     ]
     items = {i["qr_id"]: i for i in inbox["state"]["items"]}

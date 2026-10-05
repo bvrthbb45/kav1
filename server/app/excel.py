@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from . import catalog, messages, models, schemas, services
 
+NO_DEPARTMENT = messages.NO_DEPARTMENT
 KIND_LABELS = {models.KIND_LOAN: "מושאל", models.KIND_CONSUMABLE: "ניצרך"}
 STATUS_LABELS = {
     models.STATUS_AVAILABLE: "זמין",
@@ -52,6 +53,9 @@ TARGET = {"כמותבתקן", "תקן", "כמות", "target", "targetqty"}
 USER_ID = {"מספראישי", "מא", "מסאישי", "אישי", "userid", "id", "תז"}
 FULL_NAME = {"שםמלא", "שם", "fullname", "name"}
 UNIT = {"יחידה", "פלוגה", "מחלקה", "unit"}
+# Item sheets only (a soldiers sheet reads "מחלקה" as the unit).
+LOCATION = {"מיקום", "מיקוםפריט", "מדף", "ארון", "מיקוםבמחסן", "location"}
+DEPARTMENT = {"מחלקה", "מחלקתפריט", "שייךלמחלקה", "department", "dept"}
 
 
 def _normalize(title) -> str:
@@ -140,6 +144,8 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
             name = _find(header, ITEM_NAME)
             qty_col = _find(header, QUANTITY)
             kind_col = _find(header, KIND)
+            loc_col = _find(header, LOCATION)
+            dept_col = _find(header, DEPARTMENT)
             for row_no, row in body:
                 qr_id = value(row, serial)
                 if not qr_id:
@@ -156,6 +162,12 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
                             category=cat,
                             quantity=qty,
                             kind=_kind(value(row, kind_col)),
+                            location=(
+                                value(row, loc_col) if loc_col is not None else None
+                            ),
+                            department=(
+                                value(row, dept_col) if dept_col is not None else None
+                            ),
                         )
                     )
                 except (ValueError, ValidationError):
@@ -258,12 +270,17 @@ def _inventory(wb: Workbook, db: Session) -> None:
         name = users[h.user_id].full_name if h.user_id in users else h.user_id
         holders.setdefault(h.qr_id, []).append(f"{name} ({h.borrowed + h.issued})")
     rows = []
-    for i in sorted(state.items, key=lambda i: (i.category, i.name, i.qr_id)):
+    items = sorted(
+        state.items, key=lambda i: (i.department, i.category, i.name, i.qr_id)
+    )
+    for i in items:
         rows.append(
             [
                 i.qr_id,
                 i.name,
+                i.department or NO_DEPARTMENT,
                 i.category or messages.NO_CATEGORY,
+                i.location,
                 KIND_LABELS.get(i.kind, i.kind),
                 i.quantity,
                 i.available_qty,
@@ -279,7 +296,9 @@ def _inventory(wb: Workbook, db: Session) -> None:
         [
             "מספר סידורי",
             "שם פריט",
+            "מחלקה",
             "סוג פריט",
+            "מיקום",
             "סוג שימוש",
             "כמות במלאי",
             "זמין",
@@ -289,6 +308,34 @@ def _inventory(wb: Workbook, db: Session) -> None:
             "פעולה אחרונה",
         ],
         rows,
+    )
+
+
+def _departments(wb: Workbook, db: Session) -> None:
+    _sheet(
+        wb,
+        "לפי מחלקה",
+        [
+            "מחלקה",
+            "סוגי פריטים",
+            "מספרים סידוריים",
+            "יחידות במלאי",
+            "זמין",
+            "מושאל",
+            "ניפוקים",
+        ],
+        (
+            [
+                d["label"],
+                d["types"],
+                d["serials"],
+                d["total"],
+                d["available"],
+                d["borrowed"],
+                d["issued"],
+            ]
+            for d in catalog.department_summary(db)
+        ),
     )
 
 
@@ -368,6 +415,7 @@ def _history(wb: Workbook, rows: List[Dict], title: str) -> None:
             "חייל",
             "מספר אישי",
             "יחידה",
+            "הערה",
         ],
         (
             [
@@ -380,6 +428,7 @@ def _history(wb: Workbook, rows: List[Dict], title: str) -> None:
                 r["user_name"],
                 r["user_id"],
                 r["unit"],
+                r.get("note", ""),
             ]
             for r in rows
         ),
@@ -416,6 +465,7 @@ REPORTS: Dict[str, str] = {
     "full": "דוח מלא",
     "inventory": "מלאי",
     "types": "סיכום לפי סוג",
+    "departments": "סיכום לפי מחלקה",
     "holders": "ציוד אצל חיילים",
     "transactions": "יומן פעולות",
     "users": "חיילים",
@@ -432,6 +482,7 @@ def export_report(
     builders: Dict[str, Callable[[], None]] = {
         "inventory": lambda: _inventory(wb, db),
         "types": lambda: _types(wb, db),
+        "departments": lambda: _departments(wb, db),
         "holders": lambda: _holders(wb, db),
         "transactions": lambda: _history(
             wb, catalog.transactions(db, start_ms, end_ms), "יומן פעולות"
@@ -439,7 +490,14 @@ def export_report(
         "users": lambda: _users(wb, db),
     }
     if report == "full":
-        for name in ("types", "inventory", "holders", "users", "transactions"):
+        for name in (
+            "types",
+            "departments",
+            "inventory",
+            "holders",
+            "users",
+            "transactions",
+        ):
             builders[name]()
     else:
         builders[report]()
@@ -485,10 +543,18 @@ def template() -> bytes:
     _sheet(
         wb,
         "מלאי",
-        ["מספר סידורי", "שם פריט", "סוג פריט", "סוג שימוש", "כמות"],
         [
-            ["MK-0001", "מכשיר קשר 710", "מכשיר קשר", "מושאל", 1],
-            ["BAT-AA", "סוללות AA", "סוללות", "ניצרך", 200],
+            "מספר סידורי",
+            "שם פריט",
+            "סוג פריט",
+            "סוג שימוש",
+            "כמות",
+            "מחלקה",
+            "מיקום",
+        ],
+        [
+            ["MK-0001", "מכשיר קשר 710", "מכשיר קשר", "מושאל", 1, "קשר", "ארון 1"],
+            ["BAT-AA", "סוללות AA", "סוללות", "ניצרך", 200, "לוגיסטיקה", "מדף 4"],
         ],
     )
     return _finish(wb)

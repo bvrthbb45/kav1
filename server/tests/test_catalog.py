@@ -153,12 +153,13 @@ def test_excel_exports(client):
     wb = load_workbook(io.BytesIO(r.content))
     assert wb.sheetnames == [
         "סיכום לפי סוג",
+        "לפי מחלקה",
         "מלאי",
         "ציוד אצל חיילים",
         "חיילים",
         "יומן פעולות",
     ]
-    assert wb["מלאי"]["G2"].value == 1  # borrowed units
+    assert wb["מלאי"]["I2"].value == 1  # borrowed units
     assert wb["ציוד אצל חיילים"]["A2"].value == "ישראל ישראלי"
 
     r = client.get(
@@ -312,3 +313,84 @@ def test_tablet_changes_endpoint(client):
     user_ids = {u["user_id"] for u in state["users"]}
     assert "A2" in qr_ids and not {"A", "B"} & qr_ids
     assert "u7" in user_ids and "u1" not in user_ids
+
+
+def test_location_department_and_notes(client):
+    client.post("/api/admin/users", json=[{"user_id": "u1", "full_name": "א"}])
+    r = client.post(
+        "/api/panel/items",
+        json={
+            "qr_id": "L-1",
+            "category": "קסדה",
+            "quantity": 3,
+            "location": "ארון 2",
+            "department": "קשר",
+        },
+    )
+    assert r.json()["success"]
+    item = _item(client, "L-1")
+    assert item["location"] == "ארון 2" and item["department"] == "קשר"
+
+    # Older tablets send no location/department: kept as they are.
+    client.post("/api/admin/items", json=[{"qr_id": "L-1", "name": "קסדה"}])
+    assert _item(client, "L-1")["department"] == "קשר"
+
+    r = client.post(
+        "/api/sync/push",
+        json={
+            "device_id": "d",
+            "transactions": [
+                {
+                    "tx_id": "n1",
+                    "qr_id": "L-1",
+                    "user_id": "u1",
+                    "action_type": "BORROW",
+                    "timestamp": 1_700_000_000_000,
+                    "note": "  לתרגיל לילה ",
+                }
+            ],
+        },
+    )
+    assert r.json()["accepted"] == ["n1"]
+    history = client.get("/api/sync/pull").json()["history"]
+    assert history[0]["note"] == "לתרגיל לילה"
+    card = client.get("/api/panel/users/card", params={"user_id": "u1"}).json()
+    assert card["history"][0]["note"] == "לתרגיל לילה"
+
+    depts = client.get("/api/panel/data").json()["departments"]
+    dept = next(d for d in depts if d["name"] == "קשר")
+    assert dept["serials"] == 1 and dept["borrowed"] == 1
+
+    # Renaming the serial keeps location and department.
+    client.post(
+        "/api/panel/items",
+        json={
+            "qr_id": "L-2",
+            "category": "קסדה",
+            "quantity": 3,
+            "location": "ארון 2",
+            "department": "קשר",
+            "old_qr_id": "L-1",
+        },
+    )
+    assert _item(client, "L-2")["location"] == "ארון 2"
+
+
+def test_excel_location_department_and_reports(client):
+    data = _xlsx(
+        {
+            "מלאי": [
+                ["מספר סידורי", "סוג פריט", "כמות", "מחלקה", "מיקום"],
+                ["X-1", "פנס", 2, "לוגיסטיקה", "מדף 4"],
+            ]
+        }
+    )
+    r = client.post("/api/panel/import", content=data, headers={"X-Filename": "a.xlsx"})
+    assert r.json()["success"], r.json()
+    item = _item(client, "X-1")
+    assert (item["department"], item["location"]) == ("לוגיסטיקה", "מדף 4")
+    r = client.get("/api/panel/export/departments")
+    wb = load_workbook(io.BytesIO(r.content))
+    rows = list(wb.active.values)
+    assert rows[1][0] == "לוגיסטיקה"
+    assert client.get("/api/panel/export/full").status_code == 200

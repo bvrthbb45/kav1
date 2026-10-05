@@ -100,6 +100,7 @@ def push_transactions(
                     action_type=tx.action_type,
                     timestamp=_to_datetime(tx.timestamp),
                     quantity=tx.quantity,
+                    note=(tx.note or "").strip(),
                 )
             )
             seen_tx_ids.add(tx.tx_id)
@@ -259,6 +260,7 @@ def history_out(tx: models.Transaction) -> schemas.HistoryOut:
         action_type=tx.action_type,
         timestamp=_to_epoch_ms(tx.timestamp),
         quantity=tx.quantity or 1,
+        note=tx.note or "",
     )
 
 
@@ -273,6 +275,8 @@ def item_out(item: models.Item, state: stock.ItemState) -> schemas.ItemOut:
         available_qty=state.available,
         borrowed_qty=state.borrowed,
         issued_qty=state.issued,
+        location=item.location or "",
+        department=item.department or "",
         holder_user_id=state.latest_holder,
         last_action_at=_to_epoch_ms(state.last_action) if state.last_action else None,
     )
@@ -313,6 +317,8 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
                     category=category,
                     quantity=incoming.quantity or 1,
                     kind=incoming.kind or models.KIND_LOAN,
+                    location=(incoming.location or "").strip(),
+                    department=(incoming.department or "").strip(),
                 )
                 db.add(item)
             else:
@@ -321,6 +327,10 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
                     item.category = category
                 if incoming.kind is not None:
                     item.kind = incoming.kind
+                if incoming.location is not None:
+                    item.location = incoming.location.strip()
+                if incoming.department is not None:
+                    item.department = incoming.department.strip()
                 if incoming.quantity is not None:
                     item.quantity = stocked_quantity(db, item, incoming.quantity)
         db.flush()

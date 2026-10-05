@@ -45,6 +45,7 @@ CATEGORY_DELETED = 'סוג הפריט "{name}" נמחק'
 CATEGORY_IN_USE = 'לא ניתן למחוק את סוג הפריט "{name}" כי יש {count} פריטים מסוג זה'
 CATEGORY_EXISTS = 'סוג הפריט "{name}" כבר קיים'
 NO_CATEGORY = "ללא סוג"
+NO_DEPARTMENT = "ללא מחלקה"
 
 IMPORT_DONE = "הייבוא הושלם: {users} חיילים, {items} פריטים, {categories} סוגי פריטים"
 IMPORT_NOTHING = (

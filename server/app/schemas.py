@@ -23,6 +23,8 @@ class ItemOut(BaseModel):
     available_qty: int = 1
     borrowed_qty: int = 0
     issued_qty: int = 0
+    location: str = ""
+    department: str = ""
     # Who holds the item (borrowed/issued), from its latest action.
     holder_user_id: Optional[str] = None
     # Device time (epoch ms) of the item's latest action.
@@ -38,6 +40,8 @@ class PendingTransaction(BaseModel):
     timestamp: int = Field(ge=0, le=253402300799999)
     # Units; older apps do not send it.
     quantity: int = Field(default=1, ge=1, le=1_000_000)
+    # Note entered with the action; older apps do not send it.
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class PushRequest(BaseModel):
@@ -72,6 +76,7 @@ class HistoryOut(BaseModel):
     action_type: str
     timestamp: int
     quantity: int = 1
+    note: str = ""
 
 
 class HoldingOut(BaseModel):
@@ -109,6 +114,8 @@ class ItemIn(BaseModel):
     category: Optional[str] = Field(default=None, max_length=200)
     quantity: Optional[int] = Field(default=None, ge=0, le=1_000_000)
     kind: Optional[Literal["LOAN", "CONSUMABLE"]] = None
+    location: Optional[str] = Field(default=None, max_length=200)
+    department: Optional[str] = Field(default=None, max_length=200)
 
 
 class CategoryIn(BaseModel):

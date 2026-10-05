@@ -54,6 +54,10 @@ class Item(Base):
     kind: Mapped[str] = mapped_column(
         String(16), default=KIND_LOAN, server_default=KIND_LOAN
     )
+    # Where the item is kept (e.g. "ארון 3, מדף 2").
+    location: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    # The department (מחלקה) the item belongs to.
+    department: Mapped[str] = mapped_column(String(200), default="", server_default="")
 
 
 class Category(Base):
@@ -82,6 +86,8 @@ class Transaction(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime)
     # Units borrowed / issued / returned by this action.
     quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # Free text entered when issuing / borrowing.
+    note: Mapped[str] = mapped_column(String(500), default="", server_default="")
 
 
 ALIAS_ITEM = "ITEM"

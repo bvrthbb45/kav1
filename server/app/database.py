@@ -38,8 +38,13 @@ _ADDED_COLUMNS = {
         "category": "VARCHAR(200) NOT NULL DEFAULT ''",
         "quantity": "INTEGER NOT NULL DEFAULT 1",
         "kind": "VARCHAR(16) NOT NULL DEFAULT 'LOAN'",
+        "location": "VARCHAR(200) NOT NULL DEFAULT ''",
+        "department": "VARCHAR(200) NOT NULL DEFAULT ''",
     },
-    "transactions": {"quantity": "INTEGER NOT NULL DEFAULT 1"},
+    "transactions": {
+        "quantity": "INTEGER NOT NULL DEFAULT 1",
+        "note": "VARCHAR(500) NOT NULL DEFAULT ''",
+    },
 }
 
 

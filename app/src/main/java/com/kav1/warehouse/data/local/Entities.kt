@@ -58,6 +58,10 @@ data class ItemEntity(
     @ColumnInfo(name = "issued_qty", defaultValue = "0") val issuedQty: Int = 0,
     /** [ItemKind]; for consumables [quantity] is what is left in stock. */
     @ColumnInfo(name = "kind", defaultValue = "'LOAN'") val kind: String = ItemKind.LOAN,
+    /** Where the item is kept, e.g. "ארון 3, מדף 2". */
+    @ColumnInfo(name = "location", defaultValue = "''") val location: String = "",
+    /** Department (מחלקה) the item belongs to. */
+    @ColumnInfo(name = "department", defaultValue = "''") val department: String = "",
 )
 
 /** Units of one item held by one soldier. */
@@ -94,6 +98,7 @@ data class HistoryEntity(
     @ColumnInfo(name = "action_type") val actionType: String,
     @ColumnInfo(name = "timestamp") val timestamp: Long,
     @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
+    @ColumnInfo(name = "note", defaultValue = "''") val note: String = "",
 )
 
 @Entity(tableName = "users")
@@ -124,6 +129,8 @@ data class PendingTransactionEntity(
     @ColumnInfo(name = "timestamp") val timestamp: Long,
     @ColumnInfo(name = "sync_error") val syncError: String? = null,
     @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
+    /** Note typed when issuing / borrowing. */
+    @ColumnInfo(name = "note", defaultValue = "''") val note: String = "",
 )
 
 /** Dashboard row: an item plus the name of whoever holds it. */
@@ -140,6 +147,8 @@ data class ItemWithHolder(
     @ColumnInfo(name = "quantity") val quantity: Int,
     @ColumnInfo(name = "available_qty") val availableQty: Int,
     @ColumnInfo(name = "kind") val kind: String,
+    @ColumnInfo(name = "location") val location: String,
+    @ColumnInfo(name = "department") val department: String,
 )
 
 /** Soldier card row: units of an item a soldier holds. */
@@ -183,6 +192,7 @@ data class HistoryRow(
     @ColumnInfo(name = "item_name") val itemName: String?,
     @ColumnInfo(name = "category") val category: String?,
     @ColumnInfo(name = "user_name") val userName: String?,
+    @ColumnInfo(name = "note") val note: String?,
 )
 
 data class CategoryStatusCount(

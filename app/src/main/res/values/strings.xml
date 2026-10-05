@@ -217,6 +217,12 @@
     <string name="item_exists_editing">הפריט כבר קיים – עבר לעריכה</string>
     <string name="saved_pending_sync">נשמר. יישלח לשרת בסנכרון הבא</string>
     <string name="btn_delete">מחיקה</string>
+    <string name="item_department_hint">מחלקה (לא חובה)</string>
+    <string name="item_location_hint">מיקום במחסן (לא חובה)</string>
+    <string name="label_department">מחלקה: %1$s</string>
+    <string name="label_location">מיקום: %1$s</string>
+    <string name="note_hint">הערה (לא חובה)</string>
+    <string name="history_note">הערה: %1$s</string>
     <string name="item_delete_title">מחיקת פריט</string>
     <string name="item_delete_confirm">למחוק את %1$s (%2$s)?\nגם היסטוריית הפעולות של הפריט תימחק. לא ניתן לבטל.</string>
     <string name="user_delete_title">מחיקת חייל</string>

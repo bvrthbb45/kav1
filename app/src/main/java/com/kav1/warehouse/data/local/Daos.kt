@@ -23,9 +23,17 @@ abstract class ItemDao {
 
     @Query(
         "UPDATE items SET name = :name, category = :category, quantity = :quantity, kind = :kind, " +
-            "pending_upload = 1 WHERE qr_id = :qrId",
+            "location = :location, department = :department, pending_upload = 1 WHERE qr_id = :qrId",
     )
-    abstract suspend fun updateLocal(qrId: String, name: String, category: String, quantity: Int, kind: String): Int
+    abstract suspend fun updateLocal(
+        qrId: String,
+        name: String,
+        category: String,
+        quantity: Int,
+        kind: String,
+        location: String,
+        department: String,
+    ): Int
 
     /** Consumables: what is left in stock and how many were issued so far. */
     @Query(
@@ -71,7 +79,8 @@ abstract class ItemDao {
     /** Clears the flag only if the row was not edited again meanwhile. */
     @Query(
         "UPDATE items SET pending_upload = 0 WHERE qr_id = :qrId AND name = :sentName " +
-            "AND category = :sentCategory AND quantity = :sentQuantity AND kind = :sentKind",
+            "AND category = :sentCategory AND quantity = :sentQuantity AND kind = :sentKind " +
+            "AND location = :sentLocation AND department = :sentDepartment",
     )
     abstract suspend fun markUploaded(
         qrId: String,
@@ -79,6 +88,8 @@ abstract class ItemDao {
         sentCategory: String,
         sentQuantity: Int,
         sentKind: String,
+        sentLocation: String,
+        sentDepartment: String,
     )
 
     @Query("SELECT COUNT(*) FROM items")
@@ -99,6 +110,9 @@ abstract class ItemDao {
     @Query("SELECT DISTINCT category FROM items WHERE category != '' ORDER BY category")
     abstract suspend fun getCategoryNames(): List<String>
 
+    @Query("SELECT DISTINCT department FROM items WHERE department != '' ORDER BY department")
+    abstract suspend fun getDepartmentNames(): List<String>
+
     /**
      * [status] / [category] null = any; [query] matches name, serial, type or holder.
      * [holderId] non-null limits to items held by that soldier.
@@ -107,6 +121,7 @@ abstract class ItemDao {
         """
         SELECT i.qr_id, i.name, i.current_status, i.holder_user_id, i.last_action_at,
                i.pending_upload, i.category, i.quantity, i.available_qty, i.kind,
+               i.location, i.department,
                u.full_name AS holder_name, u.unit AS holder_unit
         FROM items i LEFT JOIN users u ON u.user_id = i.holder_user_id
         WHERE (:status IS NULL
@@ -118,6 +133,8 @@ abstract class ItemDao {
           AND (:query = '' OR i.name LIKE '%' || :query || '%'
                OR i.qr_id LIKE '%' || :query || '%'
                OR i.category LIKE '%' || :query || '%'
+               OR i.department LIKE '%' || :query || '%'
+               OR i.location LIKE '%' || :query || '%'
                OR u.full_name LIKE '%' || :query || '%'
                OR u.user_id LIKE '%' || :query || '%')
         ORDER BY i.category, i.name, i.qr_id
@@ -140,7 +157,10 @@ abstract class ItemDao {
         deleteAll()
         items.chunked(SQL_CHUNK).forEach { insertAll(it) }
         localEdits.forEach { edit ->
-            if (updateLocal(edit.qrId, edit.name, edit.category, edit.quantity, edit.kind) == 0) insert(edit)
+            val updated = updateLocal(
+                edit.qrId, edit.name, edit.category, edit.quantity, edit.kind, edit.location, edit.department,
+            )
+            if (updated == 0) insert(edit)
         }
     }
 }
@@ -272,13 +292,13 @@ abstract class HistoryDao {
     /** Server history plus this device's not-yet-synced actions, newest first. */
     @Query(
         """
-        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.quantity, h.pending,
+        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.quantity, h.pending, h.note,
                i.name AS item_name, i.category AS category, u.full_name AS user_name
         FROM (
-            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 0 AS pending
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 0 AS pending, note
             FROM history WHERE (:qrId IS NULL OR qr_id = :qrId) AND (:userId IS NULL OR user_id = :userId)
             UNION ALL
-            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 1 AS pending
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 1 AS pending, note
             FROM pending_transactions
             WHERE sync_error IS NULL AND (:qrId IS NULL OR qr_id = :qrId)
               AND (:userId IS NULL OR user_id = :userId)

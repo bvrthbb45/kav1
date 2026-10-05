@@ -35,6 +35,8 @@ def save_item(
     quantity: int = 1,
     kind: str = models.KIND_LOAN,
     old_qr_id: Optional[str] = None,
+    location: Optional[str] = None,
+    department: Optional[str] = None,
 ) -> bool:
     """Create or update an item; who holds what is kept. True if created.
 
@@ -56,9 +58,15 @@ def save_item(
                 quantity=quantity,
                 kind=kind,
                 current_status=models.STATUS_AVAILABLE,
+                location=_clean(location),
+                department=_clean(department),
             )
         )
     else:
+        if location is not None:
+            item.location = _clean(location)
+        if department is not None:
+            item.department = _clean(department)
         item.name = name
         item.category = category
         item.kind = kind
@@ -118,6 +126,8 @@ def rename_item(db: Session, old_qr_id: str, new_qr_id: str, commit: bool = True
             quantity=item.quantity,
             kind=item.kind,
             current_status=item.current_status,
+            location=item.location,
+            department=item.department,
         )
     )
     db.flush()
@@ -296,6 +306,32 @@ def category_summary(db: Session) -> List[Dict]:
     return rows
 
 
+def department_summary(db: Session) -> List[Dict]:
+    """Per department: how many serials and units, and where the units are."""
+    states = stock.item_states(db)
+    counts: Dict[str, Counter] = {}
+    types: Dict[str, set] = {}
+    for item in db.scalars(select(models.Item)):
+        state = states[item.qr_id]
+        name = item.department or ""
+        c = counts.setdefault(name, Counter())
+        c["serials"] += 1
+        c["total"] += state.quantity
+        c["available"] += state.available
+        c["borrowed"] += state.borrowed
+        c["issued"] += state.issued
+        types.setdefault(name, set()).add(item.category or "")
+    return [
+        {
+            "name": name,
+            "label": name or messages.NO_DEPARTMENT,
+            "types": len(types[name]),
+            **counts[name],
+        }
+        for name in sorted(counts, key=lambda n: (n == "", n))
+    ]
+
+
 # --- Cards and history -----------------------------------------------------
 
 
@@ -328,6 +364,8 @@ def _history_rows(db: Session, where, items, users, limit: Optional[int] = None)
                 "user_name": user.full_name if user else tx.user_id,
                 "unit": user.unit if user else "",
                 "quantity": tx.quantity or 1,
+                "note": tx.note or "",
+                "department": item.department if item else "",
             }
         )
     return rows
@@ -348,6 +386,8 @@ def holdings(db: Session, user_id: Optional[str] = None) -> List[Dict]:
                     "qr_id": qr_id,
                     "item_name": item.name,
                     "category": item.category,
+                    "department": item.department or "",
+                    "location": item.location or "",
                     "borrowed": h.borrowed,
                     "issued": h.issued,
                     "status": (
@@ -399,6 +439,8 @@ def item_card(db: Session, qr_id: str) -> Dict:
             "available_qty": state.available,
             "borrowed_qty": state.borrowed,
             "issued_qty": state.issued,
+            "location": item.location or "",
+            "department": item.department or "",
         },
         "holders": holdings_of(db, qr_id, state, users),
         "history": history,

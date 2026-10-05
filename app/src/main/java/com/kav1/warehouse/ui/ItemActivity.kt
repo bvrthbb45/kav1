@@ -3,6 +3,7 @@ package com.kav1.warehouse.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputFilter
 import android.text.InputType
 import android.util.Log
 import android.view.View
@@ -121,8 +122,12 @@ class ItemActivity : AppCompatActivity() {
             }
             binding.txtName.text = loaded.name
             binding.txtCategory.visibility = View.VISIBLE
-            binding.txtCategory.text = getString(R.string.label_category, categoryLabel(loaded.category)) +
-                " · " + getString(R.string.label_kind, kindLabel(loaded.kind))
+            binding.txtCategory.text = listOfNotNull(
+                getString(R.string.label_category, categoryLabel(loaded.category)) +
+                    " · " + getString(R.string.label_kind, kindLabel(loaded.kind)),
+                loaded.department.ifBlank { null }?.let { getString(R.string.label_department, it) },
+                loaded.location.ifBlank { null }?.let { getString(R.string.label_location, it) },
+            ).joinToString("\n")
             val consumable = loaded.kind == ItemKind.CONSUMABLE
             val multi = loaded.quantity > 1 || consumable
             binding.txtStatus.visibility = if (multi) View.GONE else View.VISIBLE
@@ -290,19 +295,25 @@ class ItemActivity : AppCompatActivity() {
                 getString(R.string.warn_already_available)
             else -> null
         }
+        // Optional note, saved with the action (e.g. "לתרגיל", "הוחזר פגום").
+        val (noteView, noteEdit) = dialogEditText(R.string.note_hint, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        noteEdit.filters = arrayOf(InputFilter.LengthFilter(MAX_NOTE))
         AlertDialog.Builder(this)
             .setTitle(R.string.confirm_title)
             .setMessage(if (warning == null) question else "$warning\n\n$question")
-            .setPositiveButton(R.string.btn_confirm) { _, _ -> save(item, user, actionType, qty) }
+            .setView(noteView)
+            .setPositiveButton(R.string.btn_confirm) { _, _ ->
+                save(item, user, actionType, qty, noteEdit.text.toString().trim())
+            }
             .setNegativeButton(R.string.btn_cancel, null)
             .show()
     }
 
-    private fun save(item: ItemEntity, user: UserEntity, actionType: String, qty: Int) {
+    private fun save(item: ItemEntity, user: UserEntity, actionType: String, qty: Int, note: String) {
         setActionsEnabled(false)
         lifecycleScope.launch {
             try {
-                app.repository.recordAction(item.qrId, user.userId, actionType, qty)
+                app.repository.recordAction(item.qrId, user.userId, actionType, qty, note)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -321,6 +332,7 @@ class ItemActivity : AppCompatActivity() {
         private const val TAG = "ItemActivity"
         private const val EXTRA_QR_ID = "qr_id"
         private const val MAX_QUANTITY = 1_000_000
+        private const val MAX_NOTE = 500
 
         fun intent(context: Context, qrId: String): Intent =
             Intent(context, ItemActivity::class.java).putExtra(EXTRA_QR_ID, qrId)

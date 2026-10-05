@@ -134,6 +134,7 @@ def data(db: Session = Depends(get_db)):
     ).all()
     return {
         "categories": catalog.category_summary(db),
+        "departments": catalog.department_summary(db),
         "items": [
             {
                 **i.model_dump(),
@@ -152,6 +153,7 @@ def data(db: Session = Depends(get_db)):
                 "action_type": t.action_type,
                 "timestamp": _epoch_ms(t.timestamp),
                 "quantity": t.quantity or 1,
+                "note": t.note or "",
             }
             for t in recent
         ],
@@ -188,6 +190,8 @@ class ItemForm(BaseModel):
     kind: Literal["LOAN", "CONSUMABLE"] = "LOAN"
     # The serial before editing; differs from qr_id when the serial changed.
     old_qr_id: Optional[str] = Field(default=None, max_length=128)
+    location: str = Field(default="", max_length=200)
+    department: str = Field(default="", max_length=200)
 
 
 class UserForm(BaseModel):
@@ -211,7 +215,15 @@ def save_item(form: ItemForm, db: Session = Depends(get_db)):
     if not name:
         raise catalog.CatalogError("יש להזין שם פריט או סוג פריט")
     created = catalog.save_item(
-        db, form.qr_id, name, form.category, form.quantity, form.kind, form.old_qr_id
+        db,
+        form.qr_id,
+        name,
+        form.category,
+        form.quantity,
+        form.kind,
+        form.old_qr_id,
+        form.location,
+        form.department,
     )
     verb = "נוסף פריט" if created else "עודכן פריט"
     events.add(events.INFO, f"{verb}: {name} ({form.qr_id.strip()})", "panel")

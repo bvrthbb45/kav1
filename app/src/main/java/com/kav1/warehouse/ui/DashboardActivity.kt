@@ -228,7 +228,9 @@ class DashboardActivity : AppCompatActivity() {
             } else {
                 context.getString(R.string.dashboard_row_details, item.qrId, lastAction)
             }
-            row.findViewById<TextView>(R.id.txtItemDetails).text = details
+            val place = listOf(item.department, item.location).filter { it.isNotBlank() }.joinToString(" · ")
+            row.findViewById<TextView>(R.id.txtItemDetails).text =
+                if (place.isEmpty()) details else "$details\n$place"
             return row
         }
     }

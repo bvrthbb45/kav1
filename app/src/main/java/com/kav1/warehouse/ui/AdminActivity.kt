@@ -73,7 +73,7 @@ class AdminActivity : AppCompatActivity() {
             } else {
                 lifecycleScope.launch {
                     app.repository.getItem(row.id)?.let {
-                        showItemDialog(it.qrId, it.name, it.category, it.quantity, it.kind)
+                        showItemDialog(it.qrId, it.name, it.category, it.quantity, it.kind, it.location, it.department)
                     }
                 }
             }
@@ -152,6 +152,7 @@ class AdminActivity : AppCompatActivity() {
                     unit = null,
                     pending = it.pendingUpload,
                     isUser = false,
+                    place = listOf(it.department, it.location).filter { p -> p.isNotBlank() }.joinToString(" · "),
                 )
             }
         }
@@ -185,7 +186,15 @@ class AdminActivity : AppCompatActivity() {
             val existing = app.repository.getItem(qrId)
             if (existing != null) {
                 toast(R.string.item_exists_editing)
-                showItemDialog(existing.qrId, existing.name, existing.category, existing.quantity, existing.kind)
+                showItemDialog(
+                    existing.qrId,
+                    existing.name,
+                    existing.category,
+                    existing.quantity,
+                    existing.kind,
+                    existing.location,
+                    existing.department,
+                )
             } else {
                 showItemDialog(null, null, prefilledQr = qrId)
             }
@@ -198,10 +207,13 @@ class AdminActivity : AppCompatActivity() {
         category: String? = null,
         quantity: Int = 1,
         kind: String = ItemKind.LOAN,
+        location: String = "",
+        department: String = "",
         prefilledQr: String? = null,
     ) {
         lifecycleScope.launch {
             val types = app.repository.getCategoryNames()
+            val departments = app.repository.getDepartmentNames()
             val form = Form(this@AdminActivity)
             // Editable when editing too: changing it changes the item's serial.
             val qrField = form.field(R.string.item_code_hint, qrId ?: prefilledQr).apply {
@@ -209,6 +221,8 @@ class AdminActivity : AppCompatActivity() {
             }
             val typeField = form.autocomplete(R.string.item_category_hint, category, types)
             val nameField = form.field(R.string.item_name_optional_hint, name)
+            val deptField = form.autocomplete(R.string.item_department_hint, department, departments)
+            val locationField = form.field(R.string.item_location_hint, location)
             val kindField = form.choice(
                 listOf(ItemKind.LOAN to R.string.kind_loan_long, ItemKind.CONSUMABLE to R.string.kind_consumable_long),
                 kind,
@@ -221,6 +235,8 @@ class AdminActivity : AppCompatActivity() {
                 val code = form.value(qrField, MAX_QR) ?: return@show false
                 val type = form.value(typeField, MAX_NAME, required = false) ?: return@show false
                 val itemName = form.value(nameField, MAX_NAME, required = false) ?: return@show false
+                val itemDept = form.value(deptField, MAX_NAME, required = false) ?: return@show false
+                val itemLocation = form.value(locationField, MAX_NAME, required = false) ?: return@show false
                 if (itemName.isEmpty() && type.isEmpty()) {
                     nameField.error = getString(R.string.item_name_or_type_required)
                     return@show false
@@ -243,7 +259,7 @@ class AdminActivity : AppCompatActivity() {
                     } else if (qrId == null && repo.getItem(code) != null) {
                         toast(R.string.item_exists_editing)
                     }
-                    repo.saveItem(code, itemName.ifEmpty { type }, type, qty, itemKind)
+                    repo.saveItem(code, itemName.ifEmpty { type }, type, qty, itemKind, itemLocation, itemDept)
                     savedPendingSync()
                 }
                 true
@@ -434,6 +450,8 @@ class AdminActivity : AppCompatActivity() {
         val unit: String?,
         val pending: Boolean,
         val isUser: Boolean,
+        /** Department and location of an item, if set. */
+        val place: String = "",
     )
 
     /** A small vertical form inside an AlertDialog that stays open until valid. */
@@ -531,11 +549,12 @@ class AdminActivity : AppCompatActivity() {
                 ?: LayoutInflater.from(context).inflate(R.layout.row_user, parent, false)
             val row = rows[position]
             view.findViewById<TextView>(R.id.txtUserName).text = row.title
+            val subtitle = if (row.place.isEmpty()) row.subtitle else "${row.subtitle}\n${row.place}"
             view.findViewById<TextView>(R.id.txtUserDetails).text =
                 if (row.pending) {
-                    "${row.subtitle} · ${context.getString(R.string.admin_pending_mark)}"
+                    "$subtitle · ${context.getString(R.string.admin_pending_mark)}"
                 } else {
-                    row.subtitle
+                    subtitle
                 }
             return view
         }

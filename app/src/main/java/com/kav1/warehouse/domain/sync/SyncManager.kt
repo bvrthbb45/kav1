@@ -100,7 +100,7 @@ class SyncManager(
             .mapValues { (_, txs) -> txs.sumOf { it.quantity } }
         return items.map {
             val stock = if (it.kind == ItemKind.CONSUMABLE) it.quantity + (pendingIssues[it.qrId] ?: 0) else it.quantity
-            ItemUpsertDto(it.qrId, it.name, it.category, stock, it.kind)
+            ItemUpsertDto(it.qrId, it.name, it.category, stock, it.kind, it.location, it.department)
         }
     }
 
@@ -130,7 +130,11 @@ class SyncManager(
         for (batch in items.chunked(PUSH_BATCH_SIZE)) {
             api.upsertItems(upsertDto(batch)).bodyOrThrow()
             db.withTransaction {
-                batch.forEach { db.itemDao().markUploaded(it.qrId, it.name, it.category, it.quantity, it.kind) }
+                batch.forEach {
+                    db.itemDao().markUploaded(
+                        it.qrId, it.name, it.category, it.quantity, it.kind, it.location, it.department,
+                    )
+                }
             }
         }
         val users = db.userDao().getPendingUpload()
@@ -153,7 +157,9 @@ class SyncManager(
             val request = PushRequestDto(
                 deviceId = prefs.deviceId,
                 transactions = batch.map {
-                    PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity)
+                    PendingTransactionDto(
+                        it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity, it.note.ifEmpty { null },
+                    )
                 },
             )
             val body = api.push(request).bodyOrThrow()
@@ -201,6 +207,8 @@ class SyncManager(
                 borrowedQty = dto.borrowedQty ?: if (status == ItemStatus.BORROWED) 1 else 0,
                 issuedQty = dto.issuedQty ?: if (status == ItemStatus.ISSUED) 1 else 0,
                 kind = dto.kind ?: ItemKind.LOAN,
+                location = dto.location.orEmpty(),
+                department = dto.department.orEmpty(),
             )
         } ?: throw MalformedResponseException("items missing")
         val users = body.users?.mapNotNull { dto ->
@@ -218,6 +226,7 @@ class SyncManager(
                 actionType = dto.actionType ?: return@mapNotNull null,
                 timestamp = dto.timestamp ?: return@mapNotNull null,
                 quantity = dto.quantity ?: 1,
+                note = dto.note.orEmpty(),
             )
         }
         val holdings = body.holdings?.mapNotNull { dto ->
@@ -266,7 +275,9 @@ class SyncManager(
             requestId = requestId,
             deviceId = prefs.deviceId,
             transactions = db.pendingTransactionDao().getUnsynced().map {
-                PendingTransactionDto(it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity)
+                PendingTransactionDto(
+                        it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity, it.note.ifEmpty { null },
+                    )
             },
             items = upsertDto(db.itemDao().getPendingUpload()),
             users = db.userDao().getPendingUpload().map { UserUpsertDto(it.userId, it.fullName, it.unit) },
@@ -294,6 +305,8 @@ class SyncManager(
                         it.category.orEmpty(),
                         it.quantity ?: 1,
                         it.kind ?: ItemKind.LOAN,
+                        it.location.orEmpty(),
+                        it.department.orEmpty(),
                     )
                 }
                 inbox.usersUploaded.orEmpty().forEach {

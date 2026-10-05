@@ -193,6 +193,7 @@ fun Context.fillHistory(
         val reference = if (byItem) h.qrId else h.userId
         var details = getString(R.string.history_row_user, formatDateTime(h.timestamp), reference)
         if (h.pending) details += " · " + getString(R.string.history_pending)
+        if (!h.note.isNullOrBlank()) details += "\n" + getString(R.string.history_note, h.note)
         addListRow(
             container,
             title,

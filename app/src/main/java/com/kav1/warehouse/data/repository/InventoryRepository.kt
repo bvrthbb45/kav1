@@ -34,7 +34,7 @@ class InventoryRepository(private val db: AppDatabase) {
      * Records a borrow/issue/return of [quantity] units in the outbox and
      * optimistically updates the local stock, atomically.
      */
-    suspend fun recordAction(qrId: String, userId: String, actionType: String, quantity: Int = 1) {
+    suspend fun recordAction(qrId: String, userId: String, actionType: String, quantity: Int = 1, note: String = "") {
         val tx = PendingTransactionEntity(
             txId = UUID.randomUUID().toString(),
             qrId = qrId,
@@ -42,6 +42,7 @@ class InventoryRepository(private val db: AppDatabase) {
             actionType = actionType,
             timestamp = System.currentTimeMillis(),
             quantity = quantity.coerceAtLeast(1),
+            note = note.trim().take(MAX_NOTE),
         )
         db.withTransaction {
             db.pendingTransactionDao().insert(tx)
@@ -54,9 +55,17 @@ class InventoryRepository(private val db: AppDatabase) {
     // --- Management (queued for upload on the next sync) ---
 
     /** Adds a new item, or edits an existing one; who holds what is kept. */
-    suspend fun saveItem(qrId: String, name: String, category: String, quantity: Int, kind: String) {
+    suspend fun saveItem(
+        qrId: String,
+        name: String,
+        category: String,
+        quantity: Int,
+        kind: String,
+        location: String = "",
+        department: String = "",
+    ) {
         db.withTransaction {
-            if (db.itemDao().updateLocal(qrId, name, category, quantity, kind) == 0) {
+            if (db.itemDao().updateLocal(qrId, name, category, quantity, kind, location, department) == 0) {
                 db.itemDao().insert(
                     ItemEntity(
                         qrId,
@@ -67,6 +76,8 @@ class InventoryRepository(private val db: AppDatabase) {
                         quantity = quantity,
                         availableQty = quantity,
                         kind = kind,
+                        location = location,
+                        department = department,
                     ),
                 )
             }
@@ -119,6 +130,8 @@ class InventoryRepository(private val db: AppDatabase) {
             CatalogChangeEntity(UUID.randomUUID().toString(), op, targetId, newId, System.currentTimeMillis()),
         )
     }
+
+    suspend fun getDepartmentNames(): List<String> = db.itemDao().getDepartmentNames()
 
     /** Known item types: from the server plus any typed on this device. */
     suspend fun getCategoryNames(): List<String> =
@@ -192,4 +205,9 @@ class InventoryRepository(private val db: AppDatabase) {
     suspend fun retryFailed() = db.pendingTransactionDao().retryFailed()
 
     suspend fun deleteFailed() = db.pendingTransactionDao().deleteFailed()
+
+    private companion object {
+        /** Server-side limit (server/app/schemas.py). */
+        const val MAX_NOTE = 500
+    }
 }
