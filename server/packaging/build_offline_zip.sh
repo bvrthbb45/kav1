@@ -27,7 +27,8 @@ rm -rf "$PKG/python/Lib/test" "$PKG/python/Lib/idlelib" "$PKG/python/Lib/tkinter
        "$PKG/python/Lib/ensurepip" "$PKG/python/Lib/lib2to3" "$PKG/python/Lib/pydoc_data" \
        "$PKG/python/Lib/site-packages/pip" "$PKG/python/Lib/site-packages"/pip-* \
        "$PKG/python/Lib/site-packages/setuptools" "$PKG/python/Lib/site-packages"/setuptools-* \
-       "$PKG/python/Lib/site-packages/_distutils_hack" "$PKG/python/Lib/site-packages/pkg_resources" \
+       "$PKG/python/Lib/site-packages/_distutils_hack" "$PKG/python/Lib/site-packages/distutils-precedence.pth" \
+       "$PKG/python/Lib/site-packages/pkg_resources" \
        "$PKG/python/DLLs"/_tkinter.pyd "$PKG/python/DLLs"/tcl*.dll "$PKG/python/DLLs"/tk*.dll
 find "$PKG/python" -name '__pycache__' -prune -exec rm -rf {} +
 

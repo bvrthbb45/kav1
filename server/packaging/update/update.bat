@@ -73,6 +73,10 @@ if not exist "%TARGET%\main.py" (
 echo       Server folder: %TARGET%
 set "PY=%TARGET%\python\python.exe"
 set PYTHONUTF8=1
+REM Leftover from the first packages: points at a module that was trimmed
+REM away and makes Python print "Error processing line 1 ... _distutils_hack".
+set "SP=%TARGET%\python\Lib\site-packages"
+if exist "%SP%\distutils-precedence.pth" if not exist "%SP%\_distutils_hack" del /q "%SP%\distutils-precedence.pth"
 for /f %%t in ('call "%PY%" -c "import datetime;print(datetime.datetime.now().strftime('%%Y%%m%%d_%%H%%M%%S'))"') do set "TS=%%t"
 
 echo [2/6] Stopping the server...
