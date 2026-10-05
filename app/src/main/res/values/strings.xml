@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app is Hebrew-only: these default strings are Hebrew. -->
+<resources>
+    <string name="app_name">אולימפוס</string>
+
+    <!-- Main screen -->
+    <string name="main_title">אולימפוס</string>
+    <string name="main_subtitle">גף ביטחון · ניהול ציוד ומלאי</string>
+    <string name="btn_soldier_card">כרטיס חייל</string>
+    <string name="status_title">מצב המכשיר</string>
+    <string name="btn_scan">סרוק ציוד</string>
+    <string name="btn_manual_entry">הזנת קוד ידנית</string>
+    <string name="btn_manual_sync">סנכרון נתונים ידני</string>
+    <string name="btn_dashboard">דשבורד מלאי</string>
+    <string name="btn_admin">ממשק ניהול</string>
+    <string name="status_pending_edits">שינויי ניהול הממתינים לסנכרון: %1$d</string>
+    <string name="status_pending">פעולות הממתינות לסנכרון: %1$d</string>
+    <string name="status_failed">פעולות שנדחו על ידי השרת: %1$d (לחץ לפרטים)</string>
+    <string name="status_local_data">במכשיר: %1$d פריטים, %2$d משתמשים</string>
+    <string name="status_last_sync">סנכרון אחרון: %1$s</string>
+    <string name="status_never_synced">טרם בוצע סנכרון</string>
+    <string name="syncing">מסנכרן נתונים…</string>
+
+    <!-- Scanning -->
+    <string name="scan_prompt">כוון את המצלמה אל קוד ה-QR</string>
+    <string name="scan_cancelled">הסריקה בוטלה</string>
+    <string name="camera_permission_denied">אין הרשאה למצלמה. ניתן להזין את הקוד ידנית</string>
+    <string name="manual_entry_title">הזנת קוד פריט</string>
+    <string name="manual_entry_hint">קוד QR של הפריט</string>
+    <string name="manual_entry_empty">יש להזין קוד פריט</string>
+
+    <!-- Item screen -->
+    <string name="item_title">פרטי ציוד</string>
+    <string name="label_qr">קוד: %1$s</string>
+    <string name="label_name">שם: %1$s</string>
+    <string name="label_status">סטטוס: %1$s</string>
+    <string name="status_available">זמין במחסן</string>
+    <string name="status_borrowed">מושאל</string>
+    <string name="status_issued">מונפק</string>
+    <string name="label_holder">מחזיק: %1$s</string>
+    <string name="label_last_action">פעולה אחרונה: %1$s</string>
+    <string name="btn_register_item">רישום הפריט במערכת (מנהל)</string>
+    <string name="status_unknown">לא ידוע</string>
+    <string name="item_unknown">הפריט אינו מוכר במכשיר. יש לבצע סנכרון נתונים או לפנות לאחראי המחסן</string>
+    <string name="btn_borrow">השאלה</string>
+    <string name="btn_return">החזרה</string>
+    <string name="btn_issue">ניפוק</string>
+    <string name="btn_back">חזרה למסך הראשי</string>
+
+    <!-- User picker -->
+    <string name="pick_user_title">בחר חייל/גורם מאשר</string>
+    <string name="pick_user_search_hint">חיפוש לפי שם, מספר אישי או יחידה</string>
+    <string name="pick_user_none">לא נמצאו משתמשים</string>
+    <string name="no_users">אין משתמשים שמורים במכשיר. יש לבצע סנכרון נתונים</string>
+    <string name="user_row_details">%1$s · %2$s</string>
+
+    <!-- Confirmation -->
+    <string name="confirm_title">אישור פעולה</string>
+    <string name="confirm_borrow">להשאיל את \"%1$s\" ל%2$s?</string>
+    <string name="confirm_return">לרשום החזרה של \"%1$s\" מ%2$s?</string>
+    <string name="confirm_issue">לנפק את \"%1$s\" ל%2$s?</string>
+    <string name="warn_not_available">שים לב: הפריט כבר רשום כ%1$s.</string>
+    <string name="warn_already_available">שים לב: הפריט כבר רשום כזמין במחסן.</string>
+    <string name="btn_confirm">אישור</string>
+    <string name="btn_cancel">ביטול</string>
+    <string name="btn_close">סגור</string>
+    <string name="action_saved">הפעולה נשמרה בהצלחה</string>
+    <string name="action_save_failed">שמירת הפעולה נכשלה, נסה שוב</string>
+
+    <!-- Sync results -->
+    <string name="sync_success">הסנכרון הושלם בהצלחה: נשלחו %1$d פעולות, התקבלו %2$d פריטים ו-%3$d משתמשים</string>
+    <string name="sync_success_with_rejected">הסנכרון הושלם, אך %1$d פעולות נדחו על ידי השרת</string>
+    <string name="sync_offline">אין חיבור לשרת. הנתונים שמורים במכשיר ויסונכרנו כשהחיבור יחזור</string>
+    <string name="sync_server_error">שגיאת שרת (%1$d): %2$s</string>
+    <string name="sync_server_error_no_message">שגיאת שרת (%1$d)</string>
+    <string name="sync_invalid_response">התקבלה תשובה לא תקינה מהשרת</string>
+    <string name="sync_failed">הסנכרון נכשל עקב שגיאה במכשיר</string>
+
+    <string name="usb_sync_prefix">סנכרון בכבל USB: %1$s</string>
+    <string name="sync_offline_no_cable">אין חיבור לשרת. כדי לסנכרן, חבר את הטאבלט בכבל USB למחשב השרת. הנתונים שמורים במכשיר</string>
+
+    <!-- Wired (USB) link status on the main screen -->
+    <string name="usb_status_title">חיבור בכבל לשרת</string>
+    <string name="usb_cable_on">✔ כבל USB מחובר</string>
+    <string name="usb_cable_off">✘ כבל USB לא מחובר</string>
+    <string name="usb_debug_on">✔ איתור באגים של USB פעיל</string>
+    <string name="usb_debug_off">✘ איתור באגים של USB כבוי (הגדרות ← אפשרויות מפתחים)</string>
+    <string name="usb_server_seen">✔ השרת מזהה את הטאבלט</string>
+    <string name="usb_server_not_seen">✘ השרת עדיין לא מזהה את הטאבלט</string>
+    <string name="usb_last_sync">סנכרון אחרון בכבל: %1$s</string>
+    <string name="usb_never_synced">עדיין לא בוצע סנכרון בכבל</string>
+    <string name="usb_sync_requested">נשלחה בקשת סנכרון לשרת דרך הכבל…</string>
+    <string name="usb_sync_timeout">השרת לא השלים את הסנכרון בזמן. בדוק את מרכז הבקרה במחשב השרת</string>
+    <string name="usb_problem_title">הטאבלט לא מסונכרן עם השרת</string>
+    <string name="usb_problem_debug_off">הכבל מחובר, אבל איתור באגים של USB כבוי ולכן השרת לא יכול לגשת לטאבלט.\n\nהגדרות ← אפשרויות מפתחים ← לסמן \"איתור באגים של USB\", ואז לנתק ולחבר את הכבל.\n\n(אם \"אפשרויות מפתחים\" לא מופיע: הגדרות ← אודות המכשיר ← ללחוץ 7 פעמים על \"מספר גרסת Build\")</string>
+    <string name="usb_problem_not_seen">הכבל מחובר ואיתור באגים פעיל, אבל השרת עדיין לא מזהה את הטאבלט. נשלחה בקשת סנכרון, והיא תתבצע ברגע שהשרת יזהה אותו.\n\nלבדוק:\n• במסך הטאבלט הופיעה ההודעה \"לאפשר איתור באגים של USB?\" – לסמן \"אפשר תמיד ממחשב זה\" ולאשר\n• השרת פועל במחשב\n• במחשב השרת לפתוח את \"Olympus Control Panel\" – הוא מראה בדיוק מה חסר\n• אם השרת ב-VirtualBox: התפריט Devices ← USB ← SAMSUNG_Android מסומן</string>
+
+    <!-- Quantities -->
+    <string name="label_stock">במלאי: %1$d · זמין: %2$d · מושאל: %3$d</string>
+    <string name="label_stock_consumable">נותר במלאי: %1$d · ניפוקים: %2$d</string>
+    <string name="label_kind">סוג שימוש: %1$s</string>
+    <string name="kind_loan">מושאל</string>
+    <string name="kind_consumable">ניצרך</string>
+    <string name="kind_loan_long">מושאל – השאלה והחזרה, לא יורד מהמלאי</string>
+    <string name="kind_consumable_long">ניצרך – ניפוק בלבד, יורד מהמלאי</string>
+    <string name="status_in_stock">במלאי</string>
+    <string name="status_out_of_stock">אזל מהמלאי</string>
+    <string name="consumable_out_of_stock">שים לב: הפריט אזל מהמלאי.</string>
+    <string name="warn_consumable_not_enough">שים לב: נותרו במלאי רק %1$d יחידות.</string>
+    <string name="holders_title">אצל חיילים</string>
+    <string name="held_borrowed">מושאל %1$d</string>
+    <string name="held_issued">נופק %1$d</string>
+    <string name="quantity_hint">כמות</string>
+    <string name="quantity_title_borrow">כמה להשאיל?</string>
+    <string name="quantity_title_issue">כמה לנפק?</string>
+    <string name="quantity_title_return">כמה הוחזרו?</string>
+    <string name="quantity_consumable_message">נותרו במלאי: %1$d</string>
+    <string name="quantity_take_message">זמין: %1$d מתוך %2$d במלאי</string>
+    <string name="quantity_return_message">רשום אצל %1$s: %2$d</string>
+    <string name="quantity_invalid">יש להזין מספר שלם גדול מ-0</string>
+    <string name="btn_continue">המשך</string>
+    <string name="confirm_borrow_qty">להשאיל %1$d × \"%2$s\" ל%3$s?</string>
+    <string name="confirm_issue_qty">לנפק %1$d × \"%2$s\" ל%3$s?</string>
+    <string name="confirm_return_qty">לרשום החזרה של %1$d × \"%2$s\" מ%3$s?</string>
+    <string name="warn_not_enough">שים לב: זמינות רק %1$d יחידות. ההפרש יירשם כאילו נלקח מחיילים אחרים שמחזיקים בפריט.</string>
+    <string name="warn_return_more">שים לב: אצל החייל רשומות רק %1$d יחידות. השאר יירשמו כהחזרה מחיילים אחרים.</string>
+    <string name="item_quantity_hint">כמות במלאי</string>
+    <string name="dashboard_row_stock">%1$s · זמין %2$d מתוך %3$d</string>
+    <string name="history_action_qty">%1$s ×%2$d</string>
+
+    <!-- Item types, history and soldier card -->
+    <string name="label_category">סוג: %1$s</string>
+    <string name="no_category">ללא סוג</string>
+    <string name="item_category_hint">סוג פריט (לדוגמה: מכשיר קשר)</string>
+    <string name="item_name_optional_hint">שם / תיאור (ריק = כמו הסוג)</string>
+    <string name="item_name_or_type_required">יש להזין שם פריט או סוג פריט</string>
+    <string name="history_title">היסטוריה</string>
+    <string name="history_empty">אין פעולות קודמות</string>
+    <string name="history_pending">ממתין לסנכרון</string>
+    <string name="history_row_user">%1$s · %2$s</string>
+    <string name="holder_open_card">%1$s (לחץ לכרטיס חייל)</string>
+    <string name="card_title">כרטיס חייל</string>
+    <string name="card_details">מספר אישי: %1$s · יחידה: %2$s</string>
+    <string name="card_holding_title">ציוד שנמצא אצלו (%1$d)</string>
+    <string name="card_holding_empty">אין ציוד אצל החייל</string>
+    <string name="card_holding_row">%1$s · %2$s · מ-%3$s</string>
+    <string name="card_since_unknown">לא ידוע</string>
+    <string name="dashboard_mode_items">פריטים</string>
+    <string name="dashboard_mode_types">סוגי פריטים</string>
+    <string name="dashboard_filter_type">מציג: סוג \"%1$s\" (לחץ לביטול)</string>
+    <string name="type_row_counts">רשומים %1$d · זמינים %2$d · מושאלים %3$d · מונפקים %4$d</string>
+    <string name="type_row_target">תקן %1$d</string>
+    <string name="type_row_missing">חסרים %1$d</string>
+    <string name="type_row_full">✔ מלא</string>
+    <string name="types_empty">אין סוגי פריטים. מגדירים אותם במרכז הבקרה או בממשק הניהול</string>
+
+    <!-- Rejected transactions -->
+    <string name="failed_title">פעולות שנדחו</string>
+    <string name="failed_row">%1$s · %2$s · %3$s\n%4$s</string>
+    <string name="failed_retry">שלח שוב</string>
+    <string name="failed_delete">מחק</string>
+    <string name="failed_delete_confirm">למחוק לצמיתות את הפעולות שנדחו?</string>
+    <string name="failed_requeued">הפעולות הוחזרו לתור הסנכרון</string>
+    <string name="failed_deleted">הפעולות שנדחו נמחקו</string>
+    <string name="action_borrow_short">השאלה</string>
+    <string name="action_return_short">החזרה</string>
+    <string name="action_issue_short">ניפוק</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">דשבורד מלאי</string>
+    <string name="tile_total">סה\"כ</string>
+    <string name="tile_available">זמינים</string>
+    <string name="tile_borrowed">מושאלים</string>
+    <string name="tile_issued">ניפוקים</string>
+    <string name="dashboard_search_hint">חיפוש לפי פריט, קוד או מחזיק</string>
+    <string name="dashboard_filter_all">מציג: כל הפריטים</string>
+    <string name="dashboard_filter">מציג: %1$s</string>
+    <string name="dashboard_empty">אין פריטים להצגה</string>
+    <string name="dashboard_row_details">%1$s · %2$s</string>
+    <string name="dashboard_row_holder">%1$s (%2$s) · %3$s</string>
+
+    <!-- Admin -->
+    <string name="admin_title">ממשק ניהול</string>
+    <string name="admin_pin_title">כניסת מנהל</string>
+    <string name="admin_pin_hint">קוד מנהל</string>
+    <string name="admin_pin_wrong">קוד שגוי</string>
+    <string name="admin_scan_new_item">סריקת פריט חדש</string>
+    <string name="admin_add_item">הוספת פריט</string>
+    <string name="admin_add_user">הוספת משתמש</string>
+    <string name="admin_tab_items">פריטים</string>
+    <string name="admin_tab_users">משתמשים</string>
+    <string name="admin_search_hint">חיפוש</string>
+    <string name="admin_server_url">כתובת שרת</string>
+    <string name="admin_change_pin">שינוי קוד מנהל</string>
+    <string name="admin_test_connection">בדיקת חיבור לשרת</string>
+    <string name="connection_usb_ok">✔ מחובר לשרת בכבל USB\nהסנכרון עובר דרך הכבל. סנכרון אחרון בכבל: %1$s</string>
+    <string name="connection_usb_none">✘ אין חיבור לשרת בכבל USB</string>
+    <string name="connection_network_not_needed">חיבור ברשת (%1$s): אין – זה תקין, כי הטאבלט מסתנכרן בכבל ולא צריך רשת</string>
+    <string name="status_server_empty">השרת עדיין ריק: מוסיפים פריטים וחיילים במרכז הבקרה במחשב (או מייבאים מאקסל), והם יגיעו לטאבלט בסנכרון הבא</string>
+    <string name="connection_testing">בודק חיבור ל-%1$s…</string>
+    <string name="connection_ok">החיבור לשרת תקין ✔\n%1$s\n\nתשובת השרת: %2$s</string>
+    <string name="connection_http_error">השרת ענה עם שגיאה %2$d\n%1$s</string>
+    <string name="connection_failed">אין חיבור לשרת ברשת ✘\n%1$s\n\nפרטי השגיאה: %2$s\n\nבדיקות:\n• הטאבלט מחובר לאותה רשת של השרת (USB או WiFi)\n• השרת פועל במחשב\n• כתובת השרת נכונה (ממשק ניהול ← כתובת שרת)\n• פורט 8000 פתוח בחומת האש</string>
+    <string name="admin_pending_mark">ממתין לסנכרון</string>
+    <string name="admin_list_hint">לחיצה על שורה לעריכה</string>
+    <string name="item_dialog_add">פריט חדש</string>
+    <string name="item_dialog_edit">עריכת פריט</string>
+    <string name="item_code_hint">קוד QR</string>
+    <string name="item_name_hint">שם הפריט</string>
+    <string name="user_dialog_add">משתמש חדש</string>
+    <string name="user_dialog_edit">עריכת משתמש</string>
+    <string name="user_id_hint">מספר אישי</string>
+    <string name="user_name_hint">שם מלא</string>
+    <string name="user_unit_hint">יחידה</string>
+    <string name="error_required">שדה חובה</string>
+    <string name="error_too_long">ארוך מדי (עד %1$d תווים)</string>
+    <string name="item_exists_editing">הפריט כבר קיים – עבר לעריכה</string>
+    <string name="saved_pending_sync">נשמר. יישלח לשרת בסנכרון הבא</string>
+    <string name="btn_delete">מחיקה</string>
+    <string name="not_available_title">אין במלאי</string>
+    <string name="not_available_message">אין פריט זמין במלאי: %1$s\nכל היחידות נמצאות כרגע אצל חיילים או נופקו.</string>
+    <string name="quantity_not_available">אין מספיק פריטים זמינים במלאי (זמינים %1$d)</string>
+    <string name="item_department_hint">מחלקה (לא חובה)</string>
+    <string name="item_location_hint">מיקום במחסן (לא חובה)</string>
+    <string name="label_department">מחלקה: %1$s</string>
+    <string name="label_location">מיקום: %1$s</string>
+    <string name="note_hint">הערה (לא חובה)</string>
+    <string name="history_note">הערה: %1$s</string>
+    <string name="item_delete_title">מחיקת פריט</string>
+    <string name="item_delete_confirm">למחוק את %1$s (%2$s)?\nגם היסטוריית הפעולות של הפריט תימחק. לא ניתן לבטל.</string>
+    <string name="user_delete_title">מחיקת חייל</string>
+    <string name="user_delete_confirm">למחוק את %1$s (%2$s)?\nהיסטוריית הפעולות שלו תימחק, ופריטים מושאלים שבידיו ייחשבו כמוחזרים למלאי. לא ניתן לבטל.</string>
+    <string name="deleted_pending_sync">נמחק. המחיקה תישלח לשרת בסנכרון הבא</string>
+    <string name="item_id_taken">כבר קיים פריט עם המספר הסידורי %1$s</string>
+    <string name="user_id_taken">כבר קיים חייל עם המספר האישי %1$s</string>
+    <string name="item_id_changed">המספר הסידורי שונה ל-%1$s. יש להדביק על הפריט מדבקת QR חדשה</string>
+    <string name="user_id_changed">המספר האישי שונה ל-%1$s</string>
+    <string name="server_url_hint">לדוגמה: 192.168.42.100:8000</string>
+    <string name="server_url_invalid">כתובת לא תקינה</string>
+    <string name="server_url_saved">כתובת השרת עודכנה</string>
+    <string name="btn_default">ברירת מחדל</string>
+    <string name="new_pin_hint">קוד חדש (4 ספרות לפחות)</string>
+    <string name="new_pin_short">הקוד חייב להכיל 4 ספרות לפחות</string>
+    <string name="pin_changed">קוד המנהל עודכן</string>
+</resources>
