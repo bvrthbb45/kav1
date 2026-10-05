@@ -58,6 +58,10 @@ def push_transactions(
     accepted: List[str] = []
     rejected: List[schemas.TxResult] = []
     touched_items: Set[str] = set()
+    # Units free right now; nothing is handed out beyond it (no taking
+    # units away from whoever holds them).
+    states = stock.item_states(db, set(known_items))
+    available = {q: s.available for q, s in states.items()}
 
     try:
         for tx in sorted(transactions, key=lambda t: t.timestamp):
@@ -85,6 +89,19 @@ def push_transactions(
                     if known_items[tx.qr_id] == models.KIND_CONSUMABLE
                     else messages.TX_LOAN_ONLY_BORROW
                 ).format(qr_id=tx.qr_id)
+
+            if reason is None:
+                n = max(tx.quantity or 1, 1)
+                if tx.action_type == models.ACTION_RETURN:
+                    available[tx.qr_id] = min(
+                        available[tx.qr_id] + n, states[tx.qr_id].quantity
+                    )
+                elif n > available[tx.qr_id]:
+                    reason = messages.TX_NOT_AVAILABLE.format(
+                        qr_id=tx.qr_id, available=available[tx.qr_id]
+                    )
+                else:
+                    available[tx.qr_id] -= n
 
             if reason:
                 rejected.append(

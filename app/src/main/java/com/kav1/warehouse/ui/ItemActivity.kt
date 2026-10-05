@@ -177,11 +177,29 @@ class ItemActivity : AppCompatActivity() {
                 askQuantity(current, actionType, user, held) { qty -> confirmAction(current, user, actionType, qty, held) }
             }
         } else {
+            // Nothing is handed out beyond the free stock (no taking units
+            // from whoever holds them).
+            if (availableUnits(current) <= 0) {
+                showNotAvailable(current)
+                return
+            }
             // "How many?" right after the scan, then the soldier.
             askQuantity(current, actionType, null, 0) { qty ->
                 pickUser(current, actionType) { user, held -> confirmAction(current, user, actionType, qty, held) }
             }
         }
+    }
+
+    /** Units that can be issued / borrowed now (this device's pending actions included). */
+    private fun availableUnits(item: ItemEntity): Int =
+        if (item.kind == ItemKind.CONSUMABLE) item.quantity else item.availableQty
+
+    private fun showNotAvailable(item: ItemEntity) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.not_available_title)
+            .setMessage(getString(R.string.not_available_message, item.name))
+            .setPositiveButton(R.string.btn_close, null)
+            .show()
     }
 
     /** Opens the soldier picker; [onPicked] gets the soldier and how many units they hold now. */
@@ -248,6 +266,8 @@ class ItemActivity : AppCompatActivity() {
                 val qty = edit.text.toString().trim().toIntOrNull()
                 if (qty == null || qty < 1 || qty > MAX_QUANTITY) {
                     edit.error = getString(R.string.quantity_invalid)
+                } else if (actionType != ActionType.RETURN && qty > availableUnits(current)) {
+                    edit.error = getString(R.string.quantity_not_available, availableUnits(current))
                 } else {
                     dialog.dismiss()
                     onQuantity(qty)
@@ -298,6 +318,10 @@ class ItemActivity : AppCompatActivity() {
         // Optional note, saved with the action (e.g. "לתרגיל", "הוחזר פגום").
         val (noteView, noteEdit) = dialogEditText(R.string.note_hint, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
         noteEdit.filters = arrayOf(InputFilter.LengthFilter(MAX_NOTE))
+        if (!isReturn && qty > availableUnits(item)) {
+            showNotAvailable(item)
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.confirm_title)
             .setMessage(if (warning == null) question else "$warning\n\n$question")

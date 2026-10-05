@@ -136,10 +136,64 @@ def test_consumables_are_issued_and_leave_the_stock(client):
     bat = _item(client, "BAT")
     assert (bat["quantity"], bat["issued_qty"]) == (400, 50)
 
-    # Issuing more than the stock empties it.
-    _push(client, "t5", "ISSUE", 500, 4_000, qr="BAT")
+    # Issuing more than the stock is refused; the stock does not change.
+    body = _push(client, "t5", "ISSUE", 500, 4_000, qr="BAT")
+    assert body["accepted"] == []
+    assert "אין פריט זמין במלאי" in body["rejected"][0]["message"]
+    assert _item(client, "BAT")["quantity"] == 400
+    # Exactly what is left empties it.
+    assert _push(client, "t6", "ISSUE", 400, 5_000, qr="BAT")["accepted"] == ["t6"]
     bat = _item(client, "BAT")
     assert (bat["quantity"], bat["current_status"]) == (0, "ISSUED")
+    assert _push(client, "t7", "ISSUE", 1, 6_000, qr="BAT")["accepted"] == []
+
+
+def test_loan_is_not_taken_from_its_holder(client):
+    client.post("/api/admin/users", json=[{"user_id": "u2", "full_name": "ב"}])
+    client.post("/api/panel/items", json={"qr_id": "K", "name": "קסדה", "quantity": 1})
+    assert _push(client, "a", "BORROW", 1, 1_000, qr="K")["accepted"] == ["a"]
+    r = client.post(
+        "/api/sync/push",
+        json={
+            "device_id": "d",
+            "transactions": [
+                {
+                    "tx_id": "b",
+                    "qr_id": "K",
+                    "user_id": "u2",
+                    "action_type": "BORROW",
+                    "timestamp": 2_000,
+                }
+            ],
+        },
+    ).json()
+    assert r["accepted"] == [] and "אין פריט זמין במלאי" in r["rejected"][0]["message"]
+    holders = [h["user_id"] for h in client.get("/api/sync/pull").json()["holdings"]]
+    assert holders == ["u1"]
+    # Returned in the same batch as a new borrow: the unit is free again.
+    r = client.post(
+        "/api/sync/push",
+        json={
+            "device_id": "d",
+            "transactions": [
+                {
+                    "tx_id": "c",
+                    "qr_id": "K",
+                    "user_id": "u1",
+                    "action_type": "RETURN",
+                    "timestamp": 3_000,
+                },
+                {
+                    "tx_id": "d",
+                    "qr_id": "K",
+                    "user_id": "u2",
+                    "action_type": "BORROW",
+                    "timestamp": 4_000,
+                },
+            ],
+        },
+    ).json()
+    assert r["accepted"] == ["c", "d"]
 
 
 def test_old_tablets_push_without_quantity(client):

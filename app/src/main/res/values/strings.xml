@@ -217,6 +217,9 @@
     <string name="item_exists_editing">הפריט כבר קיים – עבר לעריכה</string>
     <string name="saved_pending_sync">נשמר. יישלח לשרת בסנכרון הבא</string>
     <string name="btn_delete">מחיקה</string>
+    <string name="not_available_title">אין במלאי</string>
+    <string name="not_available_message">אין פריט זמין במלאי: %1$s\nכל היחידות נמצאות כרגע אצל חיילים או נופקו.</string>
+    <string name="quantity_not_available">אין מספיק פריטים זמינים במלאי (זמינים %1$d)</string>
     <string name="item_department_hint">מחלקה (לא חובה)</string>
     <string name="item_location_hint">מיקום במחסן (לא חובה)</string>
     <string name="label_department">מחלקה: %1$s</string>
