@@ -17,9 +17,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QStyle,
     QApplication,
+    QDialog,
+    QInputDialog,
 )
-from PySide6.QtGui import QFont, QIcon
-from datetime import datetime
+from PySide6.QtGui import QFont
+from PySide6.QtCore import QTimer
 
 from app.core.api_client import ApiClient
 from app.core.ws_client import WebSocketClient
@@ -33,26 +35,22 @@ from .connection_dialog import ConnectionDialog
 from app.views.search.search_dialog import SearchDialog
 
 # from search.search_result_dialog import SearchResultDialog
-from app.views.common.warning_dialog import show_warning
+from app.views.common.warning_dialog import show_critical_disconnection_warning
 from app.utils.log import Log
 
 
 class MainWindow(QMainWindow):
     def __init__(self, appName="Kav 1"):
         super().__init__()
+        self.logger = Log()
 
         self.ask_for_connection()
-
-        icon_path = Path(__file__).parent / "Kav1.png"
-        self.setWindowIcon(QIcon(str(icon_path)))
-
-        self.logger = Log()
 
         self.setup_ui(appName)
         self.setup_clients()
         self.connect_signals()
 
-        self.force_sync()
+        QTimer.singleShot(1000, self.force_sync)
 
     def setup_ui(self, appName):
         self.setWindowTitle(appName)
@@ -63,6 +61,7 @@ class MainWindow(QMainWindow):
         # self.log.setReadOnly(True)
 
         self.ws_status_label = QLabel("Disconnected")
+        self.ws_status_label.setObjectName("ws_status_label")
         # self.client_version = QLabel(f"Version Hash: {get_version()}")
 
         self.search_button = QPushButton("Search Visitors")
@@ -120,15 +119,23 @@ class MainWindow(QMainWindow):
         self.ws_client.connect(Settings.get_ws_url())
 
     def connect_signals(self):
+        # Clear existing connections
         self.api_client.response_received.disconnect()
+        self.ws_client.message_received.disconnect()
+
+        # Set up new connections
         self.ws_client.message_received.connect(self.handle_ws_message)
         self.ws_client.connected.connect(self.handle_connect)
         self.ws_client.disconnected.connect(self.handle_disconnect)
 
+        # Connect buttons
+        self.logs_button.clicked.connect(self.open_logs_dialog)
+
+        # Default API response handler
         self.api_client.response_received.connect(self.handle_api_response)
         self.api_client.error_occurred.connect(self.log_error)
 
-        self.logs_button.clicked.connect(self.open_logs_dialog)
+        # Button connections
         self.search_button.clicked.connect(self.open_search_dialog)
         self.sync_button.clicked.connect(self.force_sync)
         self.create_button.clicked.connect(self.add_visitor_dialog)
@@ -141,22 +148,33 @@ class MainWindow(QMainWindow):
             self.api_client.get_visitors_inside()
 
     def handle_api_response(self, response: dict):
-        self.logger.write_to_log("API Response:")
-        self.logger.write_to_log(str(response))
+        self.logger.write_to_log(f"API Response Type: {type(response)}")
+        self.logger.write_to_log(f"API Response Content: {str(response)}")
 
-        if response and isinstance(response, list):
+        if response and isinstance(response, dict) and "visitor" in response:
+            # This is a single visitor response
+            self.api_client.response_received.disconnect()
+            self.api_client.response_received.connect(self.handle_get_visitors)
+            self.api_client.get_visitors_inside()
+        elif response and isinstance(response, list):
+            # This is a list of visitors, update the list directly
             self.update_visitors_list(response)
 
     def log_error(self, error: str):
         self.logger.write_to_log(f"Error: {error}")
 
     def force_sync(self):
+        self.logger.write_to_log("Manual sync initiated...")
         try:
+            # Temporarily connect the specific handler
             self.api_client.response_received.disconnect()
-        except TypeError:
-            pass
-        self.api_client.response_received.connect(self.handle_get_visitors)
-        self.api_client.get_visitors_inside()
+            self.api_client.response_received.connect(self.handle_get_visitors)
+            self.api_client.get_visitors_inside()
+        except Exception as e:
+            self.log_error(f"Sync failed: {str(e)}")
+            # Restore default handler
+            self.api_client.response_received.disconnect()
+            self.api_client.response_received.connect(self.handle_api_response)
 
     def open_search_dialog(self):
         dialog = SearchDialog()
@@ -167,30 +185,30 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def handle_get_visitors(self, response):
-        if response and isinstance(response, list):
-            self.logger.write_to_log(response)
-            self.update_visitors_list(response)
-        else:
-            self.visitors_list.clear()
+        try:
+            if response and isinstance(response, list):
+                self.logger.write_to_log(f"Visitor list received: {response}")
+                self.update_visitors_list(response)
+            else:
+                self.logger.write_to_log("handle_get_visitors: response was not a list")
+        except Exception as e:
+            self.logger.write_to_log(f"Exception in handle_get_visitors: {e}")
 
     def update_visitors_list(self, visitors):
-        self.visitors_list.clear()
-        if len(visitors) > 0:
-            for visitor in visitors:
-                action = visitor.get("action", {})
-                # Get the first action type and time (e.g. "entry": "timehere")
-                if action:
-                    action_type, action_time = next(iter(action.items()))
-                    dt = datetime.fromisoformat(action_time)
-                    formatted = dt.strftime("%H:%M:%S0 %d\\%m\\%Y")
-                    display_action = f"{action_type} at {formatted}"
-                else:
-                    display_action = "No action"
-
-                display_name = (
-                    f"{visitor['visitorid']} - {visitor['name']} ({display_action})"
-                )
-                self.visitors_list.addItem(display_name)
+        """Update the visitors list with those currently inside."""
+        try:
+            self.visitors_list.clear()
+            if visitors and isinstance(visitors, list):  # More explicit check
+                for visitor in visitors:
+                    if (
+                        isinstance(visitor, dict)
+                        and "visitorid" in visitor
+                        and "name" in visitor
+                    ):
+                        display_name = f"{visitor['visitorid']} - {visitor['name']}"
+                        self.visitors_list.addItem(display_name)
+        except Exception as e:
+            self.log_error(f"Error updating visitors list: {str(e)}")
 
     def on_visitor_clicked(self):
         """Handle visitor item click."""
@@ -209,44 +227,67 @@ class MainWindow(QMainWindow):
         """Handle the visitor details response."""
         if results and "visitor" in results:
             visitor_details_dialog = VisitorDetailsDialog(results["visitor"], self)
-            visitor_details_dialog.exec()
+            if visitor_details_dialog.exec() == QDialog.Accepted:
+                # When dialog is accepted (after status change or deletion)
+                self.api_client.get_visitors_inside()
 
     def ask_for_connection(self):
-        pass
+        """Show connection configuration dialog"""
         dialog = ConnectionDialog()
         if dialog.exec():
             address = dialog.get_address()
             if address:
                 Settings.set_url(address)
+                self.logger.write_to_log(f"Connection set to: {address}")
+        else:
+            self.logger.write_to_log("Connection configuration cancelled")
 
     def handle_connect(self):
         msg = f"Connected to {Settings.get_base_url()}"
         self.logger.write_to_log(msg)
         self.ws_status_label.setText(msg)
+        # Remove disconnected styling
+        self.ws_status_label.setProperty("disconnected", False)
+        self.ws_status_label.style().unpolish(self.ws_status_label)
+        self.ws_status_label.style().polish(self.ws_status_label)
 
     def handle_disconnect(self):
-        message = "WebSocket Connection Lost"
+        message = "⚠️ CONNECTION LOST - Server Disconnected"
         self.logger.write_to_log(message)
         self.ws_status_label.setText(message)
-        show_warning(
-            "Connection Error",
-            "Unable to connect to the server.\n\n"
-            "Please verify:\n"
-            "✓ Your network connection is active\n"
-            "✓ The server is running and accessible\n"
-            "✓ Firewall settings allow this connection\n\n"
-            "Technical details:\n"
-            f"• {message}",
-        )
-        QApplication.quit()
+        # Apply disconnected styling
+        self.ws_status_label.setProperty("disconnected", True)
+        self.ws_status_label.style().unpolish(self.ws_status_label)
+        self.ws_status_label.style().polish(self.ws_status_label)
+
+        # Show prominent, un-hideable warning dialog
+        self.show_disconnection_dialog()
+
+    def show_disconnection_dialog(self):
+        """Show a critical disconnection warning dialog."""
+        try:
+            show_critical_disconnection_warning(
+                "Connection Lost", "The server connection has been lost.", parent=self
+            )
+        except Exception as e:
+            self.logger.write_to_log(f"Error showing disconnection dialog: {str(e)}")
+        finally:
+            self.close()
+            QApplication.quit()
 
     def open_logs_dialog(self):
         try:
             self.api_client.response_received.disconnect()
         except TypeError:
             pass
-        self.api_client.response_received.connect(self.handle_logs_response)
-        self.api_client.get_logs(limit=20)
+
+        limit, ok = QInputDialog.getInt(
+            self, "Logs Limit", "Enter the number of logs to retrieve:", 50, 1, 1000
+        )
+
+        if ok:
+            self.api_client.response_received.connect(self.handle_logs_response)
+            self.api_client.get_logs(limit=limit)
 
     def handle_logs_response(self, logs):
         from app.views.logs.logs_dialog import LogsDialog

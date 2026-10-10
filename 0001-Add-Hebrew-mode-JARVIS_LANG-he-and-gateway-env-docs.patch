@@ -1,0 +1,457 @@
+From c3571d62088a8be63a6a1b964682e57b7af66b1a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 10 Oct 2026 19:51:34 +0000
+Subject: [PATCH] Add Hebrew mode (JARVIS_LANG=he) and gateway env docs
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013yrXja56MGZ9rL22JeA4cW
+---
+ .env.example       | 24 ++++++++++++++++++++++--
+ README.md          | 21 +++++++++++++++++++++
+ bridge/server.mjs  | 31 +++++++++++++++++++++++++++++--
+ scripts/start.mjs  |  6 +++++-
+ src/App.tsx        | 20 ++++++++++++++------
+ src/config.ts      | 13 +++++++++++++
+ src/lib/fillers.ts | 15 ++++++++++++---
+ src/lib/tts.ts     | 27 ++++++++++++++++++++++-----
+ src/lib/voice.ts   | 18 +++++++++++-------
+ src/ui/Hud.tsx     |  3 ++-
+ 10 files changed, 151 insertions(+), 27 deletions(-)
+
+diff --git a/.env.example b/.env.example
+index 3574daf..44d664b 100644
+--- a/.env.example
++++ b/.env.example
+@@ -28,8 +28,25 @@
+ # The model the bridge asks Claude Code to run. Default claude-opus-5.
+ # JARVIS_MODEL=claude-opus-5
+ 
+-# Reasoning effort. Default medium.
+-# JARVIS_EFFORT=medium
++# Reasoning effort. Default high.
++# JARVIS_EFFORT=high
++
++# Language. 'he' = Hebrew: the model answers in Hebrew, Scribe transcribes
++# Hebrew, and the face listens/speaks Hebrew. `JARVIS_LANG=he npm start` sets
++# both halves; if you run the bridge and face separately also set VITE_LANG=he
++# in .env.local. Default en.
++# JARVIS_LANG=he
++# Optional overrides: Scribe language (ISO 639-3) and the ElevenLabs TTS model.
++# Hebrew needs a model that supports it; check ElevenLabs' language list.
++# JARVIS_STT_LANG=heb
++# JARVIS_TTS_MODEL=eleven_flash_v2_5
++
++# Route the brain through a gateway such as OmniRoute instead of Anthropic.
++# The Claude Agent SDK passes these straight to the claude CLI it spawns, so
++# export them in the shell that runs the bridge (the bridge does not read .env):
++#   ANTHROPIC_BASE_URL=http://localhost:20128
++#   ANTHROPIC_AUTH_TOKEN=<your OmniRoute key>
++#   JARVIS_MODEL=<model or combo name defined in OmniRoute>
+ 
+ # Allow effectful tools (send, tap, delete, install, pay). Off by default, so
+ # JARVIS can look at anything and change nothing. `npm run bridge:writes` sets
+@@ -71,6 +88,9 @@
+ #   direct — the browser calls the Claude API itself. Needs VITE_ANTHROPIC_API_KEY.
+ # VITE_BACKEND=bridge
+ 
++# Interface language: en (default) or he. `JARVIS_LANG=he npm start` sets this.
++# VITE_LANG=he
++
+ # Where the bridge listens. Keep the port in step with JARVIS_BRIDGE_PORT above.
+ # Default ws://localhost:8787.
+ # VITE_BRIDGE_URL=ws://localhost:8787
+diff --git a/README.md b/README.md
+index d27f0be..2dcf567 100644
+--- a/README.md
++++ b/README.md
+@@ -191,6 +191,27 @@ chose.
+ 
+ ---
+ 
++## Hebrew (עברית)
++
++```bash
++JARVIS_LANG=he npm start
++```
++
++The model answers in spoken Hebrew, the wake word also answers to "ג'רוויס", the
++browser recogniser listens for `he-IL`, Scribe is pinned to Hebrew, and the
++captions render right-to-left. Speech uses an installed Hebrew system voice, or
++ElevenLabs if a key is present (set `JARVIS_TTS_MODEL` to a model that supports
++Hebrew). Kokoro is English-only and is skipped. Hebrew recognition in the
++keyless browser mode depends on Chrome and is noticeably better with an
++ElevenLabs key.
++
++## Routing through a gateway (OmniRoute)
++
++Export `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and `JARVIS_MODEL` in the
++shell that runs the bridge; the Agent SDK passes them to the `claude` process.
++
++---
++
+ ## Controls
+ 
+ | Key / phrase | Does |
+diff --git a/bridge/server.mjs b/bridge/server.mjs
+index 500b408..0d5ef37 100644
+--- a/bridge/server.mjs
++++ b/bridge/server.mjs
+@@ -121,6 +121,29 @@ const MODEL = process.env.JARVIS_MODEL ?? 'claude-opus-5'
+  */
+ const EFFORT = process.env.JARVIS_EFFORT ?? 'high'
+ 
++/**
++ * Interface language. 'he' makes the model listen and answer in Hebrew and
++ * tells Scribe to transcribe Hebrew. Default 'en'.
++ */
++const LANG = process.env.JARVIS_LANG === 'he' ? 'he' : 'en'
++
++const HEBREW_PROMPT = `
++
++LANGUAGE. The user speaks Hebrew and you speak Hebrew. Everything above about
++persona, brevity and register still holds: the same dry, deferential butler,
++translated, not replaced. Rules for Hebrew:
++- Reply in natural, spoken Modern Hebrew, in 1-3 short sentences. Address the
++  user as "אדוני" where "sir" would go. Never transliterate English into Hebrew
++  letters when a Hebrew word exists, but keep product names, code and proper
++  nouns in their original script.
++- Your words are read aloud by a text-to-speech engine. Write plain text only:
++  no niqqud, no markdown, no emoji, no bullet lists, and write numbers and
++  units the way they are said.
++- The speech recogniser will sometimes mis-hear Hebrew. If a request is
++  unintelligible, ask once for it to be repeated rather than guessing.
++- If the user switches to English for a turn, answer in English for that turn.
++- HUD panel text (the \`display\` tool) should be Hebrew too. Keep it short.`
++
+ /**
+  * Both spellings of every renamed built-in are listed on purpose. The SDK
+  * presents several tools to the model under newer names — Task is Agent,
+@@ -855,7 +878,7 @@ const handleRequest = async (req, res) => {
+             text,
+             // Flash is the low-latency model — a conversation needs speed more
+             // than it needs the last few percent of quality.
+-            model_id: 'eleven_flash_v2_5',
++            model_id: process.env.JARVIS_TTS_MODEL ?? 'eleven_flash_v2_5',
+             voice_settings: {
+               stability: 0.4,
+               similarity_boost: 0.75,
+@@ -937,6 +960,10 @@ const handleRequest = async (req, res) => {
+             : 'webm'
+       const form = new FormData()
+       form.append('model_id', 'scribe_v1')
++      // Without a hint Scribe auto-detects; pinning Hebrew is more reliable for
++      // short commands. JARVIS_STT_LANG overrides (ISO 639-3, e.g. 'heb', 'eng').
++      const sttLang = process.env.JARVIS_STT_LANG ?? (LANG === 'he' ? 'heb' : '')
++      if (sttLang) form.append('language_code', sttLang)
+       form.append(
+         'file',
+         new Blob([Buffer.concat(chunks)], { type }),
+@@ -1219,7 +1246,7 @@ wss.on('connection', (socket) => {
+       // tuned for a coding agent — verbose, file-oriented, and a large chunk
+       // of input tokens on every turn. Replacing it makes the persona stick,
+       // keeps answers short enough to speak, and cuts cost per turn.
+-      systemPrompt: SYSTEM_PROMPT,
++      systemPrompt: LANG === 'he' ? SYSTEM_PROMPT + HEBREW_PROMPT : SYSTEM_PROMPT,
+       // Run from the home directory so project-scoped MCP servers don't shadow
+       // the global ones, and so file tools have a sane root.
+       cwd: homedir(),
+diff --git a/scripts/start.mjs b/scripts/start.mjs
+index 92ec547..55c0b4c 100644
+--- a/scripts/start.mjs
++++ b/scripts/start.mjs
+@@ -117,7 +117,11 @@ console.log('\nJ.A.R.V.I.S. starting — the brain and the face.\n')
+ run('bridge', 'node', ['bridge/server.mjs'], '36', bridgeEnv)
+ // npm is a shell script on most systems; call the vite binary directly so we do
+ // not need shell:true (which would break the argument handling above).
+-run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', {})
++// One switch for both halves: JARVIS_LANG=he npm start
++const faceEnv = process.env.JARVIS_LANG && !process.env.VITE_LANG
++  ? { VITE_LANG: process.env.JARVIS_LANG }
++  : {}
++run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', faceEnv)
+ 
+ console.log(
+   '\nWhen it says the dev server is ready, open the URL it prints in Chrome,\n' +
+diff --git a/src/App.tsx b/src/App.tsx
+index b55024e..a3e97e4 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -13,7 +13,7 @@ import * as hands from './lib/hands'
+ import { listenForClap } from './lib/clap'
+ import * as camera from './lib/camera'
+ import * as kokoro from './lib/kokoro'
+-import { TTS_ENGINE } from './config'
++import { TTS_ENGINE, LANG } from './config'
+ import { forTool, attention } from './lib/fillers'
+ import {
+   ask,
+@@ -63,11 +63,15 @@ const newId = () =>
+ 
+ /** The same mishearings voice.ts accepts for the wake word — otherwise a turn
+  *  that woke him as "travis" gets that word sent on to the model as a question. */
+-const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv)'
++const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv|[גז][׳\'’]?א?ר[וב]{1,2}י?ס)'
++const HEY = '(?:hey|hi|ok|okay|yo|היי|הי|אוקיי|אוקי)'
+ /** A bare vocative — "Jarvis", "hey jarvis" — with nothing asked. */
+-const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i')
++const BARE_NAME = new RegExp(`^${HEY}?\\s*${NAME}[\\s,.!?]*$`, 'iu')
+ /** A leading vocative on a real command: "Jarvis, what's the weather". */
+-const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
++const LEADING_NAME = new RegExp(
++  `^${HEY}?\\s*${NAME}(?![\\p{L}\\p{N}])[\\s,.:!?-]*`,
++  'iu',
++)
+ 
+ export default function App() {
+   const store = useStore
+@@ -473,7 +477,7 @@ export default function App() {
+     // "Hey Jarvis" isn't waiting on an 86MB download. Deliberately not awaited
+     // — if it's slow, JARVIS comes up on the system voice and swaps over the
+     // moment the model is ready.
+-    if (TTS_ENGINE === 'kokoro') {
++    if (TTS_ENGINE === 'kokoro' && LANG !== 'he') {
+       void kokoro.load()
+       voicePoll.current = setInterval(() => {
+         const p = kokoro.loadProgress()
+@@ -596,7 +600,11 @@ export default function App() {
+         silence()
+         const demo = createSpeaker()
+         speaker.current = demo
+-        demo.say(`Voice set to ${name.replace(/\(.*?\)/g, '').trim()}. At your service, sir.`)
++        demo.say(
++          LANG === 'he'
++            ? `הקול הוחלף ל-${name.replace(/\(.*?\)/g, '').trim()}. לשירותך, אדוני.`
++            : `Voice set to ${name.replace(/\(.*?\)/g, '').trim()}. At your service, sir.`,
++        )
+         void demo.end()
+         return
+       }
+diff --git a/src/config.ts b/src/config.ts
+index 31e43f9..fc6fd8e 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -128,6 +128,19 @@ export const KOKORO_VOICE = choice(
+   'bm_george',
+ )
+ 
++/**
++ * Interface language. 'he' makes JARVIS listen for and speak Hebrew: the
++ * browser recogniser, the wake word, the speech voice, the canned lines and the
++ * right-to-left layout. Set JARVIS_LANG=he on the bridge as well so the model
++ * answers in Hebrew (`npm start` passes it on for you).
++ */
++export const LANG: 'en' | 'he' = choice(
++  'VITE_LANG',
++  import.meta.env.VITE_LANG,
++  ['en', 'he'] as const,
++  'en',
++)
++
+ export const env = {
+   anthropicKey: str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? '',
+   elevenKey: str(import.meta.env.VITE_ELEVENLABS_API_KEY) ?? '',
+diff --git a/src/lib/fillers.ts b/src/lib/fillers.ts
+index a78f8ff..048bac7 100644
+--- a/src/lib/fillers.ts
++++ b/src/lib/fillers.ts
+@@ -1,3 +1,5 @@
++import { LANG } from '../config'
++
+ /**
+  * Filler speech.
+  *
+@@ -63,9 +65,13 @@ function makePicker(pool: string[]) {
+   }
+ }
+ 
+-export const working = makePicker(WORKING)
+-export const acknowledge = makePicker(ACKNOWLEDGE)
+-export const attention = makePicker(ATTENTION)
++const HE_WORKING = ['מטפל בזה, אדוני.', 'אוסף מידע.', 'מחפש.', 'בודק.', 'מריץ את השאילתה.', 'בתהליך.']
++const HE_ACKNOWLEDGE = ['כרצונך, אדוני.', 'מובן, אדוני.', 'בוודאי.', 'הובן.', 'נעשה.', 'מיד, אדוני.']
++const HE_ATTENTION = ['כן, אדוני?', 'אדוני?', 'לשירותך, אדוני.', 'ממתין להוראות.', 'ער, אדוני.']
++
++export const working = makePicker(LANG === 'he' ? HE_WORKING : WORKING)
++export const acknowledge = makePicker(LANG === 'he' ? HE_ACKNOWLEDGE : ACKNOWLEDGE)
++export const attention = makePicker(LANG === 'he' ? HE_ATTENTION : ATTENTION)
+ 
+ /**
+  * Naming the task is warmer than a generic acknowledgement and shows the
+@@ -162,6 +168,8 @@ const BY_TOOL: Rule[] = [
+   },
+ ]
+ 
++// The per-tool lines are English; in Hebrew mode fall back to the Hebrew generic
++// "working" lines rather than speak English through a Hebrew voice.
+ const pickers = BY_TOOL.map((r) => ({ ...r, pick: makePicker(r.lines) }))
+ 
+ /**
+@@ -188,6 +196,7 @@ function split(toolName: string): { server: string; tool: string } {
+ 
+ /** A phrase suited to the tool that just fired. */
+ export function forTool(toolName: string): string {
++  if (LANG === 'he') return working()
+   const { server, tool } = split(toolName)
+   for (const r of pickers) {
+     const hit =
+diff --git a/src/lib/tts.ts b/src/lib/tts.ts
+index a41e78e..d28dc1f 100644
+--- a/src/lib/tts.ts
++++ b/src/lib/tts.ts
+@@ -2,11 +2,16 @@ import {
+   env,
+   USE_ELEVENLABS,
+   BACKEND,
+-  TTS_ENGINE,
++  TTS_ENGINE as CONFIGURED_ENGINE,
++  LANG,
+   KOKORO_VOICE,
+   BRIDGE_HTTP_URL,
+ } from '../config'
+ import * as kokoro from './kokoro'
++
++/** Kokoro ships British English voices only, so Hebrew always uses the system
++ *  voice (or ElevenLabs when a key is present). */
++const TTS_ENGINE = LANG === 'he' ? 'system' : CONFIGURED_ENGINE
+ import { caps } from './capabilities'
+ 
+ /**
+@@ -210,6 +215,15 @@ const USABLE = 40
+ 
+ /** Best-first list of usable voices — also what the voice picker cycles. */
+ export function candidateVoices(): SpeechSynthesisVoice[] {
++  // Hebrew: there is no butler to rank for, so take every installed Hebrew
++  // voice, "Enhanced"/"Premium"/"Google" variants first.
++  if (LANG === 'he') {
++    const q = (n: string) => (/premium|enhanced|google/i.test(n) ? 0 : 1)
++    return speechSynthesis
++      .getVoices()
++      .filter((v) => /^he/i.test(v.lang))
++      .sort((a, b) => q(a.name) - q(b.name))
++  }
+   return speechSynthesis
+     .getVoices()
+     .filter((v) => /^en/i.test(v.lang))
+@@ -236,7 +250,10 @@ function pickVoice(): SpeechSynthesisVoice | null {
+     localStorage.removeItem(VOICE_PREF_KEY)
+   }
+ 
+-  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^en/i.test(v.lang)) ?? null
++  cachedVoice =
++    candidateVoices()[0] ??
++    all.find((v) => v.lang.toLowerCase().startsWith(LANG === 'he' ? 'he' : 'en')) ??
++    null
+   return cachedVoice
+ }
+ 
+@@ -477,15 +494,15 @@ export function createSpeaker(): Speaker {
+       const u = new SpeechSynthesisUtterance(text)
+       const voice = pickVoice()
+       if (voice) u.voice = voice
+-      u.lang = voice?.lang ?? 'en-GB'
++      u.lang = voice?.lang ?? (LANG === 'he' ? 'he-IL' : 'en-GB')
+       // Deliberate, and deliberately invariant — the character's pace does not
+       // change with stakes, and that steadiness is most of the effect. This
+       // lands around 130 wpm, below the median for film dialogue.
+-      u.rate = 0.92
++      u.rate = LANG === 'he' ? 1 : 0.92
+       // Mid-baritone, and *not* pushed lower for gravitas. The voice is
+       // clarity-weighted rather than chest-weighted; dropping it further reads
+       // as a film-trailer voiceover, which is the wrong character entirely.
+-      u.pitch = 0.95
++      u.pitch = LANG === 'he' ? 1 : 0.95
+ 
+       // speechSynthesis exposes no amplitude, so drive the reactor from a
+       // synthetic envelope. It only has to look like speech, not match it.
+diff --git a/src/lib/voice.ts b/src/lib/voice.ts
+index 13ed5ff..dc7cd13 100644
+--- a/src/lib/voice.ts
++++ b/src/lib/voice.ts
+@@ -1,4 +1,4 @@
+-import { BRIDGE_HTTP_URL } from '../config'
++import { BRIDGE_HTTP_URL, LANG } from '../config'
+ import { getMic } from './audio'
+ import { speakingNow, speakingSince } from './tts'
+ import { startVad, type Vad } from './vad'
+@@ -78,7 +78,7 @@ const WAKE_DEBOUNCE = 1500
+  * indication why. Better a rare false wake than a name that does not answer.
+  */
+ const WAKE =
+-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv)\b(?!'s)/i
++  /(?<![\p{L}\p{N}])(?:(?:hey|hi|ok|okay|yo|היי|הי|אוקיי|אוקי)\s*)?(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv|[גז][׳'’]?א?ר[וב]{1,2}י?ס)(?![\p{L}\p{N}])(?!'s)/iu
+ 
+ /** Everything after the wake phrase, which is usually the actual command. */
+ function afterWake(text: string): string {
+@@ -123,7 +123,7 @@ function afterWake(text: string): string {
+  * last word of a real request.
+  */
+ const CONTINUES =
+-  /\b(and|or|but|so|because|since|if|when|while|that|which|who|whose|to|of|in|on|at|by|for|with|from|about|into|onto|over|under|between|through|the|a|an|my|your|his|her|its|our|their|is|are|was|were|be|been|do|does|did|have|has|had|can|could|would|should|will|shall|might|must|like|than|then|as|very|really|just|some|any|all|both|either|neither)$/i
++  /(?<![\p{L}\p{N}])(ו|אבל|או|כי|אם|ש|של|על|עם|את|אל|מן|כש|לפני|אחרי|בין|גם|רק|and|or|but|so|because|since|if|when|while|that|which|who|whose|to|of|in|on|at|by|for|with|from|about|into|onto|over|under|between|through|the|a|an|my|your|his|her|its|our|their|is|are|was|were|be|been|do|does|did|have|has|had|can|could|would|should|will|shall|might|must|like|than|then|as|very|really|just|some|any|all|both|either|neither)$/iu
+ 
+ /** Trailing punctuation a transcriber emits mid-thought. */
+ const TRAILS = /[,;:–—-]$/
+@@ -257,7 +257,8 @@ function makeAssembler(h: {
+ const norm = (s: string) =>
+   s
+     .toLowerCase()
+-    .replace(/[^a-z0-9' ]+/g, ' ')
++    .replace(/[\u0591-\u05C7]/g, '') // Hebrew niqqud and cantillation
++    .replace(/[^\p{L}\p{N}' ]+/gu, ' ')
+     .replace(/\s+/g, ' ')
+     .trim()
+ 
+@@ -267,7 +268,7 @@ const norm = (s: string) =>
+  * would be the single most infuriating failure this file could have.
+  */
+ const OVERRIDE =
+-  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
++  /(?<![\p{L}\p{N}])(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|עצור|תעצור|חכה|תחכה|די|מספיק|שקט|תשתוק|ביטול|תבטל|עזוב|לא|[גז][׳'’]?א?ר[וב]{1,2}י?ס)(?![\p{L}\p{N}])/iu
+ 
+ /**
+  * Words too common to be evidence of anything.
+@@ -284,7 +285,10 @@ const STOP = new Set(
+     'our their what which who how why when where do does did can could would ' +
+     'should will shall not no yes if then than as about into over under out up ' +
+     'down one two three first second third now here there just very really got ' +
+-    'get have has had say said tell me okay ok well right').split(' '),
++    'get have has had say said tell me okay ok well right ' +
++    // Hebrew function words: pronouns, particles, prepositions, "yes/no".
++    'אני אתה את הוא היא אנחנו אתם הם הן של על עם אל מן מה מי למה איך מתי איפה ' +
++    'כן לא אם או אבל כי גם רק זה זאת אלה כל יש אין היה היו הוא בבקשה טוב אוקי').split(' '),
+ )
+ 
+ /**
+@@ -760,7 +764,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
+     rec = new Ctor()
+     rec.continuous = true
+     rec.interimResults = true
+-    rec.lang = 'en-GB'
++    rec.lang = LANG === 'he' ? 'he-IL' : 'en-GB'
+     rec.onstart = () => {
+       running = true
+       diag.running = true
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index a33860b..271f90f 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -277,7 +277,7 @@ export function Hud() {
+                 {/* Only his half decodes. What the user said was never
+                     transmitted from anywhere — dressing it up as machine
+                     output would be a lie about where the words came from. */}
+-                <span className="log-text">
++                <span className="log-text" dir="auto">
+                   {t.role === 'jarvis' ? <DecodeText text={t.text} /> : t.text}
+                 </span>
+               </motion.div>
+@@ -290,6 +290,7 @@ export function Hud() {
+         {caption && (
+           <motion.div
+             className="caption"
++            dir="auto"
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             exit={{ opacity: 0 }}
+-- 
+2.43.0
+
