@@ -3,6 +3,9 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - '**/README.md'
+      - '**/*.md'
   pull_request:
     branches: [main, dev]
 
