@@ -1,0 +1,3 @@
+# Desktop client only
+pyside6
+requests

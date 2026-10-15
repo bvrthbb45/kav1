@@ -1,0 +1,7 @@
+# Backend only (what the offline server machine needs)
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+websockets
+alembic

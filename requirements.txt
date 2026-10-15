@@ -1,8 +1,4 @@
-fastapi
-uvicorn
-sqlalchemy
-pydantic
-websockets
-pyside6
-requests
-alembic
+# Everything (used by CI and for development). Server / client subsets:
+#   requirements-server.txt   requirements-client.txt
+-r requirements-server.txt
+-r requirements-client.txt
