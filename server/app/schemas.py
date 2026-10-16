@@ -42,6 +42,8 @@ class PendingTransaction(BaseModel):
     quantity: int = Field(default=1, ge=1, le=1_000_000)
     # Note entered with the action; older apps do not send it.
     note: Optional[str] = Field(default=None, max_length=500)
+    # Warehouse taken from / returned to; older apps do not send it.
+    warehouse: Optional[str] = Field(default=None, max_length=200)
 
 
 class PushRequest(BaseModel):
@@ -77,6 +79,15 @@ class HistoryOut(BaseModel):
     timestamp: int
     quantity: int = 1
     note: str = ""
+    warehouse: str = ""
+
+
+class ItemStockOut(BaseModel):
+    """Units of an item on one warehouse's shelf now."""
+
+    qr_id: str
+    warehouse: str
+    quantity: int
 
 
 class HoldingOut(BaseModel):
@@ -99,6 +110,8 @@ class PullResponse(BaseModel):
     categories: List[CategoryOut] = []
     history: List[HistoryOut] = []
     holdings: List[HoldingOut] = []
+    warehouses: List[str] = []
+    item_stock: List[ItemStockOut] = []
 
 
 class UserIn(BaseModel):

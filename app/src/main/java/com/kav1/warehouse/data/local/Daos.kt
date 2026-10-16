@@ -292,13 +292,13 @@ abstract class HistoryDao {
     /** Server history plus this device's not-yet-synced actions, newest first. */
     @Query(
         """
-        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.quantity, h.pending, h.note,
+        SELECT h.tx_id, h.qr_id, h.user_id, h.action_type, h.timestamp, h.quantity, h.pending, h.note, h.warehouse,
                i.name AS item_name, i.category AS category, u.full_name AS user_name
         FROM (
-            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 0 AS pending, note
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 0 AS pending, note, warehouse
             FROM history WHERE (:qrId IS NULL OR qr_id = :qrId) AND (:userId IS NULL OR user_id = :userId)
             UNION ALL
-            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 1 AS pending, note
+            SELECT tx_id, qr_id, user_id, action_type, timestamp, quantity, 1 AS pending, note, warehouse
             FROM pending_transactions
             WHERE sync_error IS NULL AND (:qrId IS NULL OR qr_id = :qrId)
               AND (:userId IS NULL OR user_id = :userId)
@@ -437,4 +437,47 @@ abstract class CatalogDao {
 
     @Query("SELECT COUNT(*) FROM users WHERE user_id = :userId")
     abstract suspend fun userExists(userId: String): Int
+}
+
+/** Warehouses and how items are split between them. */
+@Dao
+abstract class StockDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertWarehouses(rows: List<WarehouseEntity>)
+
+    @Query("DELETE FROM warehouses")
+    abstract suspend fun deleteWarehouses()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertStock(rows: List<ItemStockEntity>)
+
+    @Query("DELETE FROM item_stock")
+    abstract suspend fun deleteStock()
+
+    @Transaction
+    open suspend fun replaceAll(warehouses: List<WarehouseEntity>, stock: List<ItemStockEntity>) {
+        deleteWarehouses()
+        insertWarehouses(warehouses)
+        deleteStock()
+        stock.chunked(SQL_CHUNK).forEach { insertStock(it) }
+    }
+
+    @Query("SELECT * FROM item_stock WHERE qr_id = :qrId ORDER BY warehouse")
+    abstract suspend fun getForItem(qrId: String): List<ItemStockEntity>
+
+    @Query("SELECT * FROM item_stock WHERE qr_id = :qrId ORDER BY warehouse")
+    abstract fun observeForItem(qrId: String): Flow<List<ItemStockEntity>>
+
+    /** Moves units on one shelf (never below zero); no-op if the item is not split there. */
+    @Query(
+        "UPDATE item_stock SET quantity = MAX(quantity + :delta, 0) " +
+            "WHERE qr_id = :qrId AND warehouse = :warehouse",
+    )
+    abstract suspend fun adjust(qrId: String, warehouse: String, delta: Int)
+
+    @Query("DELETE FROM item_stock WHERE qr_id = :qrId")
+    abstract suspend fun deleteForItem(qrId: String)
+
+    @Query("UPDATE item_stock SET qr_id = :newId WHERE qr_id = :oldId")
+    abstract suspend fun renameItem(oldId: String, newId: String)
 }

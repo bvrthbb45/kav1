@@ -88,6 +88,8 @@ class Transaction(Base):
     quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     # Free text entered when issuing / borrowing.
     note: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    # Warehouse the units were taken from / returned to ("" = not recorded).
+    warehouse: Mapped[str] = mapped_column(String(200), default="", server_default="")
 
 
 ALIAS_ITEM = "ITEM"
@@ -106,3 +108,30 @@ class IdAlias(Base):
     kind: Mapped[str] = mapped_column(String(8), primary_key=True)
     old_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     new_id: Mapped[str] = mapped_column(String(128))
+
+
+class Warehouse(Base):
+    """A storage site (מחסן); an item's stock can be split between them."""
+
+    __tablename__ = "warehouses"
+
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+
+
+class ItemStock(Base):
+    """Part of an item's stock kept in one warehouse.
+
+    [base] is the warehouse's units before any recorded movement; what is
+    on its shelf now is base - units taken from it + units returned to it
+    (see warehouses.levels).
+    """
+
+    __tablename__ = "item_stock"
+
+    qr_id: Mapped[str] = mapped_column(
+        ForeignKey("items.qr_id", ondelete="CASCADE"), primary_key=True
+    )
+    warehouse: Mapped[str] = mapped_column(
+        ForeignKey("warehouses.name"), primary_key=True
+    )
+    base: Mapped[int] = mapped_column(Integer, default=0)

@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -28,6 +28,7 @@ from .. import (
     services,
     stock,
     usb_sync,
+    warehouses,
 )
 from ..config import BASE_DIR, DATABASE_URL, PORT
 from ..database import get_db
@@ -134,6 +135,7 @@ def status(after: int = 0, db: Session = Depends(get_db)):
 @router.get("/api/panel/data")
 def data(db: Session = Depends(get_db)):
     state = services.pull_state(db)
+    shelves = warehouses.levels(db)
     names = {u.user_id: u.full_name for u in state.users}
     item_names = {i.qr_id: i.name for i in state.items}
     holders = {}
@@ -151,10 +153,12 @@ def data(db: Session = Depends(get_db)):
     return {
         "categories": catalog.category_summary(db),
         "departments": catalog.department_summary(db),
+        "warehouses": warehouses.summary(db),
         "items": [
             {
                 **i.model_dump(),
                 "holder_name": ", ".join(holders.get(i.qr_id, [])),
+                "stock": shelves.get(i.qr_id, {}),
             }
             for i in state.items
         ],
@@ -170,6 +174,7 @@ def data(db: Session = Depends(get_db)):
                 "timestamp": _epoch_ms(t.timestamp),
                 "quantity": t.quantity or 1,
                 "note": t.note or "",
+                "warehouse": t.warehouse or "",
             }
             for t in recent
         ],
@@ -301,6 +306,44 @@ def save_category(form: CategoryForm, db: Session = Depends(get_db)):
 def delete_category(name: str, db: Session = Depends(get_db)):
     catalog.delete_category(db, name)
     return _ok(messages.CATEGORY_DELETED.format(name=name))
+
+
+# --- Warehouses ----------------------------------------------------------------
+
+
+class WarehouseForm(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    old_name: Optional[str] = Field(default=None, max_length=200)
+
+
+class StockSplitForm(BaseModel):
+    qr_id: str = Field(min_length=1, max_length=128)
+    # Units on each warehouse's shelf now; {} removes the split.
+    shelves: Dict[str, int] = {}
+
+
+@router.post("/api/panel/warehouses")
+def save_warehouse(form: WarehouseForm, db: Session = Depends(get_db)):
+    warehouses.save_warehouse(db, form.name, form.old_name)
+    events.add(
+        events.INFO, messages.WAREHOUSE_SAVED.format(name=form.name.strip()), "panel"
+    )
+    return _ok(messages.WAREHOUSE_SAVED.format(name=form.name.strip()))
+
+
+@router.delete("/api/panel/warehouses")
+def delete_warehouse(name: str, db: Session = Depends(get_db)):
+    warehouses.delete_warehouse(db, name)
+    events.add(events.INFO, messages.WAREHOUSE_DELETED.format(name=name), "panel")
+    return _ok(messages.WAREHOUSE_DELETED.format(name=name))
+
+
+@router.post("/api/panel/items/stock")
+def save_stock_split(form: StockSplitForm, db: Session = Depends(get_db)):
+    total = warehouses.set_split(db, form.qr_id.strip(), form.shelves)
+    message = messages.STOCK_SPLIT_SAVED.format(qr_id=form.qr_id.strip(), total=total)
+    events.add(events.INFO, message, "panel")
+    return _ok(message)
 
 
 # --- Excel ---------------------------------------------------------------------

@@ -152,6 +152,7 @@
       <button class="tab" data-tab="transactions">פעולות אחרונות</button>
       <button class="tab" data-tab="types">סוגי פריטים</button>
       <button class="tab" data-tab="departments">מחלקות</button>
+      <button class="tab" data-tab="warehouses">מחסנים</button>
       <button class="tab" data-tab="items">מלאי</button>
       <button class="tab" data-tab="users">חיילים</button>
       <button class="tab" data-tab="excel">ייבוא ודוחות</button>
@@ -185,10 +186,21 @@
         <tbody id="deptBody"></tbody></table></div>
     </div>
 
+    <div data-panel="warehouses" hidden>
+      <div class="toolbar">
+        <span class="muted small">הגדר את המחסנים, ואז חלק את המלאי של כל פריט ביניהם (בכרטיס הפריט או בכפתור "מחסנים" בטבלת המלאי). בניפוק והשאלה בטאבלט בוחרים מאיזה מחסן.</span>
+        <span class="spacer"></span>
+        <button class="primary" id="btnAddWarehouse">+ מחסן</button>
+      </div>
+      <div class="scroll"><table><thead><tr><th>מחסן</th><th>פריטים</th><th>יחידות על המדף</th><th></th></tr></thead>
+        <tbody id="whBody"></tbody></table></div>
+    </div>
+
     <div data-panel="items" hidden>
       <div class="toolbar">
         <input type="search" id="itemSearch" placeholder="חיפוש לפי שם, מספר סידורי, מיקום או מחזיק…">
         <select id="itemDept"><option value="*">כל המחלקות</option></select>
+        <select id="itemWh"><option value="*">כל המחסנים</option></select>
         <select id="itemType"><option value="*">כל הסוגים</option></select>
         <select id="itemStatus">
           <option value="">כל הסטטוסים</option><option value="AVAILABLE">זמין</option>
@@ -197,7 +209,7 @@
         <button id="btnLabels">הדפסת מדבקות QR (<span id="labelCount">0</span>)</button>
         <button class="primary" id="btnAddItem">+ פריט</button>
       </div>
-      <div class="scroll"><table><thead><tr><th>פריט</th><th>מספר סידורי</th><th>סוג</th><th>מחלקה</th><th>מיקום</th><th>שימוש</th><th>זמין / במלאי</th><th>סטטוס</th><th>אצל</th><th>פעולה אחרונה</th><th></th></tr></thead>
+      <div class="scroll"><table><thead><tr><th>פריט</th><th>מספר סידורי</th><th>סוג</th><th>מחלקה</th><th>מיקום</th><th>מחסנים</th><th>שימוש</th><th>זמין / במלאי</th><th>סטטוס</th><th>אצל</th><th>פעולה אחרונה</th><th></th></tr></thead>
         <tbody id="itemBody"></tbody></table></div>
     </div>
 
@@ -228,6 +240,7 @@
             <div class="report"><b>דוח מלא</b><span class="muted small">כל הגיליונות בקובץ אחד</span><a class="btn primary" href="/api/panel/export/full">הורדה</a></div>
             <div class="report"><b>סיכום לפי סוג</b><span class="muted small">תקן מול מצב בפועל</span><a class="btn" href="/api/panel/export/types">הורדה</a></div>
             <div class="report"><b>סיכום לפי מחלקה</b><span class="muted small">פריטים ויחידות בכל מחלקה</span><a class="btn" href="/api/panel/export/departments">הורדה</a></div>
+            <div class="report"><b>מלאי לפי מחסן</b><span class="muted small">כמה מכל פריט בכל מחסן</span><a class="btn" href="/api/panel/export/warehouses">הורדה</a></div>
             <div class="report"><b>מלאי</b><span class="muted small">כל הפריטים, סטטוס ומחזיק</span><a class="btn" href="/api/panel/export/inventory">הורדה</a></div>
             <div class="report"><b>ציוד אצל חיילים</b><span class="muted small">מי מחזיק מה ומאיזה תאריך</span><a class="btn" href="/api/panel/export/holders">הורדה</a></div>
             <div class="report"><b>חיילים</b><span class="muted small">רשימת חיילים וכמות פריטים</span><a class="btn" href="/api/panel/export/users">הורדה</a></div>
@@ -415,20 +428,58 @@ function renderDepartments() {
   sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "*";
 }
 
+function shelfText(stock) {
+  const e = Object.entries(stock || {});
+  return e.length ? e.map(([w, n]) => w + " " + n).join(" · ") : "—";
+}
+
+function renderWarehouses() {
+  const whs = data.warehouses || [];
+  $("whBody").innerHTML = whs.length ? whs.map((w) =>
+    "<tr class='clickable' data-wh='" + esc(w.name) + "'><td><b>" + esc(w.name) + "</b></td><td>" + w.items + "</td><td>" + w.units +
+    "</td><td class='actions'><button class='link' data-edit-wh='" + esc(w.name) + "'>שינוי שם</button>" +
+    "<button class='link danger' data-del-wh='" + esc(w.name) + "'>מחיקה</button></td></tr>").join("")
+    : "<tr><td colspan='4' class='empty'>אין מחסנים. הוסף מחסן כדי לחלק את המלאי</td></tr>";
+  const sel = $("itemWh"), cur = sel.value;
+  sel.innerHTML = "<option value='*'>כל המחסנים</option>" + whs.map((w) => "<option value='" + esc(w.name) + "'>" + esc(w.name) + "</option>").join("");
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "*";
+}
+
+function editWarehouse(name) {
+  formDialog(name ? "שינוי שם מחסן" : "מחסן חדש", [
+    { name: "name", label: "שם המחסן", value: name, required: true, hint: name ? "המלאי וההיסטוריה עוברים לשם החדש" : "לדוגמה: מחסן A" },
+  ], (v) => send("POST", "/api/panel/warehouses", { name: v.name, old_name: name || null }));
+}
+
+function splitStock(qr) {
+  const i = data.items.find((x) => x.qr_id === qr) || {};
+  const whs = data.warehouses || [];
+  if (!whs.length) { toast("הגדר קודם מחסנים בלשונית \"מחסנים\"", true); switchTab("warehouses"); return; }
+  const stock = i.stock || {};
+  formDialog("חלוקה למחסנים – " + (i.name || qr), whs.map((w, n) => (
+    { name: "wh" + n, label: w.name, value: stock[w.name] ?? 0, type: "number", hint: n === 0 ? "כמה יחידות נמצאות עכשיו על המדף בכל מחסן" : "" }
+  )), (v) => {
+    const shelves = {};
+    whs.forEach((w, n) => { shelves[w.name] = Math.max(0, parseInt(v["wh" + n], 10) || 0); });
+    return send("POST", "/api/panel/items/stock", { qr_id: qr, shelves });
+  });
+}
+
 function renderItems() {
-  const q = lc($("itemSearch").value.trim()), st = $("itemStatus").value, ty = $("itemType").value, dp = $("itemDept").value;
+  const q = lc($("itemSearch").value.trim()), st = $("itemStatus").value, ty = $("itemType").value, dp = $("itemDept").value, wh = $("itemWh").value;
   filteredItems = data.items.filter((i) => (!st || i.current_status === st) && (ty === "*" || i.category === ty) &&
-    (dp === "*" || (i.department || "") === dp) &&
+    (dp === "*" || (i.department || "") === dp) && (wh === "*" || (i.stock && wh in i.stock)) &&
     (!q || [i.name, i.qr_id, i.holder_name, i.category, i.location, i.department].some((v) => lc(v).includes(q))));
   $("labelCount").textContent = filteredItems.length;
   $("itemBody").innerHTML = filteredItems.length ? filteredItems.slice(0, 2000).map((i) =>
     "<tr class='clickable' data-item='" + esc(i.qr_id) + "'><td><b>" + esc(i.name) + "</b></td><td><span class='ltr'>" + esc(i.qr_id) +
-    "</span></td><td>" + esc(typeLabel(i.category)) + "</td><td>" + esc(i.department || "—") + "</td><td>" + esc(i.location || "—") + "</td><td>" + kindBadge(i.kind) + "</td><td><b>" + i.available_qty + "</b> / " + i.quantity + "</td><td>" + itemStatus(i) +
+    "</span></td><td>" + esc(typeLabel(i.category)) + "</td><td>" + esc(i.department || "—") + "</td><td>" + esc(i.location || "—") + "</td><td>" + esc(shelfText(i.stock)) + "</td><td>" + kindBadge(i.kind) + "</td><td><b>" + i.available_qty + "</b> / " + i.quantity + "</td><td>" + itemStatus(i) +
     "</td><td>" + esc(i.holder_name || "—") + "</td><td>" + esc(fmtTime(i.last_action_at)) + "</td><td class='actions'>" +
     "<button class='link' data-edit-item='" + esc(i.qr_id) + "'>עריכה</button>" +
+    "<button class='link' data-split-item='" + esc(i.qr_id) + "'>מחסנים</button>" +
     "<a class='btn link' target='_blank' href='/panel/labels?ids=" + encodeURIComponent(i.qr_id) + "'>מדבקה</a>" +
     "<button class='link danger' data-del-item='" + esc(i.qr_id) + "'>מחיקה</button></td></tr>").join("")
-    : "<tr><td colspan='11' class='empty'>אין פריטים</td></tr>";
+    : "<tr><td colspan='12' class='empty'>אין פריטים</td></tr>";
 }
 
 function renderUsers() {
@@ -449,13 +500,13 @@ function renderTransactions() {
   const q = lc($("txSearch").value.trim());
   const cats = Object.fromEntries(data.items.map((i) => [i.qr_id, i.category]));
   const tx = data.transactions.filter((t) => !q || [t.item_name, t.qr_id, t.user_name, t.user_id, t.note].some((v) => lc(v).includes(q)));
-  $("txBody").innerHTML = tx.length ? tx.map((t) => "<tr><td>" + esc(fmtTime(t.timestamp)) + "</td><td>" + actionBadge(t.action_type, t.quantity) +
+  $("txBody").innerHTML = tx.length ? tx.map((t) => "<tr><td>" + esc(fmtTime(t.timestamp)) + "</td><td>" + actionBadge(t.action_type, t.quantity) + (t.warehouse ? " <span class='muted small'>" + esc(t.warehouse) + "</span>" : "") +
     "</td><td class='clickable' data-item='" + esc(t.qr_id) + "'>" + esc(t.item_name) + sub(t.qr_id) + "</td><td>" + esc(typeLabel(cats[t.qr_id])) +
     "</td><td class='clickable' data-user='" + esc(t.user_id) + "'>" + esc(t.user_name) + sub(t.user_id) + "</td><td>" + esc(t.note || "") + "</td></tr>").join("")
     : "<tr><td colspan='6' class='empty'>אין פעולות</td></tr>";
 }
 
-function renderData() { renderTypes(); renderDepartments(); renderItems(); renderUsers(); renderTransactions(); }
+function renderData() { renderTypes(); renderDepartments(); renderWarehouses(); renderItems(); renderUsers(); renderTransactions(); }
 async function refreshData() {
   try { data = await getJson("/api/panel/data"); renderData(); } catch (e) { /* status poll shows it */ }
 }
@@ -496,7 +547,9 @@ function editItem(qr) {
     { name: "department", label: "מחלקה", value: i.department, list: "deptList", hint: "לאיזו מחלקה הפריט שייך" },
     { name: "location", label: "מיקום", value: i.location, hint: "לדוגמה: ארון 3, מדף 2" },
     { name: "kind", label: "סוג שימוש", value: i.kind || "LOAN", options: [["LOAN", "מושאל – השאלה והחזרה, לא יורד מהמלאי"], ["CONSUMABLE", "ניצרך – ניפוק בלבד, יורד מהמלאי"]] },
-    { name: "quantity", label: "כמות במלאי", value: i.quantity ?? 1, type: "number", required: true, hint: "כמה יחידות יש עכשיו במחסן" },
+    Object.keys(i.stock || {}).length
+      ? { name: "quantity", label: "כמות במלאי", value: i.quantity ?? 1, type: "number", readonly: true, hint: "נקבעת לפי החלוקה למחסנים (כפתור \"מחסנים\")" }
+      : { name: "quantity", label: "כמות במלאי", value: i.quantity ?? 1, type: "number", required: true, hint: "כמה יחידות יש עכשיו במחסן" },
   ], (v) => send("POST", "/api/panel/items", Object.assign(v, { quantity: Math.max(0, parseInt(v.quantity, 10) || 0), old_qr_id: qr || null })));
 }
 function editUser(id) {
@@ -520,7 +573,7 @@ function historyTable(rows, showItem, showUser) {
   if (!rows.length) return "<div class='empty'>אין היסטוריה</div>";
   return "<div class='scroll' style='max-height:320px'><table><thead><tr><th>תאריך</th><th>פעולה</th>" + (showItem ? "<th>פריט</th>" : "") +
     (showUser ? "<th>חייל</th>" : "") + "<th>הערה</th></tr></thead><tbody>" + rows.map((h) => "<tr><td>" + esc(fmtTime(h.timestamp)) + "</td><td>" +
-    actionBadge(h.action_type, h.quantity) + "</td>" +
+    actionBadge(h.action_type, h.quantity) + (h.warehouse ? " <span class='muted small'>" + esc(h.warehouse) + "</span>" : "") + "</td>" +
     (showItem ? "<td>" + esc(h.item_name) + sub(h.qr_id) + "</td>" : "") +
     (showUser ? "<td>" + esc(h.user_name) + sub(h.user_id) + "</td>" : "") + "<td>" + esc(h.note || "") + "</td></tr>").join("") + "</tbody></table></div>";
 }
@@ -558,6 +611,10 @@ async function showItemCard(qr) {
           "<h4>אצל חיילים</h4>" + (c.holders.length ? "<table><thead><tr><th>חייל</th><th>כמות</th><th>מתאריך</th></tr></thead><tbody>" +
           c.holders.map((h) => "<tr class='clickable' data-user='" + esc(h.user_id) + "'><td>" + esc(h.user_name) + sub(h.user_id) + "</td><td>" +
           esc(heldText(h)) + "</td><td>" + esc(fmtTime(h.since)) + "</td></tr>").join("") + "</tbody></table>" : "<div class='empty'>הכל במחסן</div>")) +
+      "<h4>מחסנים</h4>" + (c.stock.length ? "<table><thead><tr><th>מחסן</th><th>על המדף</th></tr></thead><tbody>" +
+        c.stock.map((s) => "<tr><td>" + esc(s.warehouse) + "</td><td><b>" + s.quantity + "</b></td></tr>").join("") + "</tbody></table>"
+        : "<div class='empty'>המלאי לא מחולק למחסנים</div>") +
+      "<div class='form-actions'><button type='button' onclick='splitStock(" + JSON.stringify(qr).replace(/'/g, "&#39;") + ")'>חלוקה למחסנים</button></div>" +
       "<h4>היסטוריה</h4>" +
       historyTable(c.history, false, true),
       { label: "הדפסת מדבקה", onClick: () => window.open("/panel/labels?ids=" + encodeURIComponent(qr)) });
@@ -588,6 +645,7 @@ $("btnAdb").onclick = () => post("/api/panel/restart-adb");
 $("btnAddItem").onclick = () => editItem("");
 $("btnAddUser").onclick = () => editUser("");
 $("btnAddType").onclick = () => editType("");
+$("btnAddWarehouse").onclick = () => editWarehouse("");
 $("btnLabels").onclick = () => {
   if (!filteredItems.length) return toast("אין פריטים להדפסה", true);
   if (filteredItems.length > 400) return toast("יותר מדי פריטים – סנן לפי סוג או חיפוש (עד 400)", true);
@@ -606,10 +664,14 @@ drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); importFile(e.dataTransfer.files[0]); };
 
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-edit-item],[data-del-item],[data-edit-user],[data-del-user],[data-edit-type],[data-del-type],[data-user],[data-item],[data-type],[data-dept]");
+  const t = e.target.closest("[data-edit-item],[data-del-item],[data-edit-user],[data-del-user],[data-edit-type],[data-del-type],[data-user],[data-item],[data-type],[data-dept],[data-wh],[data-edit-wh],[data-del-wh],[data-split-item]");
   if (!t || e.target.closest("a")) return;
   const d = t.dataset;
-  if (d.editItem !== undefined) editItem(d.editItem);
+  if (d.editWh !== undefined) editWarehouse(d.editWh);
+  else if (d.delWh !== undefined) { if (confirm("למחוק את המחסן \"" + d.delWh + "\"?")) act(send("DELETE", "/api/panel/warehouses?name=" + encodeURIComponent(d.delWh))); }
+  else if (d.splitItem !== undefined) splitStock(d.splitItem);
+  else if (d.wh !== undefined) { $("itemWh").value = d.wh; $("itemType").value = "*"; $("itemDept").value = "*"; switchTab("items"); renderItems(); }
+  else if (d.editItem !== undefined) editItem(d.editItem);
   else if (d.delItem !== undefined) { if (confirm("למחוק את הפריט " + d.delItem + "?\nגם היסטוריית הפעולות של הפריט תימחק. לא ניתן לבטל.")) act(send("DELETE", "/api/panel/items?qr_id=" + encodeURIComponent(d.delItem))); }
   else if (d.editUser !== undefined) editUser(d.editUser);
   else if (d.delUser !== undefined) { if (confirm("למחוק את החייל " + userName(d.delUser) + "?\nהיסטוריית הפעולות שלו תימחק, ופריטים מושאלים שבידיו ייחשבו כמוחזרים למלאי. לא ניתן לבטל.")) act(send("DELETE", "/api/panel/users?user_id=" + encodeURIComponent(d.delUser))); }
@@ -626,7 +688,7 @@ function switchTab(name) {
 }
 document.querySelectorAll(".tab").forEach((b) => b.onclick = () => switchTab(b.dataset.tab));
 $("txSearch").oninput = renderTransactions; $("itemSearch").oninput = renderItems; $("userSearch").oninput = renderUsers;
-$("itemStatus").onchange = renderItems; $("itemType").onchange = renderItems; $("itemDept").onchange = renderItems;
+$("itemStatus").onchange = renderItems; $("itemType").onchange = renderItems; $("itemDept").onchange = renderItems; $("itemWh").onchange = renderItems;
 
 refreshStatus(); refreshData();
 setInterval(refreshStatus, 2000);

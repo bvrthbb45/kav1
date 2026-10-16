@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import catalog, events, messages
+from . import catalog, events, messages, warehouses
 from .database import SessionLocal, init_db
 from .routers import admin, panel, sync
 from .usb_sync import start_background, stop_background
@@ -45,6 +45,13 @@ def health():
 
 @app.exception_handler(catalog.CatalogError)
 async def catalog_error_handler(_request: Request, exc: catalog.CatalogError):
+    return JSONResponse(
+        status_code=400, content={"success": False, "message": str(exc)}
+    )
+
+
+@app.exception_handler(warehouses.WarehouseError)
+async def warehouse_error_handler(_request: Request, exc: Exception):
     return JSONResponse(
         status_code=400, content={"success": False, "message": str(exc)}
     )

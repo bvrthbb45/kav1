@@ -11,6 +11,7 @@ import com.kav1.warehouse.data.local.HoldingEntity
 import com.kav1.warehouse.data.local.ItemHolderRow
 import com.kav1.warehouse.data.local.UnitTotals
 import com.kav1.warehouse.data.local.ItemEntity
+import com.kav1.warehouse.data.local.ItemStockEntity
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.ItemWithHolder
 import com.kav1.warehouse.data.local.PendingTransactionEntity
@@ -34,7 +35,14 @@ class InventoryRepository(private val db: AppDatabase) {
      * Records a borrow/issue/return of [quantity] units in the outbox and
      * optimistically updates the local stock, atomically.
      */
-    suspend fun recordAction(qrId: String, userId: String, actionType: String, quantity: Int = 1, note: String = "") {
+    suspend fun recordAction(
+        qrId: String,
+        userId: String,
+        actionType: String,
+        quantity: Int = 1,
+        note: String = "",
+        warehouse: String = "",
+    ) {
         val tx = PendingTransactionEntity(
             txId = UUID.randomUUID().toString(),
             qrId = qrId,
@@ -43,12 +51,18 @@ class InventoryRepository(private val db: AppDatabase) {
             timestamp = System.currentTimeMillis(),
             quantity = quantity.coerceAtLeast(1),
             note = note.trim().take(MAX_NOTE),
+            warehouse = warehouse,
         )
         db.withTransaction {
             db.pendingTransactionDao().insert(tx)
-            LocalStock(db).apply(qrId, userId, actionType, tx.quantity, tx.timestamp)
+            LocalStock(db).apply(qrId, userId, actionType, tx.quantity, tx.timestamp, warehouse)
         }
     }
+
+    /** Units per warehouse for an item split between warehouses (empty otherwise). */
+    suspend fun getItemStock(qrId: String): List<ItemStockEntity> = db.stockDao().getForItem(qrId)
+
+    fun observeItemStock(qrId: String): Flow<List<ItemStockEntity>> = db.stockDao().observeForItem(qrId)
 
     suspend fun getHoldingsForItem(qrId: String): List<HoldingEntity> = db.holdingDao().getForItem(qrId)
 

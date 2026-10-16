@@ -47,6 +47,16 @@ CATEGORY_IN_USE = 'לא ניתן למחוק את סוג הפריט "{name}" כי
 CATEGORY_EXISTS = 'סוג הפריט "{name}" כבר קיים'
 NO_CATEGORY = "ללא סוג"
 NO_DEPARTMENT = "ללא מחלקה"
+WAREHOUSE_SAVED = 'המחסן "{name}" נשמר'
+WAREHOUSE_DELETED = 'המחסן "{name}" נמחק'
+WAREHOUSE_EXISTS = 'המחסן "{name}" כבר קיים'
+WAREHOUSE_NOT_FOUND = 'המחסן "{name}" לא קיים'
+WAREHOUSE_NOT_EMPTY = (
+    'לא ניתן למחוק את המחסן "{name}" כי יש בו {units} יחידות. העבר אותן קודם למחסן אחר'
+)
+STOCK_SPLIT_SAVED = "חלוקת המלאי של {qr_id} נשמרה: {total} יחידות"
+STOCK_NEGATIVE = "כמות לא תקינה במחסן {name}"
+TX_WAREHOUSE_NOT_AVAILABLE = "אין מספיק במחסן {warehouse}: {qr_id} (זמינים {available})"
 
 IMPORT_DONE = "הייבוא הושלם: {users} חיילים, {items} פריטים, {categories} סוגי פריטים"
 IMPORT_NOTHING = (

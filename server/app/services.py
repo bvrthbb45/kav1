@@ -62,6 +62,9 @@ def push_transactions(
     # units away from whoever holds them).
     states = stock.item_states(db, set(known_items))
     available = {q: s.available for q, s in states.items()}
+    from . import warehouses  # warehouses imports this module
+
+    shelves = warehouses.levels(db, set(known_items))
 
     try:
         for tx in sorted(transactions, key=lambda t: t.timestamp):
@@ -90,8 +93,27 @@ def push_transactions(
                     else messages.TX_LOAN_ONLY_BORROW
                 ).format(qr_id=tx.qr_id)
 
+            wh = (tx.warehouse or "").strip()
+            item_shelves = shelves.get(tx.qr_id)
+            if (
+                reason is None
+                and wh
+                and (item_shelves is None or wh not in item_shelves)
+            ):
+                # Not one of this item's warehouses: keep it item-level only.
+                wh = ""
+            if reason is None and wh and tx.action_type != models.ACTION_RETURN:
+                n = max(tx.quantity or 1, 1)
+                if n > item_shelves[wh]:
+                    reason = messages.TX_WAREHOUSE_NOT_AVAILABLE.format(
+                        warehouse=wh, qr_id=tx.qr_id, available=item_shelves[wh]
+                    )
             if reason is None:
                 n = max(tx.quantity or 1, 1)
+                if wh:
+                    item_shelves[wh] += (
+                        -n if tx.action_type != models.ACTION_RETURN else n
+                    )
                 if tx.action_type == models.ACTION_RETURN:
                     available[tx.qr_id] = min(
                         available[tx.qr_id] + n, states[tx.qr_id].quantity
@@ -118,6 +140,7 @@ def push_transactions(
                     timestamp=_to_datetime(tx.timestamp),
                     quantity=tx.quantity,
                     note=(tx.note or "").strip(),
+                    warehouse=wh,
                 )
             )
             seen_tx_ids.add(tx.tx_id)
@@ -244,7 +267,16 @@ def pull_state(db: Session) -> schemas.PullResponse:
         .limit(HISTORY_LIMIT)
     )
     states = stock.item_states(db)
+    from . import warehouses
+
+    shelves = warehouses.levels(db)
     return schemas.PullResponse(
+        warehouses=warehouses.names(db),
+        item_stock=[
+            schemas.ItemStockOut(qr_id=q, warehouse=w, quantity=n)
+            for q, by_wh in shelves.items()
+            for w, n in by_wh.items()
+        ],
         success=True,
         message=messages.PULL_OK,
         server_time=int(datetime.now(timezone.utc).timestamp() * 1000),
@@ -278,6 +310,7 @@ def history_out(tx: models.Transaction) -> schemas.HistoryOut:
         timestamp=_to_epoch_ms(tx.timestamp),
         quantity=tx.quantity or 1,
         note=tx.note or "",
+        warehouse=tx.warehouse or "",
     )
 
 
@@ -297,6 +330,12 @@ def item_out(item: models.Item, state: stock.ItemState) -> schemas.ItemOut:
         holder_user_id=state.latest_holder,
         last_action_at=_to_epoch_ms(state.last_action) if state.last_action else None,
     )
+
+
+def _is_split(db: Session, qr_id: str) -> bool:
+    from . import warehouses
+
+    return warehouses.has_split(db, qr_id)
 
 
 def stocked_quantity(db: Session, item: models.Item, stock_now: int) -> int:
@@ -338,6 +377,8 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
                     department=(incoming.department or "").strip(),
                 )
                 db.add(item)
+                # Later rows with the same serial (one per warehouse) update it.
+                db.flush()
             else:
                 item.name = incoming.name
                 if incoming.category is not None:
@@ -348,7 +389,8 @@ def upsert_items(db: Session, items: List[schemas.ItemIn]) -> int:
                     item.location = incoming.location.strip()
                 if incoming.department is not None:
                     item.department = incoming.department.strip()
-                if incoming.quantity is not None:
+                # Split items: the warehouses set the stock (panel only).
+                if incoming.quantity is not None and not _is_split(db, item.qr_id):
                     item.quantity = stocked_quantity(db, item, incoming.quantity)
         db.flush()
         # A new stock quantity or kind can free up (or use up) units.

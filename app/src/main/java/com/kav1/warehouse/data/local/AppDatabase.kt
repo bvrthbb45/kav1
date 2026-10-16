@@ -16,8 +16,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         HistoryEntity::class,
         HoldingEntity::class,
         CatalogChangeEntity::class,
+        WarehouseEntity::class,
+        ItemStockEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun holdingDao(): HoldingDao
     abstract fun catalogDao(): CatalogDao
+    abstract fun stockDao(): StockDao
 
     companion object {
         @Volatile
@@ -118,13 +121,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v8: warehouses, per-warehouse stock, warehouse on actions. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS warehouses (name TEXT NOT NULL, PRIMARY KEY(name))")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS item_stock (qr_id TEXT NOT NULL, warehouse TEXT NOT NULL, " +
+                        "quantity INTEGER NOT NULL, PRIMARY KEY(qr_id, warehouse))",
+                )
+                db.execSQL("ALTER TABLE history ADD COLUMN warehouse TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE pending_transactions ADD COLUMN warehouse TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "warehouse.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build().also { instance = it }
             }
     }
 }

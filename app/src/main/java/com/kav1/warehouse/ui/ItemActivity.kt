@@ -127,6 +127,9 @@ class ItemActivity : AppCompatActivity() {
                     " · " + getString(R.string.label_kind, kindLabel(loaded.kind)),
                 loaded.department.ifBlank { null }?.let { getString(R.string.label_department, it) },
                 loaded.location.ifBlank { null }?.let { getString(R.string.label_location, it) },
+                app.repository.getItemStock(loaded.qrId).takeIf { it.isNotEmpty() }?.let { rows ->
+                    getString(R.string.label_warehouses, rows.joinToString(" · ") { "${it.warehouse} ${it.quantity}" })
+                },
             ).joinToString("\n")
             val consumable = loaded.kind == ItemKind.CONSUMABLE
             val multi = loaded.quantity > 1 || consumable
@@ -174,7 +177,9 @@ class ItemActivity : AppCompatActivity() {
         if (actionType == ActionType.RETURN) {
             // Who returns first; the amount defaults to what they hold.
             pickUser(current, actionType) { user, held ->
-                askQuantity(current, actionType, user, held) { qty -> confirmAction(current, user, actionType, qty, held) }
+                askQuantity(current, actionType, user, held) { qty ->
+                    pickWarehouse(current, actionType, qty) { wh -> confirmAction(current, user, actionType, qty, held, wh) }
+                }
             }
         } else {
             // Nothing is handed out beyond the free stock (no taking units
@@ -185,7 +190,9 @@ class ItemActivity : AppCompatActivity() {
             }
             // "How many?" right after the scan, then the soldier.
             askQuantity(current, actionType, null, 0) { qty ->
-                pickUser(current, actionType) { user, held -> confirmAction(current, user, actionType, qty, held) }
+                pickWarehouse(current, actionType, qty) { wh ->
+                    pickUser(current, actionType) { user, held -> confirmAction(current, user, actionType, qty, held, wh) }
+                }
             }
         }
     }
@@ -200,6 +207,39 @@ class ItemActivity : AppCompatActivity() {
             .setMessage(getString(R.string.not_available_message, item.name))
             .setPositiveButton(R.string.btn_close, null)
             .show()
+    }
+
+    /**
+     * Items split between warehouses: which warehouse the units come from
+     * (or go back to). Others, and items kept in a single warehouse, skip it.
+     */
+    private fun pickWarehouse(current: ItemEntity, actionType: String, qty: Int, onPicked: (String) -> Unit) {
+        lifecycleScope.launch {
+            val rows = app.repository.getItemStock(current.qrId)
+            if (rows.isEmpty()) {
+                onPicked("")
+                return@launch
+            }
+            if (rows.size == 1) {
+                onPicked(rows[0].warehouse)
+                return@launch
+            }
+            val taking = actionType != ActionType.RETURN
+            val labels = rows.map { getString(R.string.warehouse_choice, it.warehouse, it.quantity) }.toTypedArray()
+            AlertDialog.Builder(this@ItemActivity)
+                .setTitle(if (taking) R.string.warehouse_pick_take else R.string.warehouse_pick_return)
+                .setItems(labels) { _, which ->
+                    val row = rows[which]
+                    if (taking && qty > row.quantity) {
+                        toast(getString(R.string.warehouse_not_enough, row.warehouse, row.quantity))
+                        pickWarehouse(current, actionType, qty, onPicked)
+                    } else {
+                        onPicked(row.warehouse)
+                    }
+                }
+                .setNegativeButton(R.string.btn_cancel, null)
+                .show()
+        }
     }
 
     /** Opens the soldier picker; [onPicked] gets the soldier and how many units they hold now. */
@@ -277,7 +317,14 @@ class ItemActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun confirmAction(item: ItemEntity, user: UserEntity, actionType: String, qty: Int, held: Int) {
+    private fun confirmAction(
+        item: ItemEntity,
+        user: UserEntity,
+        actionType: String,
+        qty: Int,
+        held: Int,
+        warehouse: String = "",
+    ) {
         val multi = item.quantity > 1 || item.kind == ItemKind.CONSUMABLE
         val question = if (multi) {
             getString(
@@ -324,20 +371,23 @@ class ItemActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.confirm_title)
-            .setMessage(if (warning == null) question else "$warning\n\n$question")
+            .setMessage(
+                (if (warning == null) question else "$warning\n\n$question") +
+                    (if (warehouse.isEmpty()) "" else "\n" + getString(R.string.label_warehouse, warehouse)),
+            )
             .setView(noteView)
             .setPositiveButton(R.string.btn_confirm) { _, _ ->
-                save(item, user, actionType, qty, noteEdit.text.toString().trim())
+                save(item, user, actionType, qty, noteEdit.text.toString().trim(), warehouse)
             }
             .setNegativeButton(R.string.btn_cancel, null)
             .show()
     }
 
-    private fun save(item: ItemEntity, user: UserEntity, actionType: String, qty: Int, note: String) {
+    private fun save(item: ItemEntity, user: UserEntity, actionType: String, qty: Int, note: String, warehouse: String) {
         setActionsEnabled(false)
         lifecycleScope.launch {
             try {
-                app.repository.recordAction(item.qrId, user.userId, actionType, qty, note)
+                app.repository.recordAction(item.qrId, user.userId, actionType, qty, note, warehouse)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import catalog, messages, models, schemas, services
+from . import catalog, messages, models, schemas, services, warehouses
 
 NO_DEPARTMENT = messages.NO_DEPARTMENT
 KIND_LABELS = {models.KIND_LOAN: "מושאל", models.KIND_CONSUMABLE: "ניצרך"}
@@ -55,6 +55,7 @@ FULL_NAME = {"שםמלא", "שם", "fullname", "name"}
 UNIT = {"יחידה", "פלוגה", "מחלקה", "unit"}
 # Item sheets only (a soldiers sheet reads "מחלקה" as the unit).
 LOCATION = {"מיקום", "מיקוםפריט", "מדף", "ארון", "מיקוםבמחסן", "location"}
+WAREHOUSE = {"מחסן", "שםמחסן", "warehouse"}
 DEPARTMENT = {"מחלקה", "מחלקתפריט", "שייךלמחלקה", "department", "dept"}
 
 
@@ -118,6 +119,8 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
     categories: Dict[str, Optional[int]] = {}
     users: List[schemas.UserIn] = []
     items: List[schemas.ItemIn] = []
+    # Item rows that name a warehouse: units on that warehouse's shelf.
+    splits: Dict[str, Dict[str, int]] = {}
     errors: List[str] = []
 
     def error(sheet, row, text):
@@ -146,6 +149,7 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
             kind_col = _find(header, KIND)
             loc_col = _find(header, LOCATION)
             dept_col = _find(header, DEPARTMENT)
+            wh_col = _find(header, WAREHOUSE)
             for row_no, row in body:
                 qr_id = value(row, serial)
                 if not qr_id:
@@ -153,8 +157,16 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
                 cat = value(row, category)
                 item_name = value(row, name) or cat
                 raw_qty = value(row, qty_col)
+                wh = value(row, wh_col) if wh_col is not None else ""
                 try:
                     qty = int(float(raw_qty)) if raw_qty else None
+                    if wh:
+                        if qty is None or qty < 0:
+                            raise ValueError(raw_qty)
+                        shelf = splits.setdefault(qr_id, {})
+                        shelf[wh] = shelf.get(wh, 0) + qty
+                        # The warehouses set the stock (one row per warehouse).
+                        qty = None
                     items.append(
                         schemas.ItemIn(
                             qr_id=qr_id,
@@ -216,6 +228,9 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
     db.commit()
     services.upsert_users(db, users)
     services.upsert_items(db, items)
+    for qr_id, shelf in splits.items():
+        current = warehouses.levels(db, [qr_id]).get(qr_id, {})
+        warehouses.set_split(db, qr_id, {**current, **shelf})
     return {
         "users": len(users),
         "items": len(items),
@@ -264,6 +279,7 @@ def _sheet(wb: Workbook, title: str, headers: List[str], rows: Iterable[list]):
 
 def _inventory(wb: Workbook, db: Session) -> None:
     state = services.pull_state(db)
+    shelves = warehouses.levels(db)
     users = {u.user_id: u for u in state.users}
     holders: Dict[str, List[str]] = {}
     for h in state.holdings:
@@ -288,6 +304,7 @@ def _inventory(wb: Workbook, db: Session) -> None:
                 i.issued_qty,
                 ", ".join(holders.get(i.qr_id, [])),
                 _local(i.last_action_at),
+                ", ".join(f"{w}: {n}" for w, n in shelves.get(i.qr_id, {}).items()),
             ]
         )
     _sheet(
@@ -306,7 +323,32 @@ def _inventory(wb: Workbook, db: Session) -> None:
             "ניפוקים",
             "אצל חיילים",
             "פעולה אחרונה",
+            "מחסנים",
         ],
+        rows,
+    )
+
+
+def _warehouses(wb: Workbook, db: Session) -> None:
+    items = {i.qr_id: i for i in db.scalars(select(models.Item))}
+    rows = []
+    for qr_id, shelf in warehouses.levels(db).items():
+        item = items.get(qr_id)
+        for wh, units in shelf.items():
+            rows.append(
+                [
+                    wh,
+                    qr_id,
+                    item.name if item else qr_id,
+                    (item.category if item else "") or messages.NO_CATEGORY,
+                    units,
+                ]
+            )
+    rows.sort(key=lambda r: (r[0], r[3], r[2], r[1]))
+    _sheet(
+        wb,
+        "לפי מחסן",
+        ["מחסן", "מספר סידורי", "שם פריט", "סוג פריט", "כמות במחסן"],
         rows,
     )
 
@@ -466,6 +508,7 @@ REPORTS: Dict[str, str] = {
     "inventory": "מלאי",
     "types": "סיכום לפי סוג",
     "departments": "סיכום לפי מחלקה",
+    "warehouses": "מלאי לפי מחסן",
     "holders": "ציוד אצל חיילים",
     "transactions": "יומן פעולות",
     "users": "חיילים",
@@ -483,6 +526,7 @@ def export_report(
         "inventory": lambda: _inventory(wb, db),
         "types": lambda: _types(wb, db),
         "departments": lambda: _departments(wb, db),
+        "warehouses": lambda: _warehouses(wb, db),
         "holders": lambda: _holders(wb, db),
         "transactions": lambda: _history(
             wb, catalog.transactions(db, start_ms, end_ms), "יומן פעולות"
@@ -493,6 +537,7 @@ def export_report(
         for name in (
             "types",
             "departments",
+            "warehouses",
             "inventory",
             "holders",
             "users",

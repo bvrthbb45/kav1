@@ -13,6 +13,7 @@ data class PendingTransactionDto(
     @SerializedName("timestamp") val timestamp: Long,
     @SerializedName("quantity") val quantity: Int,
     @SerializedName("note") val note: String?,
+    @SerializedName("warehouse") val warehouse: String?,
 )
 
 data class PushRequestDto(
@@ -75,6 +76,15 @@ data class PullResponseDto(
     @SerializedName("categories") val categories: List<CategoryDto>?,
     @SerializedName("history") val history: List<HistoryDto>?,
     @SerializedName("holdings") val holdings: List<HoldingDto>?,
+    /** Missing from servers older than 2.2; treated as empty. */
+    @SerializedName("warehouses") val warehouses: List<String>?,
+    @SerializedName("item_stock") val itemStock: List<ItemStockDto>?,
+)
+
+data class ItemStockDto(
+    @SerializedName("qr_id") val qrId: String?,
+    @SerializedName("warehouse") val warehouse: String?,
+    @SerializedName("quantity") val quantity: Int?,
 )
 
 data class CategoryDto(
@@ -90,6 +100,7 @@ data class HistoryDto(
     @SerializedName("timestamp") val timestamp: Long?,
     @SerializedName("quantity") val quantity: Int?,
     @SerializedName("note") val note: String?,
+    @SerializedName("warehouse") val warehouse: String?,
 )
 
 data class ItemUpsertDto(

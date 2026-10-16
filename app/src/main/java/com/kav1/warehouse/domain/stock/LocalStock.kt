@@ -9,8 +9,19 @@ import com.kav1.warehouse.data.local.HoldingEntity
 /** Applies actions to the local item counters and holdings (call inside a DB transaction). */
 class LocalStock(private val db: AppDatabase) {
 
-    suspend fun apply(qrId: String, userId: String, actionType: String, units: Int, timestamp: Long) {
+    suspend fun apply(
+        qrId: String,
+        userId: String,
+        actionType: String,
+        units: Int,
+        timestamp: Long,
+        warehouse: String = "",
+    ) {
         val item = db.itemDao().getById(qrId) ?: return
+        if (warehouse.isNotEmpty()) {
+            val n = units.coerceAtLeast(1)
+            db.stockDao().adjust(qrId, warehouse, if (actionType == ActionType.RETURN) n else -n)
+        }
         if (item.kind == ItemKind.CONSUMABLE) {
             // Issued units leave the stock; nobody "holds" them.
             if (actionType == ActionType.ISSUE) {

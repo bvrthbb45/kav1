@@ -154,6 +154,7 @@ def test_excel_exports(client):
     assert wb.sheetnames == [
         "סיכום לפי סוג",
         "לפי מחלקה",
+        "לפי מחסן",
         "מלאי",
         "ציוד אצל חיילים",
         "חיילים",

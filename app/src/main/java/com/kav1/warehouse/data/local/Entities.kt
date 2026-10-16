@@ -99,6 +99,7 @@ data class HistoryEntity(
     @ColumnInfo(name = "timestamp") val timestamp: Long,
     @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
     @ColumnInfo(name = "note", defaultValue = "''") val note: String = "",
+    @ColumnInfo(name = "warehouse", defaultValue = "''") val warehouse: String = "",
 )
 
 @Entity(tableName = "users")
@@ -131,6 +132,8 @@ data class PendingTransactionEntity(
     @ColumnInfo(name = "quantity", defaultValue = "1") val quantity: Int = 1,
     /** Note typed when issuing / borrowing. */
     @ColumnInfo(name = "note", defaultValue = "''") val note: String = "",
+    /** Warehouse the units were taken from / returned to ("" = none). */
+    @ColumnInfo(name = "warehouse", defaultValue = "''") val warehouse: String = "",
 )
 
 /** Dashboard row: an item plus the name of whoever holds it. */
@@ -193,6 +196,7 @@ data class HistoryRow(
     @ColumnInfo(name = "category") val category: String?,
     @ColumnInfo(name = "user_name") val userName: String?,
     @ColumnInfo(name = "note") val note: String?,
+    @ColumnInfo(name = "warehouse") val warehouse: String?,
 )
 
 data class CategoryStatusCount(
@@ -238,4 +242,18 @@ data class CatalogChangeEntity(
     @ColumnInfo(name = "target_id") val targetId: String,
     @ColumnInfo(name = "new_id") val newId: String?,
     @ColumnInfo(name = "created_at") val createdAt: Long,
+)
+
+/** A warehouse (מחסן) defined in the control panel. */
+@Entity(tableName = "warehouses")
+data class WarehouseEntity(
+    @PrimaryKey @ColumnInfo(name = "name") val name: String,
+)
+
+/** Units of an item on one warehouse's shelf now (items split between warehouses only). */
+@Entity(tableName = "item_stock", primaryKeys = ["qr_id", "warehouse"])
+data class ItemStockEntity(
+    @ColumnInfo(name = "qr_id") val qrId: String,
+    @ColumnInfo(name = "warehouse") val warehouse: String,
+    @ColumnInfo(name = "quantity") val quantity: Int,
 )

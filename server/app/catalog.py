@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from . import messages, models, services, stock
+from . import messages, models, services, stock, warehouses
 
 
 class CatalogError(Exception):
@@ -70,7 +70,9 @@ def save_item(
         item.name = name
         item.category = category
         item.kind = kind
-        item.quantity = services.stocked_quantity(db, item, quantity)
+        # Split items: the warehouses set the stock.
+        if not services._is_split(db, qr_id):
+            item.quantity = services.stocked_quantity(db, item, quantity)
     db.flush()
     services._recompute_item_status(db, {qr_id})
     db.commit()
@@ -83,6 +85,7 @@ def delete_item(db: Session, qr_id: str, commit: bool = True) -> None:
     if item is None:
         raise CatalogError(messages.ITEM_NOT_FOUND.format(qr_id=qr_id))
     db.execute(delete(models.Transaction).where(models.Transaction.qr_id == qr_id))
+    db.execute(delete(models.ItemStock).where(models.ItemStock.qr_id == qr_id))
     db.execute(
         delete(models.IdAlias).where(
             models.IdAlias.kind == models.ALIAS_ITEM, models.IdAlias.new_id == qr_id
@@ -134,6 +137,11 @@ def rename_item(db: Session, old_qr_id: str, new_qr_id: str, commit: bool = True
     db.execute(
         update(models.Transaction)
         .where(models.Transaction.qr_id == old_qr_id)
+        .values(qr_id=new_qr_id)
+    )
+    db.execute(
+        update(models.ItemStock)
+        .where(models.ItemStock.qr_id == old_qr_id)
         .values(qr_id=new_qr_id)
     )
     db.delete(item)
@@ -365,6 +373,7 @@ def _history_rows(db: Session, where, items, users, limit: Optional[int] = None)
                 "unit": user.unit if user else "",
                 "quantity": tx.quantity or 1,
                 "note": tx.note or "",
+                "warehouse": tx.warehouse or "",
                 "department": item.department if item else "",
             }
         )
@@ -443,6 +452,10 @@ def item_card(db: Session, qr_id: str) -> Dict:
             "department": item.department or "",
         },
         "holders": holdings_of(db, qr_id, state, users),
+        "stock": [
+            {"warehouse": w, "quantity": n}
+            for w, n in warehouses.levels(db, [qr_id]).get(qr_id, {}).items()
+        ],
         "history": history,
     }
 

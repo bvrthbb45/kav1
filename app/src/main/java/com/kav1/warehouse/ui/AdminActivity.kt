@@ -227,9 +227,12 @@ class AdminActivity : AppCompatActivity() {
                 listOf(ItemKind.LOAN to R.string.kind_loan_long, ItemKind.CONSUMABLE to R.string.kind_consumable_long),
                 kind,
             )
-            val qtyField = form.field(R.string.item_quantity_hint, quantity.toString()).apply {
+            // Split between warehouses: the panel sets the stock per warehouse.
+            val split = qrId != null && app.repository.getItemStock(qrId).isNotEmpty()
+            val qtyField = form.field(R.string.item_quantity_hint, quantity.toString(), enabled = !split).apply {
                 inputType = InputType.TYPE_CLASS_NUMBER
             }
+            if (split) toast(R.string.item_quantity_by_warehouses)
             val onDelete = qrId?.let { id -> { confirmDeleteItem(id, name.orEmpty()) } }
             form.show(if (qrId == null) R.string.item_dialog_add else R.string.item_dialog_edit, onDelete) {
                 val code = form.value(qrField, MAX_QR) ?: return@show false

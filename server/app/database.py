@@ -44,6 +44,7 @@ _ADDED_COLUMNS = {
     "transactions": {
         "quantity": "INTEGER NOT NULL DEFAULT 1",
         "note": "VARCHAR(500) NOT NULL DEFAULT ''",
+        "warehouse": "VARCHAR(200) NOT NULL DEFAULT ''",
     },
 }
 

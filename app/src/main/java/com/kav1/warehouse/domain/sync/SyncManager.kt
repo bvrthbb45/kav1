@@ -10,6 +10,8 @@ import com.kav1.warehouse.data.local.CategoryEntity
 import com.kav1.warehouse.data.local.HistoryEntity
 import com.kav1.warehouse.data.local.HoldingEntity
 import com.kav1.warehouse.data.local.ItemEntity
+import com.kav1.warehouse.data.local.ItemStockEntity
+import com.kav1.warehouse.data.local.WarehouseEntity
 import com.kav1.warehouse.data.local.ItemKind
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.UserEntity
@@ -159,6 +161,7 @@ class SyncManager(
                 transactions = batch.map {
                     PendingTransactionDto(
                         it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity, it.note.ifEmpty { null },
+                        it.warehouse.ifEmpty { null },
                     )
                 },
             )
@@ -227,6 +230,15 @@ class SyncManager(
                 timestamp = dto.timestamp ?: return@mapNotNull null,
                 quantity = dto.quantity ?: 1,
                 note = dto.note.orEmpty(),
+                warehouse = dto.warehouse.orEmpty(),
+            )
+        }
+        val warehouses = body.warehouses.orEmpty().filter { it.isNotBlank() }.map { WarehouseEntity(it) }
+        val itemStock = body.itemStock.orEmpty().mapNotNull { dto ->
+            ItemStockEntity(
+                qrId = dto.qrId ?: return@mapNotNull null,
+                warehouse = dto.warehouse ?: return@mapNotNull null,
+                quantity = dto.quantity ?: 0,
             )
         }
         val holdings = body.holdings?.mapNotNull { dto ->
@@ -247,6 +259,7 @@ class SyncManager(
             db.categoryDao().replaceAll(categories)
             db.historyDao().replaceAll(history)
             db.holdingDao().replaceAll(holdings)
+            db.stockDao().replaceAll(warehouses, itemStock)
             // Deletes and id changes made here after the outbox was sent.
             val changes = CatalogChanges(db)
             db.catalogDao().getQueued().forEach { changes.apply(it) }
@@ -256,7 +269,7 @@ class SyncManager(
             // Actions recorded after the push started are not on the server
             // yet; re-apply them so the device keeps showing what it did.
             db.pendingTransactionDao().getUnsynced().forEach {
-                stock.apply(it.qrId, it.userId, it.actionType, it.quantity, it.timestamp)
+                stock.apply(it.qrId, it.userId, it.actionType, it.quantity, it.timestamp, it.warehouse)
             }
         }
         return items.size to users.size
@@ -277,6 +290,7 @@ class SyncManager(
             transactions = db.pendingTransactionDao().getUnsynced().map {
                 PendingTransactionDto(
                         it.txId, it.qrId, it.userId, it.actionType, it.timestamp, it.quantity, it.note.ifEmpty { null },
+                        it.warehouse.ifEmpty { null },
                     )
             },
             items = upsertDto(db.itemDao().getPendingUpload()),

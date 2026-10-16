@@ -24,6 +24,7 @@ class CatalogChanges(private val db: AppDatabase) {
         dao.deleteItemPending(qrId)
         dao.deleteItemHistory(qrId)
         dao.deleteItemHoldings(qrId)
+        db.stockDao().deleteForItem(qrId)
         dao.deleteItemRow(qrId)
     }
 
@@ -33,6 +34,7 @@ class CatalogChanges(private val db: AppDatabase) {
         dao.renameItemHoldings(oldId, newId)
         dao.renameItemHistory(oldId, newId)
         dao.renameItemPending(oldId, newId)
+        db.stockDao().renameItem(oldId, newId)
     }
 
     suspend fun deleteUser(userId: String) {

@@ -217,6 +217,13 @@
     <string name="item_exists_editing">הפריט כבר קיים – עבר לעריכה</string>
     <string name="saved_pending_sync">נשמר. יישלח לשרת בסנכרון הבא</string>
     <string name="btn_delete">מחיקה</string>
+    <string name="label_warehouses">מחסנים: %1$s</string>
+    <string name="label_warehouse">מחסן: %1$s</string>
+    <string name="warehouse_choice">%1$s (על המדף: %2$d)</string>
+    <string name="warehouse_pick_take">מאיזה מחסן?</string>
+    <string name="warehouse_pick_return">לאיזה מחסן מחזירים?</string>
+    <string name="warehouse_not_enough">אין מספיק במחסן %1$s (זמינים %2$d). בחר מחסן אחר</string>
+    <string name="item_quantity_by_warehouses">הכמות נקבעת לפי החלוקה למחסנים (בפאנל במחשב)</string>
     <string name="not_available_title">אין במלאי</string>
     <string name="not_available_message">אין פריט זמין במלאי: %1$s\nכל היחידות נמצאות כרגע אצל חיילים או נופקו.</string>
     <string name="quantity_not_available">אין מספיק פריטים זמינים במלאי (זמינים %1$d)</string>
