@@ -12,6 +12,8 @@ import com.kav1.warehouse.data.local.ItemHolderRow
 import com.kav1.warehouse.data.local.UnitTotals
 import com.kav1.warehouse.data.local.ItemEntity
 import com.kav1.warehouse.data.local.ItemStockEntity
+import com.kav1.warehouse.data.local.WarehouseItemRow
+import com.kav1.warehouse.data.local.WarehouseSummary
 import com.kav1.warehouse.data.local.ItemStatus
 import com.kav1.warehouse.data.local.ItemWithHolder
 import com.kav1.warehouse.data.local.PendingTransactionEntity
@@ -63,6 +65,11 @@ class InventoryRepository(private val db: AppDatabase) {
     suspend fun getItemStock(qrId: String): List<ItemStockEntity> = db.stockDao().getForItem(qrId)
 
     fun observeItemStock(qrId: String): Flow<List<ItemStockEntity>> = db.stockDao().observeForItem(qrId)
+
+    fun observeWarehouses(): Flow<List<WarehouseSummary>> = db.stockDao().observeWarehouses()
+
+    fun observeWarehouseItems(warehouse: String, query: String): Flow<List<WarehouseItemRow>> =
+        db.stockDao().observeWarehouseItems(warehouse, query.trim())
 
     suspend fun getHoldingsForItem(qrId: String): List<HoldingEntity> = db.holdingDao().getForItem(qrId)
 

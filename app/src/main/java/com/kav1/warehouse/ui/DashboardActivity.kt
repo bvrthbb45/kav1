@@ -62,6 +62,9 @@ class DashboardActivity : AppCompatActivity() {
         }
         binding.btnModeItems.setOnClickListener { showTypes.value = false }
         binding.btnModeTypes.setOnClickListener { showTypes.value = true }
+        binding.btnModeWarehouses.setOnClickListener {
+            startActivity(android.content.Intent(this, WarehousesActivity::class.java))
+        }
         binding.txtFilter.setOnClickListener { typeFilter.value = null }
 
         binding.tileTotal.setOnClickListener { statusFilter.value = null }

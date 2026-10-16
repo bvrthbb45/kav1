@@ -270,10 +270,16 @@ def pull_state(db: Session) -> schemas.PullResponse:
     from . import warehouses
 
     shelves = warehouses.levels(db)
+    places = warehouses.shelf_numbers(db)
     return schemas.PullResponse(
         warehouses=warehouses.names(db),
         item_stock=[
-            schemas.ItemStockOut(qr_id=q, warehouse=w, quantity=n)
+            schemas.ItemStockOut(
+                qr_id=q,
+                warehouse=w,
+                quantity=n,
+                shelf=places.get(q, {}).get(w, ""),
+            )
             for q, by_wh in shelves.items()
             for w, n in by_wh.items()
         ],

@@ -256,4 +256,22 @@ data class ItemStockEntity(
     @ColumnInfo(name = "qr_id") val qrId: String,
     @ColumnInfo(name = "warehouse") val warehouse: String,
     @ColumnInfo(name = "quantity") val quantity: Int,
+    /** Shelf (מדף) inside the warehouse, "" if not set. */
+    @ColumnInfo(name = "shelf", defaultValue = "''") val shelf: String = "",
+)
+
+/** One line of a warehouse's contents, for checking / counting it on the tablet. */
+data class WarehouseItemRow(
+    @ColumnInfo(name = "qr_id") val qrId: String,
+    @ColumnInfo(name = "name") val name: String?,
+    @ColumnInfo(name = "category") val category: String?,
+    @ColumnInfo(name = "quantity") val quantity: Int,
+    @ColumnInfo(name = "shelf") val shelf: String,
+)
+
+/** Warehouse with how many items and units are on its shelves. */
+data class WarehouseSummary(
+    @ColumnInfo(name = "name") val name: String,
+    @ColumnInfo(name = "items") val items: Int,
+    @ColumnInfo(name = "units") val units: Int,
 )

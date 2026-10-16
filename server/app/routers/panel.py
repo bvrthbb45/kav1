@@ -136,6 +136,7 @@ def status(after: int = 0, db: Session = Depends(get_db)):
 def data(db: Session = Depends(get_db)):
     state = services.pull_state(db)
     shelves = warehouses.levels(db)
+    places = warehouses.shelf_numbers(db)
     names = {u.user_id: u.full_name for u in state.users}
     item_names = {i.qr_id: i.name for i in state.items}
     holders = {}
@@ -159,6 +160,7 @@ def data(db: Session = Depends(get_db)):
                 **i.model_dump(),
                 "holder_name": ", ".join(holders.get(i.qr_id, [])),
                 "stock": shelves.get(i.qr_id, {}),
+                "shelves": places.get(i.qr_id, {}),
             }
             for i in state.items
         ],
@@ -320,6 +322,14 @@ class StockSplitForm(BaseModel):
     qr_id: str = Field(min_length=1, max_length=128)
     # Units on each warehouse's shelf now; {} removes the split.
     shelves: Dict[str, int] = {}
+    # Shelf number (מדף) per warehouse; None keeps the current ones.
+    shelf_numbers: Optional[Dict[str, str]] = None
+
+
+class CountForm(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    # Units counted per serial; items left out keep their quantity.
+    counts: Dict[str, int] = {}
 
 
 @router.post("/api/panel/warehouses")
@@ -340,10 +350,38 @@ def delete_warehouse(name: str, db: Session = Depends(get_db)):
 
 @router.post("/api/panel/items/stock")
 def save_stock_split(form: StockSplitForm, db: Session = Depends(get_db)):
-    total = warehouses.set_split(db, form.qr_id.strip(), form.shelves)
+    total = warehouses.set_split(
+        db, form.qr_id.strip(), form.shelves, places=form.shelf_numbers
+    )
     message = messages.STOCK_SPLIT_SAVED.format(qr_id=form.qr_id.strip(), total=total)
     events.add(events.INFO, message, "panel")
     return _ok(message)
+
+
+@router.get("/api/panel/warehouses/contents")
+def warehouse_contents(name: str, db: Session = Depends(get_db)):
+    """What should be in a warehouse, shelf by shelf (stock count)."""
+    return {"name": name, "rows": warehouses.contents(db, name)}
+
+
+@router.post("/api/panel/warehouses/count")
+def save_count(form: CountForm, db: Session = Depends(get_db)):
+    result = warehouses.apply_count(db, form.name, form.counts)
+    message = messages.COUNT_SAVED.format(name=form.name.strip(), **result)
+    events.add(events.INFO, message, "panel")
+    return _ok(message)
+
+
+@router.get("/api/panel/warehouses/count.xlsx")
+def count_sheet(name: str, db: Session = Depends(get_db)):
+    data = excel.count_sheet(name, warehouses.contents(db, name))
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    return _xlsx(data, f"ספירת מלאי {name} {stamp}.xlsx")
+
+
+@router.get("/panel/count", response_class=HTMLResponse)
+def print_count(name: str, db: Session = Depends(get_db)):
+    return labels.count_page(name, warehouses.contents(db, name))
 
 
 # --- Excel ---------------------------------------------------------------------

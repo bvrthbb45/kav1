@@ -239,6 +239,7 @@ class SyncManager(
                 qrId = dto.qrId ?: return@mapNotNull null,
                 warehouse = dto.warehouse ?: return@mapNotNull null,
                 quantity = dto.quantity ?: 0,
+                shelf = dto.shelf.orEmpty(),
             )
         }
         val holdings = body.holdings?.mapNotNull { dto ->

@@ -478,6 +478,28 @@ abstract class StockDao {
     @Query("DELETE FROM item_stock WHERE qr_id = :qrId")
     abstract suspend fun deleteForItem(qrId: String)
 
+    @Query(
+        """
+        SELECT w.name AS name, COUNT(s.qr_id) AS items, COALESCE(SUM(s.quantity), 0) AS units
+        FROM warehouses w LEFT JOIN item_stock s ON s.warehouse = w.name
+        GROUP BY w.name ORDER BY w.name
+        """,
+    )
+    abstract fun observeWarehouses(): Flow<List<WarehouseSummary>>
+
+    /** Ordered by shelf (numbers in numeric order), then type and name. */
+    @Query(
+        """
+        SELECT s.qr_id, i.name, i.category, s.quantity, s.shelf
+        FROM item_stock s LEFT JOIN items i ON i.qr_id = s.qr_id
+        WHERE s.warehouse = :warehouse
+          AND (:query = '' OR i.name LIKE '%' || :query || '%' OR s.qr_id LIKE '%' || :query || '%'
+               OR s.shelf LIKE '%' || :query || '%' OR i.category LIKE '%' || :query || '%')
+        ORDER BY s.shelf = '', CAST(s.shelf AS INTEGER), s.shelf, i.category, i.name, s.qr_id
+        """,
+    )
+    abstract fun observeWarehouseItems(warehouse: String, query: String): Flow<List<WarehouseItemRow>>
+
     @Query("UPDATE item_stock SET qr_id = :newId WHERE qr_id = :oldId")
     abstract suspend fun renameItem(oldId: String, newId: String)
 }

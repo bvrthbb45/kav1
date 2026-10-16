@@ -128,7 +128,13 @@ class ItemActivity : AppCompatActivity() {
                 loaded.department.ifBlank { null }?.let { getString(R.string.label_department, it) },
                 loaded.location.ifBlank { null }?.let { getString(R.string.label_location, it) },
                 app.repository.getItemStock(loaded.qrId).takeIf { it.isNotEmpty() }?.let { rows ->
-                    getString(R.string.label_warehouses, rows.joinToString(" · ") { "${it.warehouse} ${it.quantity}" })
+                    getString(
+                        R.string.label_warehouses,
+                        rows.joinToString(" · ") {
+                            "${it.warehouse} ${it.quantity}" +
+                                if (it.shelf.isEmpty()) "" else " (" + getString(R.string.label_shelf, it.shelf) + ")"
+                        },
+                    )
                 },
             ).joinToString("\n")
             val consumable = loaded.kind == ItemKind.CONSUMABLE
@@ -225,7 +231,10 @@ class ItemActivity : AppCompatActivity() {
                 return@launch
             }
             val taking = actionType != ActionType.RETURN
-            val labels = rows.map { getString(R.string.warehouse_choice, it.warehouse, it.quantity) }.toTypedArray()
+            val labels = rows.map {
+                getString(R.string.warehouse_choice, it.warehouse, it.quantity) +
+                    if (it.shelf.isEmpty()) "" else " · " + getString(R.string.label_shelf, it.shelf)
+            }.toTypedArray()
             AlertDialog.Builder(this@ItemActivity)
                 .setTitle(if (taking) R.string.warehouse_pick_take else R.string.warehouse_pick_return)
                 .setItems(labels) { _, which ->

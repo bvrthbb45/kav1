@@ -453,7 +453,13 @@ def item_card(db: Session, qr_id: str) -> Dict:
         },
         "holders": holdings_of(db, qr_id, state, users),
         "stock": [
-            {"warehouse": w, "quantity": n}
+            {
+                "warehouse": w,
+                "quantity": n,
+                "shelf": warehouses.shelf_numbers(db, [qr_id])
+                .get(qr_id, {})
+                .get(w, ""),
+            }
             for w, n in warehouses.levels(db, [qr_id]).get(qr_id, {}).items()
         ],
         "history": history,

@@ -70,6 +70,73 @@ def levels(
     return dict(result)
 
 
+def shelf_numbers(
+    db: Session, qr_ids: Optional[Iterable[str]] = None
+) -> Dict[str, Dict[str, str]]:
+    """Shelf (מדף) per item and warehouse, where one was entered."""
+    query = select(models.ItemStock).where(models.ItemStock.shelf != "")
+    if qr_ids is not None:
+        query = query.where(models.ItemStock.qr_id.in_(list(qr_ids)))
+    result: Dict[str, Dict[str, str]] = defaultdict(dict)
+    for r in db.scalars(query):
+        result[r.qr_id][r.warehouse] = r.shelf
+    return dict(result)
+
+
+def _shelf_key(shelf: str):
+    """Shelves in natural order: 2 before 10, numbered before named."""
+    import re
+
+    parts = re.split(r"(\d+)", shelf or "")
+    return (shelf == "", [int(p) if p.isdigit() else p for p in parts])
+
+
+def contents(db: Session, warehouse: str) -> List[Dict]:
+    """What should be in [warehouse], shelf by shelf (for a stock count)."""
+    items = {i.qr_id: i for i in db.scalars(select(models.Item))}
+    places = shelf_numbers(db)
+    rows = []
+    for qr_id, shelves in levels(db).items():
+        if warehouse not in shelves:
+            continue
+        item = items.get(qr_id)
+        rows.append(
+            {
+                "qr_id": qr_id,
+                "name": item.name if item else qr_id,
+                "category": (item.category if item else "") or "",
+                "kind": item.kind if item else models.KIND_LOAN,
+                "shelf": places.get(qr_id, {}).get(warehouse, ""),
+                "quantity": shelves[warehouse],
+            }
+        )
+    rows.sort(
+        key=lambda r: (_shelf_key(r["shelf"]), r["category"], r["name"], r["qr_id"])
+    )
+    return rows
+
+
+def apply_count(db: Session, warehouse: str, counts: Dict[str, int]) -> Dict:
+    """Set what was counted on [warehouse]'s shelves; other warehouses keep theirs."""
+    warehouse = _clean(warehouse)
+    if db.get(models.Warehouse, warehouse) is None:
+        raise WarehouseError(messages.WAREHOUSE_NOT_FOUND.format(name=warehouse))
+    current = levels(db)
+    diffs = 0
+    for qr_id, counted in counts.items():
+        if counted is None:
+            continue
+        if counted < 0:
+            raise WarehouseError(messages.STOCK_NEGATIVE.format(name=warehouse))
+        shelves = dict(current.get(qr_id, {}))
+        if shelves.get(warehouse) != counted:
+            diffs += 1
+        shelves[warehouse] = counted
+        set_split(db, qr_id, shelves, commit=False)
+    db.commit()
+    return {"items": len([c for c in counts.values() if c is not None]), "diffs": diffs}
+
+
 def has_split(db: Session, qr_id: str) -> bool:
     return (
         db.scalar(
@@ -129,12 +196,17 @@ def delete_warehouse(db: Session, name: str) -> None:
 
 
 def set_split(
-    db: Session, qr_id: str, shelves: Dict[str, int], commit: bool = True
+    db: Session,
+    qr_id: str,
+    shelves: Dict[str, int],
+    commit: bool = True,
+    places: Optional[Dict[str, str]] = None,
 ) -> int:
     """Set how many units of [qr_id] are on each warehouse's shelf now.
 
     The item's stock becomes the sum (plus loaned units still out). An
-    empty [shelves] removes the split. Returns the total on the shelves.
+    empty [shelves] removes the split. [places] gives the shelf number per
+    warehouse; None keeps the ones already set. Returns the total.
     """
     item = db.get(models.Item, qr_id)
     if item is None:
@@ -151,11 +223,18 @@ def set_split(
             db.flush()
         clean[name] = clean.get(name, 0) + int(units)
     net = _movements(db, [qr_id])
+    old_places = shelf_numbers(db, [qr_id]).get(qr_id, {})
+    if places is not None:
+        old_places = {}
+    places = {_clean(k): _clean(v)[:100] for k, v in (places or {}).items()}
     db.execute(delete(models.ItemStock).where(models.ItemStock.qr_id == qr_id))
     for name, units in clean.items():
         db.add(
             models.ItemStock(
-                qr_id=qr_id, warehouse=name, base=units - net.get((qr_id, name), 0)
+                qr_id=qr_id,
+                warehouse=name,
+                base=units - net.get((qr_id, name), 0),
+                shelf=places.get(name, old_places.get(name, "")),
             )
         )
     total = sum(clean.values())

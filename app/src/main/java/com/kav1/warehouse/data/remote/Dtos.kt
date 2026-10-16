@@ -85,6 +85,7 @@ data class ItemStockDto(
     @SerializedName("qr_id") val qrId: String?,
     @SerializedName("warehouse") val warehouse: String?,
     @SerializedName("quantity") val quantity: Int?,
+    @SerializedName("shelf") val shelf: String?,
 )
 
 data class CategoryDto(

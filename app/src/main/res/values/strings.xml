@@ -217,6 +217,16 @@
     <string name="item_exists_editing">הפריט כבר קיים – עבר לעריכה</string>
     <string name="saved_pending_sync">נשמר. יישלח לשרת בסנכרון הבא</string>
     <string name="btn_delete">מחיקה</string>
+    <string name="label_shelf">מדף %1$s</string>
+    <string name="shelf_none">ללא מדף</string>
+    <string name="warehouses_title">מחסנים</string>
+    <string name="warehouses_pick">בחר מחסן כדי לראות מה יש בו</string>
+    <string name="warehouses_empty">אין מחסנים. מגדירים אותם בפאנל במחשב (לשונית \"מחסנים\") ואז מסנכרנים</string>
+    <string name="warehouse_row">%1$d פריטים · %2$d יחידות</string>
+    <string name="warehouse_header">%1$s · %2$d פריטים · %3$d יחידות</string>
+    <string name="warehouse_items_empty">אין פריטים במחסן הזה</string>
+    <string name="warehouse_search_hint">חיפוש לפי פריט, מספר או מדף…</string>
+    <string name="dashboard_mode_warehouses">מחסנים</string>
     <string name="label_warehouses">מחסנים: %1$s</string>
     <string name="label_warehouse">מחסן: %1$s</string>
     <string name="warehouse_choice">%1$s (על המדף: %2$d)</string>

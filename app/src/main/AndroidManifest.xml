@@ -32,6 +32,10 @@
         </activity>
 
         <activity
+            android:name=".ui.WarehousesActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.ItemActivity"
             android:exported="false"
             android:parentActivityName=".ui.MainActivity" />

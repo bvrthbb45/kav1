@@ -54,7 +54,8 @@ USER_ID = {"מספראישי", "מא", "מסאישי", "אישי", "userid", "id
 FULL_NAME = {"שםמלא", "שם", "fullname", "name"}
 UNIT = {"יחידה", "פלוגה", "מחלקה", "unit"}
 # Item sheets only (a soldiers sheet reads "מחלקה" as the unit).
-LOCATION = {"מיקום", "מיקוםפריט", "מדף", "ארון", "מיקוםבמחסן", "location"}
+LOCATION = {"מיקום", "מיקוםפריט", "ארון", "מיקוםבמחסן", "location"}
+SHELF = {"מדף", "מספרמדף", "shelf"}
 WAREHOUSE = {"מחסן", "שםמחסן", "warehouse"}
 DEPARTMENT = {"מחלקה", "מחלקתפריט", "שייךלמחלקה", "department", "dept"}
 
@@ -121,6 +122,7 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
     items: List[schemas.ItemIn] = []
     # Item rows that name a warehouse: units on that warehouse's shelf.
     splits: Dict[str, Dict[str, int]] = {}
+    places: Dict[str, Dict[str, str]] = {}
     errors: List[str] = []
 
     def error(sheet, row, text):
@@ -150,6 +152,7 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
             loc_col = _find(header, LOCATION)
             dept_col = _find(header, DEPARTMENT)
             wh_col = _find(header, WAREHOUSE)
+            shelf_col = _find(header, SHELF)
             for row_no, row in body:
                 qr_id = value(row, serial)
                 if not qr_id:
@@ -165,6 +168,8 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
                             raise ValueError(raw_qty)
                         shelf = splits.setdefault(qr_id, {})
                         shelf[wh] = shelf.get(wh, 0) + qty
+                        if shelf_col is not None and value(row, shelf_col):
+                            places.setdefault(qr_id, {})[wh] = value(row, shelf_col)
                         # The warehouses set the stock (one row per warehouse).
                         qty = None
                     items.append(
@@ -175,7 +180,14 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
                             quantity=qty,
                             kind=_kind(value(row, kind_col)),
                             location=(
-                                value(row, loc_col) if loc_col is not None else None
+                                value(row, loc_col)
+                                if loc_col is not None
+                                # Without warehouses, a shelf column is the location.
+                                else (
+                                    value(row, shelf_col)
+                                    if shelf_col is not None and not wh
+                                    else None
+                                )
                             ),
                             department=(
                                 value(row, dept_col) if dept_col is not None else None
@@ -230,7 +242,13 @@ def import_file(db: Session, data: bytes, filename: str = "") -> Dict:
     services.upsert_items(db, items)
     for qr_id, shelf in splits.items():
         current = warehouses.levels(db, [qr_id]).get(qr_id, {})
-        warehouses.set_split(db, qr_id, {**current, **shelf})
+        old = warehouses.shelf_numbers(db, [qr_id]).get(qr_id, {})
+        warehouses.set_split(
+            db,
+            qr_id,
+            {**current, **shelf},
+            places={**old, **places.get(qr_id, {})},
+        )
     return {
         "users": len(users),
         "items": len(items),
@@ -280,6 +298,7 @@ def _sheet(wb: Workbook, title: str, headers: List[str], rows: Iterable[list]):
 def _inventory(wb: Workbook, db: Session) -> None:
     state = services.pull_state(db)
     shelves = warehouses.levels(db)
+    places = warehouses.shelf_numbers(db)
     users = {u.user_id: u for u in state.users}
     holders: Dict[str, List[str]] = {}
     for h in state.holdings:
@@ -304,7 +323,15 @@ def _inventory(wb: Workbook, db: Session) -> None:
                 i.issued_qty,
                 ", ".join(holders.get(i.qr_id, [])),
                 _local(i.last_action_at),
-                ", ".join(f"{w}: {n}" for w, n in shelves.get(i.qr_id, {}).items()),
+                ", ".join(
+                    f"{w}: {n}"
+                    + (
+                        f" (מדף {places[i.qr_id][w]})"
+                        if places.get(i.qr_id, {}).get(w)
+                        else ""
+                    )
+                    for w, n in shelves.get(i.qr_id, {}).items()
+                ),
             ]
         )
     _sheet(
@@ -331,6 +358,7 @@ def _inventory(wb: Workbook, db: Session) -> None:
 
 def _warehouses(wb: Workbook, db: Session) -> None:
     items = {i.qr_id: i for i in db.scalars(select(models.Item))}
+    places = warehouses.shelf_numbers(db)
     rows = []
     for qr_id, shelf in warehouses.levels(db).items():
         item = items.get(qr_id)
@@ -338,19 +366,46 @@ def _warehouses(wb: Workbook, db: Session) -> None:
             rows.append(
                 [
                     wh,
+                    places.get(qr_id, {}).get(wh, ""),
                     qr_id,
                     item.name if item else qr_id,
                     (item.category if item else "") or messages.NO_CATEGORY,
                     units,
                 ]
             )
-    rows.sort(key=lambda r: (r[0], r[3], r[2], r[1]))
+    rows.sort(key=lambda r: (r[0], warehouses._shelf_key(r[1]), r[4], r[3], r[2]))
     _sheet(
         wb,
         "לפי מחסן",
-        ["מחסן", "מספר סידורי", "שם פריט", "סוג פריט", "כמות במחסן"],
+        ["מחסן", "מדף", "מספר סידורי", "שם פריט", "סוג פריט", "כמות במחסן"],
         rows,
     )
+
+
+def count_sheet(warehouse: str, rows: List[Dict]) -> bytes:
+    """Stock-count sheet for one warehouse: fill in "נספר", the difference follows."""
+    wb = _new()
+    ws = _sheet(
+        wb,
+        "ספירה",
+        ["מדף", "מספר סידורי", "שם פריט", "סוג פריט", "כמות במערכת", "נספר", "הפרש"],
+        (
+            [
+                r["shelf"],
+                r["qr_id"],
+                r["name"],
+                r["category"],
+                r["quantity"],
+                None,
+                None,
+            ]
+            for r in rows
+        ),
+    )
+    for n in range(2, len(rows) + 2):
+        ws.cell(row=n, column=7, value=f'=IF(F{n}="","",F{n}-E{n})')
+    ws.title = re.sub(r"[\[\]:*?/\\]", " ", "ספירה " + warehouse)[:31]
+    return _finish(wb)
 
 
 def _departments(wb: Workbook, db: Session) -> None:

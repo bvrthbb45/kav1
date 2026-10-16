@@ -135,3 +135,5 @@ class ItemStock(Base):
         ForeignKey("warehouses.name"), primary_key=True
     )
     base: Mapped[int] = mapped_column(Integer, default=0)
+    # Shelf (מדף) inside the warehouse, free text such as "3" or "B-12".
+    shelf: Mapped[str] = mapped_column(String(100), default="", server_default="")

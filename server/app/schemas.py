@@ -88,6 +88,7 @@ class ItemStockOut(BaseModel):
     qr_id: str
     warehouse: str
     quantity: int
+    shelf: str = ""
 
 
 class HoldingOut(BaseModel):

@@ -55,3 +55,43 @@ def render(items: List[models.Item]) -> str:
         for item in items
     )
     return PAGE.format(count=len(items), labels=labels)
+
+
+def count_page(warehouse: str, rows) -> str:
+    """Printable stock-count sheet for one warehouse, shelf by shelf."""
+    from html import escape
+    from datetime import datetime
+
+    body = (
+        "".join(
+            "<tr><td>{shelf}</td><td><b>{name}</b></td><td class='ltr'>{qr}</td>"
+            "<td>{cat}</td><td class='num'>{qty}</td><td class='box'></td><td class='box'></td></tr>".format(
+                shelf=escape(r["shelf"] or "—"),
+                name=escape(r["name"]),
+                qr=escape(r["qr_id"]),
+                cat=escape(r["category"] or "—"),
+                qty=r["quantity"],
+            )
+            for r in rows
+        )
+        or "<tr><td colspan='7'>אין פריטים במחסן</td></tr>"
+    )
+    return f"""<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<title>ספירת מלאי – {escape(warehouse)}</title><style>
+body{{font-family:Arial,sans-serif;margin:24px;color:#111}}
+h1{{font-size:22px;margin:0 0 4px}} .meta{{color:#555;margin-bottom:14px}}
+table{{width:100%;border-collapse:collapse;font-size:14px}}
+th,td{{border:1px solid #999;padding:6px 8px;text-align:right}}
+th{{background:#434C2F;color:#fff}} .num{{text-align:center;font-weight:bold}}
+.box{{width:90px}} .ltr{{direction:ltr;text-align:right}}
+.sign{{margin-top:28px;display:flex;gap:60px}}
+@media print{{button{{display:none}} th{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
+</style></head><body>
+<button onclick="print()">הדפסה</button>
+<h1>ספירת מלאי – {escape(warehouse)}</h1>
+<div class="meta">הודפס: {datetime.now().strftime("%d/%m/%Y %H:%M")} · {len(rows)} פריטים</div>
+<table><thead><tr><th>מדף</th><th>פריט</th><th>מספר סידורי</th><th>סוג</th><th>כמות במערכת</th><th>נספר</th><th>הערה</th></tr></thead>
+<tbody>{body}</tbody></table>
+<div class="sign"><div>שם הסופר: ____________</div><div>חתימה: ____________</div></div>
+<script>setTimeout(function(){{print()}},400)</script>
+</body></html>"""

@@ -150,3 +150,55 @@ def test_excel_import_splits_by_warehouse(client):
     item, shelves = _stock(client, "AA")
     assert (item["quantity"], shelves) == (70, {"A": 20, "B": 50})
     assert client.get("/api/panel/export/warehouses").status_code == 200
+
+
+def test_shelves_and_stock_count(client):
+    _setup(client)
+    client.post(
+        "/api/panel/items", json={"qr_id": "K", "category": "קסדה", "quantity": 1}
+    )
+    client.post(
+        "/api/panel/items/stock",
+        json={"qr_id": "K", "shelves": {"A": 3}, "shelf_numbers": {"A": "10"}},
+    )
+    client.post(
+        "/api/panel/items/stock",
+        json={
+            "qr_id": "BAT",
+            "shelves": {"A": 20, "B": 50, "C": 30},
+            "shelf_numbers": {"A": "2", "B": "7"},
+        },
+    )
+    pulled = client.get("/api/sync/pull").json()
+    shelf = {(s["qr_id"], s["warehouse"]): s["shelf"] for s in pulled["item_stock"]}
+    assert shelf[("BAT", "A")] == "2" and shelf[("BAT", "C")] == ""
+
+    # Moving units without sending shelf numbers keeps them.
+    client.post(
+        "/api/panel/items/stock",
+        json={"qr_id": "BAT", "shelves": {"A": 25, "B": 45, "C": 30}},
+    )
+    rows = client.get("/api/panel/warehouses/contents", params={"name": "A"}).json()[
+        "rows"
+    ]
+    # Shelf 2 before shelf 10.
+    assert [(r["qr_id"], r["shelf"], r["quantity"]) for r in rows] == [
+        ("BAT", "2", 25),
+        ("K", "10", 3),
+    ]
+
+    # The count found 23 batteries and 3 helmets in A.
+    r = client.post(
+        "/api/panel/warehouses/count",
+        json={"name": "A", "counts": {"BAT": 23, "K": 3}},
+    ).json()
+    assert r["success"] and "2 פריטים, 1 עם הפרש" in r["message"]
+    item, shelves = _stock(client, "BAT")
+    assert shelves == {"A": 23, "B": 45, "C": 30} and item["quantity"] == 98
+
+    assert client.get("/panel/count", params={"name": "A"}).status_code == 200
+    r = client.get("/api/panel/warehouses/count.xlsx", params={"name": "A"})
+    from openpyxl import load_workbook
+
+    ws = load_workbook(io.BytesIO(r.content)).active
+    assert [c.value for c in ws[2]][:5] == ["2", "BAT", "סוללות", "סוללות", 23]

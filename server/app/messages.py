@@ -55,6 +55,7 @@ WAREHOUSE_NOT_EMPTY = (
     'לא ניתן למחוק את המחסן "{name}" כי יש בו {units} יחידות. העבר אותן קודם למחסן אחר'
 )
 STOCK_SPLIT_SAVED = "חלוקת המלאי של {qr_id} נשמרה: {total} יחידות"
+COUNT_SAVED = 'ספירת מלאי במחסן "{name}": עודכנו {items} פריטים, {diffs} עם הפרש'
 STOCK_NEGATIVE = "כמות לא תקינה במחסן {name}"
 TX_WAREHOUSE_NOT_AVAILABLE = "אין מספיק במחסן {warehouse}: {qr_id} (זמינים {available})"
 

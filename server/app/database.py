@@ -41,6 +41,7 @@ _ADDED_COLUMNS = {
         "location": "VARCHAR(200) NOT NULL DEFAULT ''",
         "department": "VARCHAR(200) NOT NULL DEFAULT ''",
     },
+    "item_stock": {"shelf": "VARCHAR(100) NOT NULL DEFAULT ''"},
     "transactions": {
         "quantity": "INTEGER NOT NULL DEFAULT 1",
         "note": "VARCHAR(500) NOT NULL DEFAULT ''",
