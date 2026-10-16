@@ -281,6 +281,11 @@ def _sheet(wb: Workbook, title: str, headers: List[str], rows: Iterable[list]):
     widths = [len(h) + 2 for h in headers]
     for row in rows:
         ws.append(row)
+        for cell in ws[ws.max_row]:
+            # Names come from tablets and imports: text such as "=HYPERLINK(..."
+            # must stay text, never become a formula when the file is opened.
+            if cell.data_type == "f":
+                cell.data_type = "s"
         for i, v in enumerate(row):
             if isinstance(v, datetime):
                 ws.cell(ws.max_row, i + 1).number_format = DATE_FORMAT

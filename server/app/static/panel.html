@@ -485,8 +485,8 @@ async function showWarehouse(name) {
           "' style='width:80px'></td><td class='count-diff' data-n='" + n + "'></td></tr>").join("") + "</tbody></table></div>"
         : "<div class='empty'>אין פריטים במחסן הזה. חלק מלאי לפריטים בכפתור \"מחסנים\" בטבלת המלאי</div>") +
       "<div class='form-actions'>" + (rows.length ? "<button class='primary' id='btnSaveCount'>שמירת ספירה</button>" : "") +
-      "<button type='button' onclick=\"window.open('/panel/count?name=" + q + "')\">הדפסת דף ספירה</button>" +
-      "<a class='btn' href='/api/panel/warehouses/count.xlsx?name=" + q + "'>ייצוא לאקסל</a>" +
+      "<button type='button' id='btnPrintCount'>הדפסת דף ספירה</button>" +
+      "<a class='btn' href='/api/panel/warehouses/count.xlsx?name=" + esc(q) + "'>ייצוא לאקסל</a>" +
       "<button type='button' id='btnWhInventory'>הצג במלאי</button></div>");
     document.querySelectorAll(".count-in").forEach((inp) => inp.oninput = () => {
       const r = rows[inp.dataset.n], cell = document.querySelector(".count-diff[data-n='" + inp.dataset.n + "']");
@@ -494,6 +494,7 @@ async function showWarehouse(name) {
       const d = parseInt(inp.value, 10) - r.quantity;
       cell.innerHTML = d === 0 ? "<span style='color:var(--ok)'>✓</span>" : "<b dir='ltr' style='color:" + (d < 0 ? "var(--err,#c62828)" : "var(--borrowed)") + "'>" + (d > 0 ? "+" : "") + d + "</b>";
     });
+    $("btnPrintCount").onclick = () => window.open("/panel/count?name=" + q);
     $("btnWhInventory").onclick = () => { dlg.close(); $("itemWh").value = name; $("itemType").value = "*"; $("itemDept").value = "*"; switchTab("items"); renderItems(); };
     const save = $("btnSaveCount");
     if (save) save.onclick = async () => {
@@ -655,10 +656,11 @@ async function showItemCard(qr) {
       "<h4>מחסנים</h4>" + (c.stock.length ? "<table><thead><tr><th>מחסן</th><th>על המדף</th></tr></thead><tbody>" +
         c.stock.map((s) => "<tr><td>" + esc(s.warehouse) + (s.shelf ? " <span class='muted small'>מדף " + esc(s.shelf) + "</span>" : "") + "</td><td><b>" + s.quantity + "</b></td></tr>").join("") + "</tbody></table>"
         : "<div class='empty'>המלאי לא מחולק למחסנים</div>") +
-      "<div class='form-actions'><button type='button' onclick='splitStock(" + JSON.stringify(qr).replace(/'/g, "&#39;") + ")'>חלוקה למחסנים</button></div>" +
+      "<div class='form-actions'><button type='button' id='btnCardSplit'>חלוקה למחסנים</button></div>" +
       "<h4>היסטוריה</h4>" +
       historyTable(c.history, false, true),
       { label: "הדפסת מדבקה", onClick: () => window.open("/panel/labels?ids=" + encodeURIComponent(qr)) });
+    $("btnCardSplit").onclick = () => splitStock(qr);
   } catch (e) { toast(e.message, true); }
 }
 

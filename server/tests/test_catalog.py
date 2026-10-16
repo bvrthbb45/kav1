@@ -395,3 +395,16 @@ def test_excel_location_department_and_reports(client):
     rows = list(wb.active.values)
     assert rows[1][0] == "לוגיסטיקה"
     assert client.get("/api/panel/export/full").status_code == 200
+
+
+def test_excel_export_keeps_formula_like_names_as_text(client):
+    client.post(
+        "/api/admin/items",
+        json=[{"qr_id": "F1", "name": '=HYPERLINK("http://x","click")'}],
+    )
+    r = client.get("/api/panel/export/inventory")
+    ws = load_workbook(io.BytesIO(r.content)).active
+    names = [row[1] for row in ws.iter_rows(min_row=2, values_only=True)]
+    assert '=HYPERLINK("http://x","click")' in names
+    cell = next(c for c in ws["B"] if c.value == '=HYPERLINK("http://x","click")')
+    assert cell.data_type == "s"
