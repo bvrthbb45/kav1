@@ -6,6 +6,7 @@ from fastapi import (
     WebSocketDisconnect,
     Query,
 )
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from . import crud, schemas, database, websocket
@@ -14,6 +15,11 @@ from .visitor_logger import VisitorLogger
 router = APIRouter()
 ws_manager = websocket.WebSocketManager()
 visitor_logger = VisitorLogger()
+
+# The routes below that are `async def` (they await the WebSocket broadcast)
+# must not call blocking code directly: a synchronous commit/fsync or file write
+# would freeze the whole event loop, HTTP and WebSocket included. Blocking work
+# goes through run_in_threadpool().
 
 # ? Websocket Routes
 
@@ -39,22 +45,21 @@ def get_visitors(db: Session = Depends(database.get_db)):
 
 @router.get("/visitors/inside")
 def get_visitors_inside(db: Session = Depends(database.get_db)):
-    visitors = crud.get_visitors_inside(db)
     result = []
-    for v in visitors:
-        latest_log = crud.get_latest_log_for_visitor(db, v.dbid)
+    for v, latest_log in crud.get_visitors_inside_with_latest_log(db):
         action = None
         if latest_log:
             action = {latest_log.action: latest_log.timestamp.isoformat()}
-        visitor_data = {
-            "inside": v.inside,
-            "dbid": v.dbid,
-            "name": v.name,
-            "visitorid": v.visitorid,
-            "properties": v.properties or {},
-            "action": action,
-        }
-        result.append(visitor_data)
+        result.append(
+            {
+                "inside": v.inside,
+                "dbid": v.dbid,
+                "name": v.name,
+                "visitorid": v.visitorid,
+                "properties": v.properties or {},
+                "action": action,
+            }
+        )
     return result
 
 
@@ -113,14 +118,19 @@ def get_visitor(visitor_id: str, db: Session = Depends(database.get_db)):
 async def change_status(
     visitor_id: str, is_inside: bool, db: Session = Depends(database.get_db)
 ):
-    visitor = crud.update_visitor_status(db, visitor_id, is_inside)
+    visitor = await run_in_threadpool(
+        crud.update_visitor_status, db, visitor_id, is_inside
+    )
 
     if not visitor:
         return {"message": "Visitor not found"}
 
     event_type = "ENTRY" if is_inside else "EXIT"
-    visitor_logger.log_event(
-        event_type=event_type, visitor_id=visitor.visitorid, visitor_name=visitor.name
+    await run_in_threadpool(
+        visitor_logger.log_event,
+        event_type=event_type,
+        visitor_id=visitor.visitorid,
+        visitor_name=visitor.name,
     )
 
     try:
@@ -133,12 +143,13 @@ async def change_status(
 
 @router.post("/visitors/{visitor_id}/delete")
 async def delete_visitor(visitor_id: str, db: Session = Depends(database.get_db)):
-    visitor = crud.delete_visitor(db, visitor_id)
+    visitor = await run_in_threadpool(crud.delete_visitor, db, visitor_id)
 
     if not visitor:
         return {"message": "Visitor not found"}
 
-    visitor_logger.log_event(
+    await run_in_threadpool(
+        visitor_logger.log_event,
         event_type="DELETE",
         visitor_id=visitor["visitorid"],
         visitor_name=visitor["name"],
@@ -154,20 +165,16 @@ async def delete_visitor(visitor_id: str, db: Session = Depends(database.get_db)
 
 @router.get("/logs")
 def get_logs(limit: int = 20, db: Session = Depends(database.get_db)):
-    logs = crud.get_logs(db, limit)
-    enriched_logs = []
-    for log in logs:
-        visitor = crud.get_visitor_by_dbid(db, log.visitor_dbid)
-        enriched_logs.append(
-            {
-                "id": log.id,
-                "timestamp": log.timestamp.isoformat(),
-                "action": log.action,
-                "visitor_dbid": log.visitor_dbid,
-                "visitor_name": visitor.name if visitor else "Unknown",
-            }
-        )
-    return enriched_logs
+    return [
+        {
+            "id": log.id,
+            "timestamp": log.timestamp.isoformat(),
+            "action": log.action,
+            "visitor_dbid": log.visitor_dbid,
+            "visitor_name": name if name is not None else "Unknown",
+        }
+        for log, name in crud.get_logs_with_visitor_names(db, limit)
+    ]
 
 
 @router.get("/logs/{visitor_id}")
@@ -186,7 +193,8 @@ async def update_visitor(
     db: Session = Depends(database.get_db),
 ):
     try:
-        updated_visitor = crud.update_visitor_details(
+        updated_visitor = await run_in_threadpool(
+            crud.update_visitor_details,
             db=db,
             visitor_id=visitor_id,
             name=visitor.name,
@@ -197,7 +205,8 @@ async def update_visitor(
         if not updated_visitor:
             raise HTTPException(status_code=404, detail="Visitor not found")
 
-        visitor_logger.log_event(
+        await run_in_threadpool(
+            visitor_logger.log_event,
             event_type="UPDATE",
             visitor_id=updated_visitor.visitorid,
             visitor_name=updated_visitor.name,

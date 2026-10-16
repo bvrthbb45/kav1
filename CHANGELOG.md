@@ -8,6 +8,24 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 
 ## [Unreleased]
 
+### Fixed
+- `GET /visitors/inside` ran one query per inside visitor (N+1); it is now a
+  single query. `GET /logs` likewise no longer looks up each visitor separately.
+- Entry/exit/update/delete no longer block the whole server: the database and
+  log-file work of these routes now runs in the thread pool instead of on the
+  event loop, and each action uses one commit instead of two.
+- Dead WebSocket connections are dropped on broadcast; double disconnect no
+  longer raises.
+
+### Changed
+- SQLite connections set `busy_timeout=5000` (and `synchronous=NORMAL` once the
+  file is in WAL mode). The app never changes the journal mode itself; run
+  `tools/fix_01_enable_wal.py`.
+- `visitor_logs` models declare the `(visitor_dbid, timestamp)` and
+  `(timestamp)` indexes. New databases get them automatically; **existing
+  databases must run `tools/fix_02_add_indexes.py`** (without it the new
+  single query still scans the log table).
+
 ## [0.1.0] - 2026-10-15
 
 First version tracked under semantic versioning. It documents and baselines the

@@ -205,7 +205,7 @@ Indexes created by the app: `ix_visitors_dbid`, `ix_visitors_name`,
 `ix_visitors_visitorid` (unique), `ix_visitor_logs_id`.
 **Not present** (and needed — see [docs/DB_DIAGNOSIS.md](docs/DB_DIAGNOSIS.md)):
 `visitor_logs(visitor_dbid, timestamp)` and `visitor_logs(timestamp)`; added by
-`tools/fix_02_add_indexes.py`. SQLite foreign keys are not enforced by default.
+`tools/fix_02_add_indexes.py` (new databases get them from `models.py`). SQLite foreign keys are not enforced by default.
 
 ## REST API
 

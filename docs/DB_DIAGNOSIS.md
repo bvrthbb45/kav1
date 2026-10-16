@@ -1,5 +1,14 @@
 # Why Kav1 is slow and "hangs" — analysis
 
+> **Status:** the code-level fixes proposed in sections 2, 4 and 5 are now
+> implemented (see `CHANGELOG.md` → Unreleased). Measured on the same synthetic
+> data (308 inside, 60 k logs, 8 simultaneous clients): `/visitors/inside`
+> idle 824 → **22 ms**, "sync" storm 2 970 → **350 ms**, 1-row lookup during the
+> storm 169 → **12 ms**. The code change alone, without the indexes, only
+> reaches ≈850 ms idle — **run `tools/fix_02_add_indexes.py` on existing
+> databases.** Output of the changed endpoints was verified identical to the
+> previous code. The text below is the original analysis.
+
 > **Scope and honesty.** The production database (≈2.6 MB, ≈1 852 visitors) is
 > not in this repository, so nothing below was measured on it. The causes come
 > from reading the code (`backend/app/*.py`) and were reproduced on a
@@ -114,7 +123,7 @@ thread pool, exactly like the `GET` routes already are), or wrap the DB work in
   **per-connection** settings: they cannot be applied by a script, only in code:
 
 ```python
-# backend/app/database.py (proposed, not applied)
+# backend/app/database.py (implemented; the journal mode is left to fix_01)
 from sqlalchemy import event
 
 @event.listens_for(engine, "connect")
