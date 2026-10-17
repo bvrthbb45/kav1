@@ -25,6 +25,7 @@ from PySide6.QtCore import Qt
 
 from app.core.api_client import ApiClient
 from app.views.common.warning_dialog import show_warning
+from app.views.visitor.managed_fields import ManagedFields
 
 
 class EditVisitorDialog(QDialog):
@@ -80,6 +81,13 @@ class EditVisitorDialog(QDialog):
         properties_title.setFont(font)
         properties_layout.addWidget(properties_title)
 
+        self.managed = ManagedFields()
+        self.managed.set_values(self.visitor_data.get("properties", {}))
+        properties_layout.addWidget(self.managed)
+        self.managed_keys = ManagedFields.managed_keys(
+            self.visitor_data.get("properties", {})
+        )
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll_content = QWidget()
@@ -89,7 +97,8 @@ class EditVisitorDialog(QDialog):
 
         self.property_inputs = {}
         for key, value in self.visitor_data.get("properties", {}).items():
-            self.add_property_field(key, value)
+            if key not in self.managed_keys:
+                self.add_property_field(key, value)
 
         scroll.setWidget(scroll_content)
         properties_layout.addWidget(scroll)
@@ -155,6 +164,11 @@ class EditVisitorDialog(QDialog):
             )
             return
 
+        problem = self.managed.validate()
+        if problem:
+            show_warning("Missing Information", problem)
+            return
+
         properties = {}
         for i in range(self.properties_layout.count()):
             container = self.properties_layout.itemAt(i).widget()
@@ -168,6 +182,8 @@ class EditVisitorDialog(QDialog):
 
                 if key:
                     properties[key] = value
+
+        properties.update(self.managed.get_properties())
 
         update_data = {}
         if name != self.visitor_data["name"]:

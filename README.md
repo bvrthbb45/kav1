@@ -159,6 +159,7 @@ it silently creates a second empty database.
 │       ├── database.py     engine + session (SQLite file)
 │       ├── models.py       Visitor, VisitorLog
 │       ├── schemas.py      Pydantic request models
+│       ├── fields.py       well-known property keys, validation, expiry logic
 │       ├── crud.py         all queries
 │       ├── routes.py       REST + /ws endpoints
 │       ├── websocket.py    connection manager / "sync" broadcast
@@ -177,6 +178,29 @@ it silently creates a second empty database.
 ├── build_windows.bat, kav1.iss      packaging
 └── .github/workflows/cicdpipeline.yml
 ```
+
+## Contractor fields and features
+
+`visitors.properties` stays a free-form key/value JSON, so no schema migration
+is needed. These keys have meaning for the application (constants in
+`backend/app/fields.py` and `frontend/app/core/fields.py`):
+
+| key | meaning | rules |
+|-----|---------|-------|
+| `פרויקט` | project the contractor belongs to | free text; the server also recognises `פרויקטים`, `project`, `projects` in existing records |
+| `אבטחת מידע` | information-security status | exactly one of `מאושר` / `מאושר חריג על ידי מפקד היחידה` / `לא מאושר` |
+| `תוקף אבטחת מידע` | validity of the approval | required when the status is one of the two approved values |
+| `תוקף סיווג` | validity of the security classification | optional; when filled it is tracked for expiry |
+
+Dates are stored as `YYYY-MM-DD` (the API also accepts `DD/MM/YYYY`,
+`DD.MM.YYYY`, `DD-MM-YYYY` and normalises them). Invalid values are rejected
+with HTTP 422 and a message.
+
+* **Order:** the list of visitors inside is sorted by latest arrival first.
+* **Project filter:** the combo box above the list filters by project.
+* **Expiry alerts:** rows with an expired / soon-to-expire date are coloured and
+  marked; the *Expiring approvals* button shows the counts and opens a table of
+  everyone expired or expiring within N days (default 30), soonest first.
 
 ## Database schema
 
@@ -212,7 +236,9 @@ Indexes created by the app: `ix_visitors_dbid`, `ix_visitors_name`,
 | method | path | purpose |
 |--------|------|---------|
 | GET  | `/visitors` | all visitors |
-| GET  | `/visitors/inside` | visitors currently inside + last action |
+| GET  | `/visitors/inside[?project=]` | visitors currently inside, latest arrival first, with `project`, `infosec`, `expiry` |
+| GET  | `/projects` | distinct projects with total / inside counts |
+| GET  | `/visitors/expiring?days=30&inside_only=false` | expired or expiring approvals, soonest first |
 | POST | `/visitor` | create |
 | GET  | `/visitors/{visitor_id}` | one visitor |
 | PUT  | `/visitors/{visitor_id}` | edit name / id / properties |

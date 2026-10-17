@@ -8,7 +8,26 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 
 ## [Unreleased]
 
+### Added
+- Contractors currently inside are listed **latest arrival first**
+  (`GET /visitors/inside` is sorted by the time of the latest `entry` log).
+- **Project filter**: new `פרויקט` property, `GET /projects`,
+  `GET /visitors/inside?project=` and a project combo box in the client.
+- **Expiry alerts**: optional `תוקף סיווג`; `GET /visitors/expiring`; coloured
+  rows, an *Expiring approvals* button with counters and a table of expired /
+  soon-to-expire approvals in the client.
+- **Information security** property `אבטחת מידע` with three values (`מאושר`,
+  `מאושר חריג על ידי מפקד היחידה`, `לא מאושר`) and a mandatory validity date
+  `תוקף אבטחת מידע` for the two approved values. Create/edit dialogs have
+  dedicated fields; the server validates and normalises them (HTTP 422 on bad
+  input). No database migration: values live in `visitors.properties`.
+
 ### Fixed
+- **Data loss:** updating only the name or ID of a visitor (`PUT /visitors/{id}`
+  without `properties`) replaced its properties with `{}`; omitted properties
+  are now left untouched.
+- `openpyxl` (used by the client's Excel export) was missing from the
+  requirements; added to `requirements-client.txt`.
 - `GET /visitors/inside` ran one query per inside visitor (N+1); it is now a
   single query. `GET /logs` likewise no longer looks up each visitor separately.
 - Entry/exit/update/delete no longer block the whole server: the database and

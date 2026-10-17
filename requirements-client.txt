@@ -1,3 +1,4 @@
 # Desktop client only
 pyside6
+openpyxl
 requests

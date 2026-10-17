@@ -12,10 +12,13 @@ def get_visitors_inside(db: Session):
 
 
 def get_visitors_inside_with_latest_log(db: Session):
-    """Visitors currently inside, each with its latest log row (or None).
+    """Visitors currently inside, newest arrival first.
 
-    One query instead of one per visitor; uses the
-    (visitor_dbid, timestamp) index on visitor_logs.
+    Each row is (visitor, latest_log_or_None, entered_at_or_None) where
+    entered_at is the time of the visitor's latest "entry" log. One query
+    instead of one per visitor; uses the (visitor_dbid, timestamp) index.
+    Order: latest entry first; visitors without an entry log fall back to
+    their latest log; ties by dbid (newest created first).
     """
     latest_log_id = (
         select(models.VisitorLog.id)
@@ -25,10 +28,23 @@ def get_visitors_inside_with_latest_log(db: Session):
         .correlate(models.Visitor)
         .scalar_subquery()
     )
+    last_entry = (
+        select(func.max(models.VisitorLog.timestamp))
+        .where(
+            models.VisitorLog.visitor_dbid == models.Visitor.dbid,
+            models.VisitorLog.action == "entry",
+        )
+        .correlate(models.Visitor)
+        .scalar_subquery()
+    )
     return (
-        db.query(models.Visitor, models.VisitorLog)
+        db.query(models.Visitor, models.VisitorLog, last_entry.label("entered_at"))
         .outerjoin(models.VisitorLog, models.VisitorLog.id == latest_log_id)
         .filter(models.Visitor.inside)
+        .order_by(
+            func.coalesce(last_entry, models.VisitorLog.timestamp).desc(),
+            models.Visitor.dbid.desc(),
+        )
         .all()
     )
 
