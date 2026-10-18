@@ -37,6 +37,12 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Added (tools)
+- `tools/permissions_check.py` (+ `6_permissions_check.bat`): snapshots every role's
+  permissions and compares with the previous snapshot - proves what a server restart
+  changes (role permissions reported to shrink after restart).
+- `tools/code_locator.py` (+ `7_find_code.bat`): read-only finder / viewer of the lines
+  of the server source that handle roles, permissions and start-up seeding, for machines
+  whose code cannot leave the network (hides lines that look like secrets).
 - `tools/probe_server.py` (+ `5_probe_server.bat`): live, read-only (GET only) server
   probe that needs no access to the server code - detects freezes while the system is
   used, slow endpoints, slow auth, and (Windows) server CPU / memory / connections.
