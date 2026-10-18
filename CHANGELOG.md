@@ -36,7 +36,15 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 - Dead WebSocket connections are dropped on broadcast; double disconnect no
   longer raises.
 
+### Added (tools)
+- `tools/probe_server.py` (+ `5_probe_server.bat`): live, read-only (GET only) server
+  probe that needs no access to the server code - detects freezes while the system is
+  used, slow endpoints, slow auth, and (Windows) server CPU / memory / connections.
+
 ### Changed
+- `tools/diagnose_db.py` v2.1: Hebrew text is printed as Latin transliteration (Windows
+  consoles show it garbled), every contractor field is profiled (fill rate, date-like
+  fields, categories) so field names do not have to be guessed.
 - `tools/diagnose_db.py` v2: asks you to drag the database file into the window (Enter
   = search by itself; also asks when there are none or several), shows the result as a few console pages that each fit one screen
   (to be photographed on an air-gapped machine), predicts the numbers after the

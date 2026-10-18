@@ -266,6 +266,8 @@ one console window, so it can be photographed page by page.
 | `3_fix_add_indexes.bat` | `fix_02_add_indexes.py` | add missing `visitor_logs` indexes + ANALYZE | preferably stop |
 | `4_fix_vacuum_analyze.bat` | `fix_03_vacuum_analyze.py` | checkpoint, VACUUM, ANALYZE (only if fragmented) | **stop** |
 
+| `5_probe_server.bat` | `probe_server.py` | black-box check of the RUNNING server: freezes (stalls) while you use it, slow endpoints, slow login check, server CPU / memory / connections | running |
+
 Why Kav1 is slow and what each fix buys: [docs/DB_DIAGNOSIS.md](docs/DB_DIAGNOSIS.md).
 To roll back any step: stop the server, copy the matching file from `backups\`
 over `local_database.db`, delete `local_database.db-wal`/`-shm`, start again.

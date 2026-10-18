@@ -39,7 +39,7 @@ import traceback
 from datetime import date, datetime
 from pathlib import Path
 
-TOOL_VERSION = "2.0"
+TOOL_VERSION = "2.1"
 DB_NAME = "local_database.db"
 SLOW_MS = 100.0
 SEARCH_BUDGET_S = 25
@@ -102,6 +102,57 @@ def ask(prompt, default=""):
 
 def fmt_mb(n):
     return "%.2f MB" % (n / 1e6)
+
+
+# Hebrew cannot be shown reliably in a Windows console (code pages differ), so any
+# non-ASCII text is printed as a reversible Latin transliteration, e.g. H:prwyq9
+HEB = {
+    "א": "a",
+    "ב": "b",
+    "ג": "g",
+    "ד": "d",
+    "ה": "h",
+    "ו": "w",
+    "ז": "z",
+    "ח": "x",
+    "ט": "9",
+    "י": "y",
+    "כ": "k",
+    "ך": "K",
+    "ל": "l",
+    "מ": "m",
+    "ם": "M",
+    "נ": "n",
+    "ן": "N",
+    "ס": "s",
+    "ע": "e",
+    "פ": "p",
+    "ף": "P",
+    "צ": "c",
+    "ץ": "C",
+    "ק": "q",
+    "ר": "r",
+    "ש": "$",
+    "ת": "t",
+    "״": '"',
+    "׳": "'",
+    "־": "-",
+}
+HEB_LEGEND = "Hebrew letters are shown in Latin as H:... (a b g d h w z x 9 y k l m n s e p c q r $ t)"
+
+
+def disp(text):
+    """ASCII-safe display form of any text (Hebrew -> H:transliteration)."""
+    text = str(text)
+    if all(ord(ch) < 128 for ch in text):
+        return text
+    out = []
+    for ch in text:
+        if ord(ch) < 128:
+            out.append(ch)
+        else:
+            out.append(HEB.get(ch, "\\u%04x" % ord(ch)))
+    return "H:" + "".join(out)
 
 
 def short_path(p, limit=WIDTH - 8):
@@ -720,16 +771,13 @@ def check_commit_latency(R, db, backup):
 
 
 def check_properties(R, con):
-    """Profile visitors.properties (key names, project/infosec/expiry usage).
+    """Profile visitors.properties for every key: fill rate, distinct values,
+    date-like fields (min/max/expired) and the values of small categorical fields.
 
-    Only key names and counts are collected, plus the VALUES of the few keys the
-    new features use (project, infosec status). No names / IDs / phone numbers."""
-    keys, distinct, bad_json = {}, {}, 0
-    project_key_counts, project_values, infosec_values = {}, {}, {}
-    expiry = {"with_date": 0, "unparseable": 0, "expired": 0, "within30": 0, "later": 0}
+    No visitor names / IDs are collected; values are kept only for fields with a
+    handful of distinct values (categories) and for project / infosec fields."""
+    stats, bad_json, total = {}, 0, 0
     today = date.today()
-    alias_set = {a.lower() for a in PROJECT_ALIASES}
-    total = 0
     for (raw,) in con.execute("SELECT properties FROM visitors"):
         total += 1
         if raw in (None, ""):
@@ -742,47 +790,67 @@ def check_properties(R, con):
         if not isinstance(props, dict):
             bad_json += 1
             continue
-        soonest = None
         for k, v in props.items():
-            k = str(k)
-            keys[k] = keys.get(k, 0) + 1
-            d = distinct.setdefault(k, set())
-            if len(d) < 200:
-                d.add(str(v))
-            kl = k.strip().lower()
-            if kl in alias_set and str(v).strip():
-                project_key_counts[k] = project_key_counts.get(k, 0) + 1
-                pv = str(v).strip()
-                project_values[pv] = project_values.get(pv, 0) + 1
-            if k.strip() == INFOSEC_KEY and str(v).strip():
-                sv = str(v).strip()
-                infosec_values[sv] = infosec_values.get(sv, 0) + 1
-            if k.strip() in EXPIRY_KEYS and str(v).strip():
-                parsed = parse_date(v)
-                if parsed is None:
-                    expiry["unparseable"] += 1
-                elif soonest is None or parsed < soonest:
-                    soonest = parsed
-        if soonest is not None:
-            expiry["with_date"] += 1
-            left = (soonest - today).days
-            if left < 0:
-                expiry["expired"] += 1
-            elif left <= 30:
-                expiry["within30"] += 1
-            else:
-                expiry["later"] += 1
+            text = "" if v is None else str(v).strip()
+            if not text:
+                continue
+            st = stats.setdefault(
+                str(k),
+                {
+                    "n": 0,
+                    "vals": {},
+                    "dates": 0,
+                    "dmin": None,
+                    "dmax": None,
+                    "expired": 0,
+                    "soon": 0,
+                    "later": 0,
+                    "numeric": 0,
+                },
+            )
+            st["n"] += 1
+            if text in st["vals"] or len(st["vals"]) < 300:
+                st["vals"][text] = st["vals"].get(text, 0) + 1
+            parsed = parse_date(text)
+            if parsed is not None and len(text) >= 6:
+                st["dates"] += 1
+                st["dmin"] = parsed if st["dmin"] is None else min(st["dmin"], parsed)
+                st["dmax"] = parsed if st["dmax"] is None else max(st["dmax"], parsed)
+                left = (parsed - today).days
+                if left < 0:
+                    st["expired"] += 1
+                elif left <= 30:
+                    st["soon"] += 1
+                else:
+                    st["later"] += 1
+            try:
+                float(text.replace(",", ""))
+                st["numeric"] += 1
+            except ValueError:
+                pass
+    keys = []
+    for k, st in stats.items():
+        distinct = len(st["vals"]) if len(st["vals"]) < 300 else 300
+        if st["dates"] >= 0.6 * st["n"]:
+            kind = "DATE"
+        elif st["numeric"] >= 0.9 * st["n"]:
+            kind = "NUM"
+        elif distinct <= 8:
+            kind = "CATEG"
+        else:
+            kind = "TEXT"
+        keys.append(
+            {"key": k, "n": st["n"], "distinct": distinct, "kind": kind, "st": st}
+        )
+    keys.sort(key=lambda e: -e["n"])
+    alias = {a.lower() for a in PROJECT_ALIASES}
     R["props"] = {
         "total": total,
-        "keys": sorted(keys.items(), key=lambda kv: -kv[1]),
-        "distinct": {
-            k: (len(v) if len(v) < 200 else "200+") for k, v in distinct.items()
-        },
         "bad_json": bad_json,
-        "project_keys": project_key_counts,
-        "project_values": sorted(project_values.items(), key=lambda kv: -kv[1]),
-        "infosec_values": sorted(infosec_values.items(), key=lambda kv: -kv[1]),
-        "expiry": expiry,
+        "keys": keys,
+        "project_keys": [e for e in keys if e["key"].strip().lower() in alias],
+        "infosec": next((e for e in keys if e["key"].strip() == INFOSEC_KEY), None),
+        "legacy_expiry_keys": [e for e in keys if e["kind"] == "DATE"],
     }
 
 
@@ -905,13 +973,6 @@ def build_findings(R):
             "Free disk space.",
         )
     pr = R.get("props")
-    if pr and pr["expiry"]["unparseable"]:
-        add(
-            "LOW",
-            "%d expiry values are not valid dates (old free text)."
-            % pr["expiry"]["unparseable"],
-            "Fix them in the visitor edit screen; the app will ask on save.",
-        )
     if pr and pr["bad_json"]:
         add(
             "MEDIUM",
@@ -1074,16 +1135,17 @@ def page_speed(R):
 
 def page_structure(R):
     L = []
-    L.append(
+    L += wrap(
         "Tables: "
-        + ", ".join("%s=%d rows" % (t, n) for t, n in R.get("counts", {}).items())
+        + ", ".join("%s=%d" % (t, n) for t, n in R.get("counts", {}).items()),
+        indent="  ",
     )
     L.append("INDEXES")
     for t, items in R.get("indexes", {}).items():
         for name, cols, uniq in items:
             L.append(
-                "  %-13s %-40s %s%s"
-                % (t, name[:40], ",".join(cols), " UNIQUE" if uniq else "")
+                "  %-16s %-36s %s%s"
+                % (t[:16], name[:36], ",".join(cols), " UNIQUE" if uniq else "")
             )
     L.append(
         "  ANALYZE statistics            : %s"
@@ -1147,50 +1209,108 @@ def page_findings(R, findings):
     return "FINDINGS AND FIXES", L
 
 
-def page_contractors(R):
+def kind_note(e):
+    return {"DATE": "date", "NUM": "number", "CATEG": "category", "TEXT": "text"}[
+        e["kind"]
+    ]
+
+
+def page_fields(R):
     pr = R.get("props")
     if not pr:
-        return "CONTRACTOR DATA", ["(not available)"]
-    L = ["Counts and key names only - no names, IDs or phone numbers are shown.", ""]
+        return "CONTRACTOR FIELDS", ["(not available)"]
+    L = [
+        "Field NAMES and counts only - no visitor names, IDs or phone numbers are shown.",
+    ]
+    L += wrap(HEB_LEGEND, indent="  ")
     L.append(
-        "Visitors with a properties record: %d  (unreadable: %d)"
-        % (pr["total"], pr["bad_json"])
+        "Visitors: %d with properties (unreadable: %d) | different fields in use: %d"
+        % (pr["total"], pr["bad_json"], len(pr["keys"]))
     )
+    L.append("%-34s %9s %9s  %s" % ("FIELD (key)", "FILLED", "DISTINCT", "LOOKS LIKE"))
+    L.append(bar("-"))
+    for e in pr["keys"]:
+        L.append(
+            "%-34s %9d %9s  %s"
+            % (
+                disp(e["key"])[:34],
+                e["n"],
+                e["distinct"] if e["distinct"] < 300 else "300+",
+                kind_note(e),
+            )
+        )
+    return "CONTRACTOR FIELDS (1/2)", L
+
+
+def page_field_values(R):
+    pr = R.get("props")
+    if not pr:
+        return "CONTRACTOR FIELD VALUES", ["(not available)"]
+    L = []
+    dates = pr["legacy_expiry_keys"]
+    L.append("DATE FIELDS (possible validity / expiry dates)")
+    if not dates:
+        L.append("  none found")
+    for e in dates[:6]:
+        st = e["st"]
+        L.append("  %s" % disp(e["key"])[: WIDTH - 4])
+        L.append(
+            "      %d dates | %s .. %s | expired %d | next 30 days %d | later %d"
+            % (
+                st["dates"],
+                st["dmin"],
+                st["dmax"],
+                st["expired"],
+                st["soon"],
+                st["later"],
+            )
+        )
     L.append("")
-    L.append("PROPERTY KEYS IN USE (key | visitors | distinct values)")
-    for k, n in pr["keys"][:14]:
-        L.append("  %-34s %6d   %s" % (k[:34], n, pr["distinct"].get(k)))
-    if len(pr["keys"]) > 14:
-        L.append("  ... and %d more keys" % (len(pr["keys"]) - 14))
-    if not pr["keys"]:
-        L.append("  (no properties stored)")
-    L.append("")
-    pk = pr["project_keys"]
     L.append(
         "PROJECT field: "
         + (
-            ", ".join("'%s' x%d" % (k, n) for k, n in pk.items())
-            if pk
-            else "no visitor has a project value yet"
+            ", ".join("%s x%d" % (disp(e["key"]), e["n"]) for e in pr["project_keys"])
+            if pr["project_keys"]
+            else "no field named like 'project'"
         )
     )
-    for name, n in pr["project_values"][:8]:
-        L.append("    %-40s %d" % (name[:40], n))
-    if len(pr["project_values"]) > 8:
-        L.append("    ... %d more projects" % (len(pr["project_values"]) - 8))
+    for e in pr["project_keys"][:1]:
+        vals = sorted(e["st"]["vals"].items(), key=lambda kv: -kv[1])
+        for name, n in vals[:8]:
+            L.append("    %-42s %d" % (disp(name)[:42], n))
+        if len(vals) > 8:
+            L.append("    ... %d more projects" % (len(vals) - 8))
+    L.append("")
+    inf = pr.get("infosec")
     L.append(
-        "INFORMATION SECURITY values:"
-        + ("" if pr["infosec_values"] else " not used yet")
+        "INFORMATION SECURITY field (%s): %s"
+        % (disp(INFOSEC_KEY), "not found" if inf is None else "%d filled" % inf["n"])
     )
-    for name, n in pr["infosec_values"][:6]:
-        ok = " " if name in INFOSEC_OPTIONS else "  <- not one of the 3 allowed values"
-        L.append("    %-40s %d%s" % (name[:40], n, ok))
-    e = pr["expiry"]
-    L.append(
-        "EXPIRY dates: %d visitors | expired %d | within 30 days %d | later %d | invalid %d"
-        % (e["with_date"], e["expired"], e["within30"], e["later"], e["unparseable"])
-    )
-    return "CONTRACTOR DATA (for the new features)", L
+    if inf:
+        for name, n in sorted(inf["st"]["vals"].items(), key=lambda kv: -kv[1])[:6]:
+            tag = "" if name in INFOSEC_OPTIONS else "   <- not one of the 3 new values"
+            L.append("    %-42s %d%s" % (disp(name)[:42], n, tag))
+    L.append("")
+    cats = [
+        e
+        for e in pr["keys"]
+        if e["kind"] == "CATEG" and e not in pr["project_keys"] and e is not inf
+    ][:5]
+    L.append("SMALL CATEGORY FIELDS (up to 8 different values)")
+    if not cats:
+        L.append("  none")
+    for e in cats:
+        vals = sorted(e["st"]["vals"].items(), key=lambda kv: -kv[1])[:5]
+        L += wrap(
+            "%s: %s"
+            % (
+                disp(e["key"]),
+                ", ".join("%s x%d" % (disp(v)[:20], n) for v, n in vals),
+            ),
+            indent="      ",
+            first="  ",
+        )
+    return "CONTRACTOR FIELDS (2/2)", L
 
 
 def build_pages(R, findings):
@@ -1199,7 +1319,8 @@ def build_pages(R, findings):
         page_speed(R),
         page_structure(R),
         page_findings(R, findings),
-        page_contractors(R),
+        page_fields(R),
+        page_field_values(R),
     ]
 
 

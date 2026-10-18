@@ -17,6 +17,25 @@
 > `tools/diagnose_db.py` on the real file; it reports the same checks with the
 > real numbers (see "Confirming on the real DB").
 
+## Update: first run on the production database (2026-10-18)
+
+Photographed output of `diagnose_db.py` v2.0 on the real file:
+
+* The real database has **more tables than this repository's code knows**: `users`,
+  `roles`, `permissions`, `role_permissions`, `sessions`, `settings`, `audit_logs`. The
+  deployed system is therefore a newer / different version than this repo (which has no
+  authentication). `visitors` and `visitor_logs` have the same columns.
+* Queries are fast: all visitors 2.3 ms, latest 50 logs 3.8 ms, latest 1000 logs 9.8 ms; a
+  commit takes 2.1 ms (0.3 ms in WAL mode); raw disk write+flush 0.4 ms; 206 GB free. The
+  database is **not** the main bottleneck at its current size. The missing indexes and the
+  rollback journal are real but cheap to fix and low impact here.
+* Nobody was inside during the run, so the old per-visitor lookup cost could not be measured.
+* Each visitor has ~30 property fields (~765 bytes): `GET /visitors` is ~1.4 MB per call.
+
+So the freezes most likely come from the **server / web page layer** (event loop, auth,
+payload size), which cannot be seen from the database. `tools/probe_server.py` measures
+that from the outside.
+
 ## Summary
 
 The database is tiny — size, fragmentation and `VACUUM` are **not** the
