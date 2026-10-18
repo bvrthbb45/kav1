@@ -37,6 +37,13 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Changed
+- `tools/diagnose_db.py` v2: finds the database by itself (asks when there are none
+  or several), shows the result as a few console pages that each fit one screen
+  (to be photographed on an air-gapped machine), predicts the numbers after the
+  fixes, also checks whether the file sits in OneDrive / on a network drive, raw
+  disk speed and the contractor fields in use, and keeps going if one check fails.
+  It never prints visitor names or IDs. The fix scripts use the same database
+  search and ask for confirmation before changing a database (`--yes` skips).
 - SQLite connections set `busy_timeout=5000` (and `synchronous=NORMAL` once the
   file is in WAL mode). The app never changes the journal mode itself; run
   `tools/fix_01_enable_wal.py`.

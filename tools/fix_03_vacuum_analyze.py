@@ -31,7 +31,96 @@ DB_NAME = "local_database.db"
 
 
 # --- shared helpers (duplicated in every tools/*.py on purpose: standalone) ---
-def candidate_paths(script_dir):
+WIDTH = 100
+SEARCH_BUDGET_S = 25
+
+
+def interactive():
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def say(line=""):
+    print(line)
+    sys.stdout.flush()
+
+
+def clear_screen():
+    if interactive():
+        os.system("cls" if os.name == "nt" else "clear")
+
+
+def ask(prompt, default=""):
+    if not interactive():
+        return default
+    try:
+        answer = input(prompt).strip().strip('"').strip("'")
+    except EOFError:
+        return default
+    return answer or default
+
+
+def short_path(p, limit=WIDTH - 8):
+    p = str(p)
+    if len(p) <= limit:
+        return p
+    keep = (limit - 5) // 2
+    return p[:keep] + " ... " + p[-keep:]
+
+
+SKIP_DIR_NAMES = {
+    "windows",
+    "program files",
+    "program files (x86)",
+    "programdata",
+    "$recycle.bin",
+    "system volume information",
+    "node_modules",
+    ".git",
+    "site-packages",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "backups",
+    "diagnostics",
+    "wheels",
+    "dist",
+    "build",
+    "recovery",
+    "perflogs",
+    "$windows.~bt",
+}
+DB_SUFFIXES = (".db", ".sqlite", ".sqlite3")
+
+
+def looks_like_kav1(path, timeout=3, error=None):
+    """(is_kav1, visitors_count_or_None). Opens read-only; never raises.
+    If `error` is a list, the reason for a failure is appended to it."""
+    try:
+        con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=timeout)
+        try:
+            names = {
+                r[0]
+                for r in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if "visitors" not in names:
+                if error is not None:
+                    error.append("no 'visitors' table")
+                return False, None
+            return True, con.execute("SELECT COUNT(*) FROM visitors").fetchone()[0]
+        finally:
+            con.close()
+    except Exception as e:
+        if error is not None:
+            error.append(str(e))
+        return False, None
+
+
+def quick_candidates(script_dir):
     cwd = Path.cwd()
     cands = [
         script_dir.parent / "backend" / DB_NAME,
@@ -39,12 +128,94 @@ def candidate_paths(script_dir):
         script_dir / DB_NAME,
         cwd / DB_NAME,
         cwd / "backend" / DB_NAME,
+        cwd.parent / DB_NAME,
+        cwd.parent / "backend" / DB_NAME,
     ]
     for var in ("APPDATA", "LOCALAPPDATA"):
         base = os.environ.get(var)
         if base:
-            cands.append(Path(base) / "Kav1" / "server" / DB_NAME)
+            cands += [
+                Path(base) / "Kav1" / "server" / DB_NAME,
+                Path(base) / "Kav1" / DB_NAME,
+            ]
     return cands
+
+
+def search_roots(script_dir):
+    roots = [script_dir, script_dir.parent, script_dir.parent.parent, Path.cwd()]
+    home = Path.home()
+    roots.append(home)
+    if os.name == "nt":
+        for letter in "CDEFGH":
+            drive = Path(letter + ":\\")
+            if drive.exists():
+                roots.append(drive)
+    else:
+        roots.append(Path("/"))
+    seen, out = set(), []
+    for r in roots:
+        try:
+            r = r.resolve()
+        except OSError:
+            continue
+        if r not in seen and r.is_dir():
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+def bounded_walk(root, max_depth, deadline):
+    root_depth = len(root.parts)
+    for dirpath, dirnames, filenames in os.walk(str(root), onerror=lambda e: None):
+        if time.time() > deadline:
+            return
+        depth = len(Path(dirpath).parts) - root_depth
+        dirnames[:] = (
+            [
+                d
+                for d in dirnames
+                if d.lower() not in SKIP_DIR_NAMES and not d.startswith("$")
+            ]
+            if depth < max_depth
+            else []
+        )
+        for name in filenames:
+            if name.lower().endswith(DB_SUFFIXES):
+                yield Path(dirpath) / name
+
+
+def search_databases(script_dir):
+    """Every Kav1 database we can find (quick spots first, then a bounded search)."""
+    found, seen = [], set()
+
+    def consider(p):
+        try:
+            r = p.resolve()
+        except OSError:
+            return
+        if r in seen or not r.is_file() or r.stat().st_size == 0:
+            return
+        seen.add(r)
+        if ".pre-" in r.name or r.parent.name.lower() == "backups":
+            return
+        ok, n = looks_like_kav1(r)
+        if ok:
+            found.append((r, n))
+
+    for c in quick_candidates(script_dir):
+        consider(c)
+    if found:
+        return found
+    say("Searching for the database (up to %d seconds) ..." % SEARCH_BUDGET_S)
+    deadline = time.time() + SEARCH_BUDGET_S
+    for root in search_roots(script_dir):
+        for p in bounded_walk(root, 5, deadline):
+            consider(p)
+            if time.time() > deadline:
+                break
+        if found or time.time() > deadline:
+            break
+    return found
 
 
 def find_db(arg):
@@ -59,36 +230,69 @@ def find_db(arg):
         if not p.is_file():
             sys.exit("ERROR: KAV1_DB points to a missing file: %s" % p)
         return p.resolve()
-    script_dir = Path(__file__).resolve().parent
-    found, seen = [], set()
-    for c in candidate_paths(script_dir):
-        try:
-            r = c.resolve()
-        except OSError:
-            continue
-        if r not in seen and r.is_file():
-            seen.add(r)
-            found.append(r)
-    if not found:
-        sys.exit(
-            "ERROR: %s not found. Pass --db <path> or set KAV1_DB.\nSearched:\n  %s"
-            % (DB_NAME, "\n  ".join(str(c) for c in candidate_paths(script_dir)))
-        )
-    if len(found) > 1:
-        lines = [
-            "  %s  (%.1f MB, modified %s)"
-            % (
-                f,
-                f.stat().st_size / 1e6,
-                datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+    found = search_databases(Path(__file__).resolve().parent)
+    while not found:
+        if not interactive():
+            sys.exit("ERROR: no Kav1 database found. Re-run with --db <path>.")
+        say("\nNo Kav1 database was found automatically.")
+        say("Drag the local_database.db file into this window (or type its full path),")
+        typed = ask("then press Enter (empty = quit): ")
+        if not typed:
+            sys.exit("Stopped: no database selected.")
+        p = Path(typed).expanduser()
+        ok, n = looks_like_kav1(p) if p.is_file() else (False, None)
+        if ok:
+            found = [(p.resolve(), n)]
+        else:
+            say(
+                "That is not a Kav1 database file (needs a 'visitors' table). Try again."
             )
-            for f in found
-        ]
-        sys.exit(
-            "ERROR: more than one database found - refusing to guess.\n%s\n"
-            "Re-run with --db <path>." % "\n".join(lines)
+    if len(found) == 1:
+        return found[0][0]
+    found.sort(key=lambda t: t[0].stat().st_mtime, reverse=True)
+    say("\nMore than one Kav1 database found:")
+    for i, (p, n) in enumerate(found, 1):
+        st = p.stat()
+        say("  %d) %s" % (i, short_path(p, WIDTH - 8)))
+        say(
+            "     %.2f MB, %s visitors, modified %s"
+            % (
+                st.st_size / 1e6,
+                n,
+                datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            )
         )
-    return found[0]
+    if not interactive():
+        sys.exit("ERROR: several databases found - re-run with --db <path>.")
+    choice = ask(
+        "Which one is the LIVE database? number [1 = most recently modified]: ", "1"
+    )
+    try:
+        return found[int(choice) - 1][0]
+    except (ValueError, IndexError):
+        sys.exit("Invalid choice.")
+
+
+def confirm_target(db, assume_yes):
+    """Show exactly which file is about to be changed and ask (interactive only)."""
+    st = db.stat()
+    print("Target database: %s" % db)
+    print(
+        "  %.2f MB, last modified %s"
+        % (
+            st.st_size / 1e6,
+            datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        )
+    )
+    if assume_yes or not interactive():
+        return
+    if (
+        ask(
+            "Change THIS database (a verified backup is made first)? Type Y to continue: "
+        ).lower()
+        != "y"
+    ):
+        sys.exit("Cancelled - nothing was changed.")
 
 
 def connect(db, readonly=True, timeout=30):
@@ -168,10 +372,11 @@ def verify_same_data(db, before_counts):
 def main():
     ap = argparse.ArgumentParser(description="VACUUM + ANALYZE.")
     ap.add_argument("--db", help="path to local_database.db")
+    ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="run even if not fragmented")
     args = ap.parse_args()
     db = find_db(args.db)
-    print("Database: %s" % db)
+    confirm_target(db, args.yes)
 
     con = connect(db, readonly=True)
     try:

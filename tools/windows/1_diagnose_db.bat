@@ -12,6 +12,7 @@ if not defined PY (
   exit /b 1
 )
 echo Safe to run while the server is up. Makes a backup, changes nothing.
-%PY% "%~dp0..\diagnose_db.py" %*
+echo The report is shown as several pages - photograph each one, press Enter for the next.
+%PY% "%~dp0..\diagnose_db.py" --no-pause %*
 echo.
 pause
