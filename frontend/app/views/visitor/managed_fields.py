@@ -19,11 +19,8 @@ NOT_SET = ""  # first combo item: nothing chosen yet
 
 
 def _parse_date(text):
-    for fmt in ("yyyy-MM-dd", "dd/MM/yyyy", "dd.MM.yyyy", "dd-MM-yyyy"):
-        d = QDate.fromString(str(text).strip(), fmt)
-        if d.isValid():
-            return d
-    return None
+    parsed = fields.parse_date(text)
+    return QDate(parsed.year, parsed.month, parsed.day) if parsed else None
 
 
 class OptionalDate(QWidget):
@@ -70,6 +67,8 @@ class ManagedFields(QWidget):
         super().__init__(parent)
         self.require_infosec = require_infosec
         self._project_key = fields.PROJECT_KEY
+        self._infosec_expiry_key = fields.INFOSEC_EXPIRY_KEY
+        self._classification_key = fields.CLASSIFICATION_EXPIRY_KEY
         self._infosec_was_set = False
         self._legacy_expiry = {}  # unparseable old text, kept so it is not lost
 
@@ -101,6 +100,13 @@ class ManagedFields(QWidget):
             fields.INFOSEC_EXPIRY_KEY,
             fields.CLASSIFICATION_EXPIRY_KEY,
         }
+        for aliases in (
+            fields.INFOSEC_EXPIRY_ALIASES,
+            fields.CLASSIFICATION_EXPIRY_ALIASES,
+        ):
+            found = fields.find_key(properties, aliases)
+            if found is not None:
+                keys.add(found)
         project_key = fields.find_key(properties, fields.PROJECT_ALIASES)
         if project_key is not None:
             keys.add(project_key)
@@ -112,7 +118,7 @@ class ManagedFields(QWidget):
             fields.INFOSEC_EXCEPTION,
         )
         self.infosec_expiry.set_enabled_by_rule(approved)
-        if approved:
+        if approved and self._infosec_expiry_key not in self._legacy_expiry:
             self.infosec_expiry.check.setChecked(True)  # every approval needs one
 
     def set_values(self, properties):
@@ -125,21 +131,24 @@ class ManagedFields(QWidget):
         self._infosec_was_set = status not in (None, NOT_SET)
         index = self.infosec.findData(status)
         self.infosec.setCurrentIndex(index if index >= 0 else 0)
-        self.infosec_expiry.set_value(properties.get(fields.INFOSEC_EXPIRY_KEY))
-        self._on_infosec_changed()
-        if not self.infosec_expiry.check.isChecked():
-            self.infosec_expiry.set_value(properties.get(fields.INFOSEC_EXPIRY_KEY))
-        self.classification_expiry.set_value(
-            properties.get(fields.CLASSIFICATION_EXPIRY_KEY)
+
+        key = fields.find_key(properties, fields.INFOSEC_EXPIRY_ALIASES)
+        self._infosec_expiry_key = key if key is not None else fields.INFOSEC_EXPIRY_KEY
+        key = fields.find_key(properties, fields.CLASSIFICATION_EXPIRY_ALIASES)
+        self._classification_key = (
+            key if key is not None else fields.CLASSIFICATION_EXPIRY_KEY
         )
+        # Dates nobody can read (old free text) are kept as typed, not dropped.
         self._legacy_expiry = {}
-        for key, widget in (
-            (fields.INFOSEC_EXPIRY_KEY, self.infosec_expiry),
-            (fields.CLASSIFICATION_EXPIRY_KEY, self.classification_expiry),
-        ):
+        for key in (self._infosec_expiry_key, self._classification_key):
             raw = properties.get(key)
             if raw not in (None, "") and _parse_date(raw) is None:
                 self._legacy_expiry[key] = raw
+        self.infosec_expiry.set_value(properties.get(self._infosec_expiry_key))
+        self._on_infosec_changed()
+        if not self.infosec_expiry.check.isChecked():
+            self.infosec_expiry.set_value(properties.get(self._infosec_expiry_key))
+        self.classification_expiry.set_value(properties.get(self._classification_key))
 
     def validate(self):
         """Error text for the operator, or None when the section is valid."""
@@ -147,7 +156,10 @@ class ManagedFields(QWidget):
         if status == NOT_SET and (self.require_infosec or self._infosec_was_set):
             return "Please choose the information-security status."
         if status in (fields.INFOSEC_APPROVED, fields.INFOSEC_EXCEPTION):
-            if self.infosec_expiry.value() is None:
+            if (
+                self.infosec_expiry.value() is None
+                and self._infosec_expiry_key not in self._legacy_expiry
+            ):
                 return "An approved status needs an approval expiry date."
         return None
 
@@ -162,10 +174,10 @@ class ManagedFields(QWidget):
             props[fields.INFOSEC_KEY] = status
             expiry = self.infosec_expiry.value()
             if expiry and status != fields.INFOSEC_DENIED:
-                props[fields.INFOSEC_EXPIRY_KEY] = expiry
+                props[self._infosec_expiry_key] = expiry
         classification = self.classification_expiry.value()
         if classification:
-            props[fields.CLASSIFICATION_EXPIRY_KEY] = classification
+            props[self._classification_key] = classification
         for key, raw in self._legacy_expiry.items():
             props.setdefault(key, raw)  # the server will ask the operator to fix it
         return props

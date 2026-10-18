@@ -8,6 +8,7 @@ line range of one file.
 
   python code_locator.py                              # drag the server folder in
   python code_locator.py --folder C:\\path\\backend  --pattern seed --pattern lifespan
+  python code_locator.py --preset fields              # where contractor fields are defined
   python code_locator.py --show app\\main.py:1-60       # show lines 1-60 of a file
 
 Lines that look like they hold a password / secret / token are NEVER printed (replaced
@@ -76,7 +77,15 @@ SKIP_DIRS = {
     ".idea",
     ".vscode",
 }
-EXTS = (".py",)
+EXTS = (".py", ".html", ".js")
+MAX_FILE_BYTES = 400_000  # skips minified libraries (alpine.min.js, tailwind, ...)
+
+# --preset fields: where the app defines / validates contractor fields (UI + API)
+PRESET_FIELDS = {
+    "CORE": ["שינוי שם", "איחוד", "אבטחת מידע", "rename", "merge", "/fields", "field_"],
+    "SEED": ["properties", "x-data", "fetch(", "@router.", "@app."],
+    "RISKY": ["validate", "required", "<select", "<option", "enum", "Literal"],
+}
 
 
 # =============================================================================
@@ -308,8 +317,14 @@ def walk_sources(root, max_depth=7):
             else []
         )
         for name in filenames:
-            if name.lower().endswith(EXTS):
-                yield Path(dirpath) / name
+            if name.lower().endswith(EXTS) and ".min." not in name.lower():
+                path = Path(dirpath) / name
+                try:
+                    if path.stat().st_size > MAX_FILE_BYTES:
+                        continue
+                except OSError:
+                    continue
+                yield path
 
 
 def read_lines(path):
@@ -335,7 +350,7 @@ def analyse(root, extra_patterns):
             found = [w for w in words if w.lower() in low]
             if found and not line.strip().startswith("#"):
                 hits.append({"n": n, "text": line, "in": enclosing, "words": found})
-        core = sum(1 for h in hits if any(w in h["words"] for w in CORE[:3]))
+        core = sum(1 for h in hits if any(w in h["words"] for w in CORE[:6]))
         seed = sum(1 for h in hits if any(w in h["words"] for w in SEED))
         risky = sum(1 for h in hits if any(w in h["words"] for w in RISKY))
         score = core * 3 + seed * 2 + risky
@@ -512,6 +527,9 @@ def run(args):
     if not root.is_dir():
         sys.exit("Not a folder: %s" % root)
     say("Reading source files ...")
+    if args.preset == "fields":
+        global CORE, SEED, RISKY
+        CORE, SEED, RISKY = (PRESET_FIELDS[k] for k in ("CORE", "SEED", "RISKY"))
     files = analyse(root, args.pattern or [])
     if not files:
         sys.exit("No .py files found under %s" % root)
@@ -540,6 +558,12 @@ def main():
     ap.add_argument("--folder", help="server source folder (contains the app folder)")
     ap.add_argument(
         "--pattern", action="append", help="extra word to look for (repeatable)"
+    )
+    ap.add_argument(
+        "--preset",
+        choices=["permissions", "fields"],
+        default="permissions",
+        help="what to look for: permissions/seeding (default) or contractor fields",
     )
     ap.add_argument(
         "--top", type=int, default=3, help="how many likely files to show (default 3)"

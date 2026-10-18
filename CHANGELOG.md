@@ -37,6 +37,8 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Added (tools)
+- `tools/code_locator.py --preset fields`: also searches `.html` / `.js` (skips minified
+  libraries) for where contractor fields are defined and validated in a web UI + API.
 - `tools/permissions_check.py` (+ `6_permissions_check.bat`): snapshots every role's
   permissions and compares with the previous snapshot - proves what a server restart
   changes (role permissions reported to shrink after restart).
@@ -48,6 +50,11 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   used, slow endpoints, slow auth, and (Windows) server CPU / memory / connections.
 
 ### Changed
+- Field names now follow the production data: classification validity `תוקף סב"ט`,
+  security-approval validity `תוקף אישור`, visa validity `תוקף ויזה` (aliases keep older
+  spellings). Dates are read the way they are typed there: `01.02.2026`, `01.01.26`,
+  `01.012026`, ranges (`01.07.2024 - 01.07.2026`: the end counts); unreadable dates are
+  kept as typed and never block saving.
 - `tools/diagnose_db.py` v2.1: Hebrew text is printed as Latin transliteration (Windows
   consoles show it garbled), every contractor field is profiled (fill rate, date-like
   fields, categories) so field names do not have to be guessed.

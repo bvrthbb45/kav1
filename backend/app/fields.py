@@ -3,34 +3,52 @@
 `visitors.properties` is a free-form JSON object. A few keys have meaning for
 the application; they are collected here so the names live in one place (the
 client has the same constants in frontend/app/core/fields.py).
+
+Key names match the production data: each key is looked up through a list of
+aliases (case-insensitive, surrounding spaces ignored) and, when a record is
+saved, written back under the key it already uses.
 """
 
+import re
 from datetime import date, datetime
 from typing import Optional
 
-# Project the contractor works on. Older records may use another spelling, so
-# lookups accept every alias (case-insensitive, surrounding spaces ignored);
-# new records are written with PROJECT_KEY.
 PROJECT_KEY = "פרויקט"
 PROJECT_ALIASES = ("פרויקט", "פרויקטים", "project", "projects")
 
-# Validity of the security classification. Optional.
-CLASSIFICATION_EXPIRY_KEY = "תוקף סיווג"
+# Validity of the security classification (סב"ט). Optional.
+CLASSIFICATION_EXPIRY_KEY = 'תוקף סב"ט'
+CLASSIFICATION_EXPIRY_ALIASES = (
+    'תוקף סב"ט',
+    "תוקף סב״ט",
+    "תוקף סיווג",
+    "תוקף סיווג בטחוני",
+)
 
-# Information-security approval: exactly one of three values, plus its validity
-# date. Every approval needs an expiry, so the date is required unless the
-# status is "not approved".
+# Information-security status: exactly one of three values. Every approval needs
+# an expiry, so the approval's validity date ("תוקף אישור") is required unless
+# the status is "not approved".
 INFOSEC_KEY = "אבטחת מידע"
-INFOSEC_EXPIRY_KEY = "תוקף אבטחת מידע"
+INFOSEC_EXPIRY_KEY = "תוקף אישור"
+INFOSEC_EXPIRY_ALIASES = ("תוקף אישור", "תוקף אבטחת מידע")
 INFOSEC_APPROVED = "מאושר"
 INFOSEC_EXCEPTION = "מאושר חריג על ידי מפקד היחידה"
 INFOSEC_DENIED = "לא מאושר"
 INFOSEC_OPTIONS = (INFOSEC_APPROVED, INFOSEC_EXCEPTION, INFOSEC_DENIED)
 
-EXPIRY_KEYS = (CLASSIFICATION_EXPIRY_KEY, INFOSEC_EXPIRY_KEY)
+VISA_EXPIRY_KEY = "תוקף ויזה"
+VISA_EXPIRY_ALIASES = ("תוקף ויזה",)
+
+EXPIRY_GROUPS = (
+    CLASSIFICATION_EXPIRY_ALIASES,
+    INFOSEC_EXPIRY_ALIASES,
+    VISA_EXPIRY_ALIASES,
+)
 DEFAULT_WARN_DAYS = 30
 
-_DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%d/%m/%y", "%d.%m.%y")
+_DATE = re.compile(r"(\d{1,2})\s*[./\-]?\s*(\d{1,2})\s*[./\-]?\s*(\d{4}|\d{2})")
+_ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+_RANGE_SPLIT = re.compile(r"\s+[-–—]\s+|\s+עד\s+")
 
 
 def _text(value) -> Optional[str]:
@@ -38,6 +56,17 @@ def _text(value) -> Optional[str]:
         return None
     text = str(value).strip()
     return text or None
+
+
+def find_key(properties, aliases) -> Optional[str]:
+    """The key actually present in `properties` for any alias, else None."""
+    if not properties:
+        return None
+    wanted = {a.strip().lower() for a in aliases}
+    for key in properties:
+        if str(key).strip().lower() in wanted:
+            return key
+    return None
 
 
 def get_value(properties, keys) -> Optional[str]:
@@ -58,16 +87,30 @@ def get_project(properties) -> Optional[str]:
 
 
 def parse_date(value) -> Optional[date]:
+    """Day-first dates as typed by hand in the production data.
+
+    Accepts 2026-12-31, 01.02.2026, 01/02/26, 01-02-2026, a missing separator
+    (01.012026) and ranges (01.07.2024 - 01.07.2026: the end date counts).
+    Placeholders such as "0" or "-" and impossible dates give None.
+    """
     text = _text(value)
     if not text:
         return None
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            pass
-    try:  # ISO timestamp, e.g. 2026-12-31T00:00:00
-        return datetime.fromisoformat(text).date()
+    parts = [p for p in _RANGE_SPLIT.split(text) if p.strip()]
+    text = parts[-1].strip() if parts else text
+    iso = _ISO.match(text)
+    try:
+        if iso:
+            return date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+        m = _DATE.fullmatch(text)
+        if not m or not re.search(r"[./\-]", text):
+            return datetime.fromisoformat(text).date()
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if len(m.group(3)) == 2:
+            year += 2000
+        if not 2000 <= year <= 2100:  # typos such as 01.01.0226
+            return None
+        return date(year, month, day)
     except ValueError:
         return None
 
@@ -75,8 +118,11 @@ def parse_date(value) -> Optional[date]:
 def validate_properties(properties):
     """Validate and normalise the well-known keys of a properties dict.
 
-    Returns a new dict (dates rewritten as ISO YYYY-MM-DD, empty expiry keys
-    dropped). Raises ValueError with a message meant for the operator.
+    Returns a new dict. The information-security status must be one of the three
+    allowed values; an approved status needs an approval expiry. Dates that can
+    be read are rewritten as ISO YYYY-MM-DD under the key they already use;
+    dates that cannot be read are kept as typed (old data must stay editable).
+    Raises ValueError with a message meant for the operator.
     """
     if not properties:
         return properties
@@ -88,35 +134,40 @@ def validate_properties(properties):
             "אבטחת מידע חייב להיות אחד מהערכים: " + " / ".join(INFOSEC_OPTIONS)
         )
 
-    for key in EXPIRY_KEYS:
-        raw = get_value(result, key)
+    for aliases in EXPIRY_GROUPS:
+        key = find_key(result, aliases)
+        if key is None:
+            continue
+        raw = _text(result[key])
         if raw is None:
-            result.pop(key, None)
+            result.pop(key)
             continue
         parsed = parse_date(raw)
-        if parsed is None:
-            raise ValueError(f"'{key}': תאריך לא תקין ({raw}). פורמט נדרש: YYYY-MM-DD")
-        result[key] = parsed.isoformat()
+        if parsed is not None:
+            result[key] = parsed.isoformat()
 
-    if status in (INFOSEC_APPROVED, INFOSEC_EXCEPTION) and not result.get(
-        INFOSEC_EXPIRY_KEY
+    if status in (INFOSEC_APPROVED, INFOSEC_EXCEPTION) and not get_value(
+        result, INFOSEC_EXPIRY_ALIASES
     ):
         raise ValueError(f"'{INFOSEC_EXPIRY_KEY}' הוא שדה חובה כשהאישור הוא '{status}'")
     return result
 
 
 def expiry_info(properties, today: date, warn_days: int = DEFAULT_WARN_DAYS):
-    """Soonest expiry among the expiry keys.
+    """Soonest readable expiry among the expiry fields.
 
-    Returns None when the visitor has no (valid) expiry date, else a dict:
+    Returns None when the visitor has no readable expiry date, else a dict:
     field, date (ISO), days_left (negative = expired) and status
     ("expired" | "expiring" | "ok").
     """
     best = None
-    for key in EXPIRY_KEYS:
-        parsed = parse_date(get_value(properties, key))
+    for aliases in EXPIRY_GROUPS:
+        key = find_key(properties, aliases)
+        if key is None:
+            continue
+        parsed = parse_date(_text(properties[key]))
         if parsed and (best is None or parsed < best[1]):
-            best = (key, parsed)
+            best = (str(key), parsed)
     if best is None:
         return None
     days_left = (best[1] - today).days

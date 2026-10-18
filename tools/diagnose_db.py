@@ -29,6 +29,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -48,8 +49,8 @@ WIDTH = 100  # characters per line on every page (narrowed to the console in mai
 # --- contractor property keys (mirror of backend/app/fields.py) -----------------
 PROJECT_ALIASES = ("פרויקט", "פרויקטים", "project", "projects")
 INFOSEC_KEY = "אבטחת מידע"
-INFOSEC_EXPIRY_KEY = "תוקף אבטחת מידע"
-CLASSIFICATION_EXPIRY_KEY = "תוקף סיווג"
+INFOSEC_EXPIRY_KEY = "תוקף אישור"
+CLASSIFICATION_EXPIRY_KEY = 'תוקף סב"ט'
 EXPIRY_KEYS = (CLASSIFICATION_EXPIRY_KEY, INFOSEC_EXPIRY_KEY)
 INFOSEC_OPTIONS = ("מאושר", "מאושר חריג על ידי מפקד היחידה", "לא מאושר")
 DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%d/%m/%y", "%d.%m.%y")
@@ -493,19 +494,34 @@ def plan(con, sql, params=()):
     return [r[3] for r in con.execute("EXPLAIN QUERY PLAN " + sql, params)]
 
 
+_DATE = re.compile(r"(\d{1,2})\s*[./\-]?\s*(\d{1,2})\s*[./\-]?\s*(\d{4}|\d{2})")
+_ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+_RANGE_SPLIT = re.compile(r"\s+[-–—]\s+|\s+עד\s+")
+
+
 def parse_date(value):
+    """Day-first dates as typed in the production data (same rules as the server):
+    01.02.2026, 01/02/26, 01.012026, ranges (the end date counts), ISO."""
     if value is None:
         return None
     text = str(value).strip()
     if not text:
         return None
-    for fmt in DATE_FORMATS:
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            pass
+    parts = [p for p in _RANGE_SPLIT.split(text) if p.strip()]
+    text = parts[-1].strip() if parts else text
+    iso = _ISO.match(text)
     try:
-        return datetime.fromisoformat(text).date()
+        if iso:
+            return date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+        m = _DATE.fullmatch(text)
+        if not m or not re.search(r"[./\-]", text):
+            return datetime.fromisoformat(text).date()
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if len(m.group(3)) == 2:
+            year += 2000
+        if not 2000 <= year <= 2100:  # typos such as 01.01.0226
+            return None
+        return date(year, month, day)
     except ValueError:
         return None
 
