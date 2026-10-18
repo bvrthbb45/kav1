@@ -220,9 +220,68 @@ def search_databases(script_dir):
     return found
 
 
+def clean_dropped(text):
+    """Path text produced by dragging a file into a console window.
+
+    cmd/Windows Terminal paste "C:\\a b\\x.db" (quoted when it has spaces);
+    PowerShell may paste & 'C:\\a b\\x.db'. Returns the bare path text."""
+    text = text.strip()
+    if text.startswith("&"):
+        text = text[1:].strip()
+    if text[:1] in ("'", '"'):
+        quote = text[0]
+        end = text.find(quote, 1)
+        text = text[1:end] if end > 0 else text[1:]
+    return text.strip().strip("'\"").strip()
+
+
+def databases_in_folder(folder):
+    """Kav1 databases inside a folder that was dragged in (depth <= 4)."""
+    found, deadline = [], time.time() + SEARCH_BUDGET_S
+    for p in bounded_walk(folder, 4, deadline):
+        if ".pre-" in p.name:
+            continue
+        ok, n = looks_like_kav1(p)
+        if ok:
+            found.append((p.resolve(), n))
+    return found
+
+
+def ask_for_dropped_db():
+    """Ask the operator to drag the database into the window.
+
+    Returns a list of (path, visitors) - empty means: search automatically."""
+    say("")
+    say("Drag the database file (local_database.db) into THIS window and press Enter.")
+    say("(Or just press Enter to let the tool search for it by itself.)")
+    while True:
+        typed = ask("> ")
+        if not typed:
+            return []
+        p = Path(clean_dropped(typed)).expanduser()
+        if p.is_dir():
+            found = databases_in_folder(p)
+            if found:
+                return found
+            say(
+                "No Kav1 database inside that folder. Drag the file itself, or try again."
+            )
+            continue
+        if not p.is_file():
+            say("File not found: %s" % p)
+            say("Drag the file again, or press Enter to search automatically.")
+            continue
+        why = []
+        ok, n = looks_like_kav1(p, timeout=20, error=why)
+        if ok:
+            return [(p.resolve(), n)]
+        say("That file is not a usable Kav1 database (%s)." % (why[0] if why else "?"))
+        say("Drag the right file, or press Enter to search automatically.")
+
+
 def find_db(arg):
     if arg:
-        p = Path(arg).expanduser()
+        p = Path(clean_dropped(arg)).expanduser()
         if not p.is_file():
             sys.exit("ERROR: --db file not found: %s" % p)
         return p.resolve()
@@ -232,23 +291,16 @@ def find_db(arg):
         if not p.is_file():
             sys.exit("ERROR: KAV1_DB points to a missing file: %s" % p)
         return p.resolve()
-    found = search_databases(Path(__file__).resolve().parent)
+    found = ask_for_dropped_db() if interactive() else []
+    if not found:
+        found = search_databases(Path(__file__).resolve().parent)
     while not found:
         if not interactive():
             sys.exit("ERROR: no Kav1 database found. Re-run with --db <path>.")
         say("\nNo Kav1 database was found automatically.")
-        say("Drag the local_database.db file into this window (or type its full path),")
-        typed = ask("then press Enter (empty = quit): ")
-        if not typed:
+        found = ask_for_dropped_db()
+        if not found:
             sys.exit("Stopped: no database selected.")
-        p = Path(typed).expanduser()
-        ok, n = looks_like_kav1(p) if p.is_file() else (False, None)
-        if ok:
-            found = [(p.resolve(), n)]
-        else:
-            say(
-                "That is not a Kav1 database file (needs a 'visitors' table). Try again."
-            )
     if len(found) == 1:
         return found[0][0]
     found.sort(key=lambda t: t[0].stat().st_mtime, reverse=True)

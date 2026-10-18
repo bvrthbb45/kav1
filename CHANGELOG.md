@@ -37,8 +37,8 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Changed
-- `tools/diagnose_db.py` v2: finds the database by itself (asks when there are none
-  or several), shows the result as a few console pages that each fit one screen
+- `tools/diagnose_db.py` v2: asks you to drag the database file into the window (Enter
+  = search by itself; also asks when there are none or several), shows the result as a few console pages that each fit one screen
   (to be photographed on an air-gapped machine), predicts the numbers after the
   fixes, also checks whether the file sits in OneDrive / on a network drive, raw
   disk speed and the contractor fields in use, and keeps going if one check fails.

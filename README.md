@@ -255,8 +255,8 @@ Standalone scripts in `tools/` (standard library only, no pip install needed).
 Each one **backs up first** (verified copy in `backups\` next to the database,
 made with SQLite's online-backup API), is **idempotent**, and **never deletes
 data**; when there is nothing to change it makes no backup and no change. They
-find `local_database.db` automatically (or use `--db PATH` / `KAV1_DB`; if none or several
-are found they ask). The diagnostic prints its result as numbered pages, each sized to fit
+ask you to drag `local_database.db` into the window (or press Enter to search automatically;
+`--db PATH` / `KAV1_DB` also work). The diagnostic prints its result as numbered pages, each sized to fit
 one console window, so it can be photographed page by page.
 
 | double-click (`tools\windows\`) | script | what it does | server |
