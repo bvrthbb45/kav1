@@ -12,6 +12,13 @@ if not defined PY (
   exit /b 1
 )
 echo STOP the Kav1 server before continuing. A backup is made first.
-%PY% "%~dp0..\fix_03_vacuum_analyze.py" %*
+set "SCRIPT=%~dp0fix_03_vacuum_analyze.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\fix_03_vacuum_analyze.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find fix_03_vacuum_analyze.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" %*
 echo.
 pause

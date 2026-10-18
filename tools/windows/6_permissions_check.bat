@@ -13,6 +13,13 @@ if not defined PY (
 )
 echo Run this BEFORE restarting the server, then again AFTER. Read-only; makes a backup first.
 echo It saves a snapshot of every role's permissions and shows what changed since the last one.
-%PY% "%~dp0..\permissions_check.py" --no-pause %*
+set "SCRIPT=%~dp0permissions_check.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\permissions_check.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find permissions_check.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" --no-pause %*
 echo.
 pause

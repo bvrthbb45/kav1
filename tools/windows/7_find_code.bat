@@ -13,6 +13,13 @@ if not defined PY (
 )
 echo Finds where the server code handles roles / permissions / start-up seeding. Read-only.
 echo Drag the server folder (the one with the 'app' folder) into the window when asked.
-%PY% "%~dp0..\code_locator.py" --no-pause %*
+set "SCRIPT=%~dp0code_locator.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\code_locator.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find code_locator.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" --no-pause %*
 echo.
 pause

@@ -12,6 +12,13 @@ if not defined PY (
   exit /b 1
 )
 echo A backup is made first. Only adds indexes; no data is deleted.
-%PY% "%~dp0..\fix_02_add_indexes.py" %*
+set "SCRIPT=%~dp0fix_02_add_indexes.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\fix_02_add_indexes.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find fix_02_add_indexes.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" %*
 echo.
 pause

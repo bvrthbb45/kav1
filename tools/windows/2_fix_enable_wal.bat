@@ -12,6 +12,13 @@ if not defined PY (
   exit /b 1
 )
 echo STOP the Kav1 server before continuing. A backup is made first.
-%PY% "%~dp0..\fix_01_enable_wal.py" %*
+set "SCRIPT=%~dp0fix_01_enable_wal.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\fix_01_enable_wal.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find fix_01_enable_wal.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" %*
 echo.
 pause

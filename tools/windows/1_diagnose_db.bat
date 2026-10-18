@@ -13,6 +13,13 @@ if not defined PY (
 )
 echo Safe to run while the server is up. Makes a backup, changes nothing.
 echo The report is shown as several pages - photograph each one, press Enter for the next.
-%PY% "%~dp0..\diagnose_db.py" --no-pause %*
+set "SCRIPT=%~dp0diagnose_db.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\diagnose_db.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find diagnose_db.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" --no-pause %*
 echo.
 pause

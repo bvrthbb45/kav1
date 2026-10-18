@@ -13,6 +13,13 @@ if not defined PY (
 )
 echo Probes the RUNNING server for 60 seconds. Send GET requests only - changes nothing.
 echo While it watches, use the system normally. Photograph each page of the result.
-%PY% "%~dp0..\probe_server.py" %*
+set "SCRIPT=%~dp0probe_server.py"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0..\probe_server.py"
+if not exist "%SCRIPT%" (
+  echo Cannot find probe_server.py next to this file or one folder up.
+  pause
+  exit /b 1
+)
+%PY% "%SCRIPT%" %*
 echo.
 pause
