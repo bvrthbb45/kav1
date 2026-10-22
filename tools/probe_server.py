@@ -1,31 +1,41 @@
 #!/usr/bin/env python3
-"""Kav1 - live server probe v1 (standalone, stdlib only, Python 3.8+).
+"""Kav1 - live server probe v2 (standalone, stdlib only, Python 3.8+).
 
-Black-box check of a RUNNING Kav1 server. It needs no access to the server's
-code: it only talks to it over HTTP like a browser would, so it works even when
-the deployed version differs from the repository.
+Black-box check of a RUNNING Kav1 server. It needs no access to the server's code:
+it talks to it over HTTP like a browser, so it works even when the deployed version
+differs from the repository.
 
-It answers: does the server freeze (stall) while it is being used, which
-endpoints are slow, is the login/auth check slow, and is the server process
-short of CPU / memory / connections (Windows only).
+It answers: does the server freeze (stall) while it is being used, which endpoints are
+slow, is the login check slow, and (Windows, server on this machine) is the server process
+short of CPU / memory / connections.
 
   1. reads /openapi.json to list the endpoints (FastAPI publishes it),
-  2. times a trivial request 20 times (is the server itself responsive?),
-  3. times every parameter-less GET endpoint (status, ms, size),
-  4. WATCHES the server for 60 seconds while YOU use the system normally (log in,
-     search, save...) and records every request that took long = a stall,
-  5. samples the server process (CPU, memory, handles, connections) meanwhile.
+  2. optionally LOGS IN (so the real pages can be measured - without a login every real
+     endpoint just answers 401 "not logged in"),
+  3. times a trivial request 20 times (is the server itself responsive?),
+  4. times every harmless parameter-less GET endpoint (heavy / risky ones such as backup,
+     export, download, logout are never called),
+  5. WATCHES the server for 60 seconds while YOU use the system normally: one probe checks
+     the server's responsiveness, a second one times a real data page; every slow answer
+     is recorded as a stall.
 
-The result is shown as a few console pages (photograph each one).
-It only sends GET requests. Nothing is written to the server or its database.
+The result is shown as console pages (photograph each one). Only GET requests are sent,
+apart from the one login request you agree to. Nothing is written to the database
+except what a login normally writes (a session row / audit entry).
+
+Your password is typed hidden, sent only to the server address you typed, never printed
+and never saved. A pasted header (--header) is not saved either.
 
 Usage:
-  python probe_server.py                      # asks for the address
-  python probe_server.py --url localhost:3000 --seconds 90
-  python probe_server.py --header "Cookie: session=..."   # to include logged-in pages
+  python probe_server.py                         # asks for the address, offers a login
+  python probe_server.py --url localhost:3000 --seconds 90 --user myuser
+  python probe_server.py --header "Authorization: Bearer ..."
+  python probe_server.py --include-heavy         # also call backup/export-like endpoints (not advised)
 """
 
 import argparse
+import getpass
+import http.cookiejar
 import json
 import os
 import re
@@ -37,13 +47,33 @@ import threading
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 
-TOOL_VERSION = "1.0"
+TOOL_VERSION = "2.0"
 WIDTH = 100
 STALL_MS = 1000.0
 TIMEOUT_S = 15
+# Endpoints whose name suggests side effects or heavy work are skipped unless --include-heavy
+HEAVY_WORDS = (
+    "backup",
+    "export",
+    "download",
+    "restore",
+    "reset",
+    "logout",
+    "delete",
+    "shutdown",
+    "restart",
+    "purge",
+    "clear",
+    "import",
+    "excel",
+    "pdf",
+    "zip",
+)
+SWEEP_BUDGET_S = 75
 
 
 # --------------------------------------------------------------------------- console
@@ -97,11 +127,14 @@ def wrap(text, indent="", first=""):
 
 
 def ascii_only(text):
-    text = str(text)
-    return "".join(ch if ord(ch) < 128 else "?" for ch in text)
+    return "".join(ch if ord(ch) < 128 else "?" for ch in str(text))
 
 
 # --------------------------------------------------------------------------- http
+JAR = http.cookiejar.CookieJar()
+OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(JAR))
+
+
 def normalize_url(text):
     text = text.strip().rstrip("/")
     if not text:
@@ -111,12 +144,12 @@ def normalize_url(text):
     return text
 
 
-def fetch(base, path, headers, timeout=TIMEOUT_S):
-    """(status, ms, bytes, error). Never raises."""
-    req = urllib.request.Request(base + path, headers=headers)
+def fetch(base, path, headers, timeout=TIMEOUT_S, data=None, method=None):
+    """(status, ms, bytes, error, body). Never raises. Cookies are kept (login)."""
+    req = urllib.request.Request(base + path, headers=headers, data=data, method=method)
     t0 = time.perf_counter()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with OPENER.open(req, timeout=timeout) as resp:
             body = resp.read()
             return resp.status, (time.perf_counter() - t0) * 1000, len(body), None, body
     except urllib.error.HTTPError as e:
@@ -134,6 +167,88 @@ def pct(values, p):
         return 0.0
     v = sorted(values)
     return v[min(len(v) - 1, int(round((len(v) - 1) * p / 100.0)))]
+
+
+# --------------------------------------------------------------------------- login
+def _schema_props(spec, schema):
+    """Property names of a (possibly $ref) request-body schema."""
+    if not schema:
+        return []
+    if "$ref" in schema:
+        node = spec
+        for part in schema["$ref"].lstrip("#/").split("/"):
+            node = node.get(part, {})
+        schema = node
+    return list(schema.get("properties", {}).keys())
+
+
+def find_login(spec):
+    """(path, content_type, user_field, pass_field) from the OpenAPI document."""
+    best = None
+    for path, item in (spec or {}).get("paths", {}).items():
+        op = item.get("post")
+        if not op or "login" not in path.lower():
+            continue
+        content = (op.get("requestBody") or {}).get("content", {})
+        for ctype in (
+            "application/json",
+            "application/x-www-form-urlencoded",
+            "multipart/form-data",
+        ):
+            if ctype in content:
+                props = _schema_props(spec, content[ctype].get("schema"))
+                user = next(
+                    (
+                        p
+                        for p in props
+                        if p.lower() in ("username", "user", "email", "login", "name")
+                    ),
+                    "username",
+                )
+                pw = next((p for p in props if "pass" in p.lower()), "password")
+                cand = (path, ctype, user, pw)
+                if best is None or path.lower().endswith("/auth/login"):
+                    best = cand
+                break
+    return best
+
+
+def do_login(base, headers, spec, username, password):
+    """Log in. Returns (ok, note). Updates `headers` with a token when the answer has one."""
+    found = find_login(spec)
+    if not found:
+        return False, "no login endpoint found in the API description"
+    path, ctype, ufield, pfield = found
+    if ctype == "application/json":
+        data = json.dumps({ufield: username, pfield: password}).encode()
+    else:
+        data = urllib.parse.urlencode({ufield: username, pfield: password}).encode()
+    h = dict(headers)
+    h["Content-Type"] = ctype
+    status, ms, _, err, body = fetch(base, path, h, data=data, method="POST")
+    password = None
+    if err:
+        return False, "login request failed: %s" % err
+    if status is None or status >= 400:
+        return False, "login refused (HTTP %s)" % status
+    try:
+        payload = json.loads(body.decode("utf-8", "replace"))
+    except ValueError:
+        payload = {}
+    token = None
+    if isinstance(payload, dict):
+        for key in ("access_token", "token", "jwt", "session_token"):
+            if isinstance(payload.get(key), str):
+                token = payload[key]
+                break
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    return True, "logged in via %s (%s, %.0f ms)%s" % (
+        path,
+        "token" if token else "cookie",
+        ms,
+        "",
+    )
 
 
 # --------------------------------------------------------------------------- process sampling (Windows)
@@ -231,9 +346,14 @@ class Sampler(threading.Thread):
 
 # --------------------------------------------------------------------------- watch
 class Watcher(threading.Thread):
-    def __init__(self, base, headers, path):
+    def __init__(self, base, headers, path, interval):
         super().__init__(daemon=True)
-        self.base, self.headers, self.path = base, headers, path
+        self.base, self.headers, self.path, self.interval = (
+            base,
+            headers,
+            path,
+            interval,
+        )
         self.samples, self.stop_flag = [], threading.Event()
 
     def run(self):
@@ -241,37 +361,41 @@ class Watcher(threading.Thread):
         while not self.stop_flag.is_set():
             status, ms, _, err, _ = fetch(self.base, self.path, self.headers)
             self.samples.append(
-                {"at": time.time() - t_start, "ms": ms, "ok": err is None, "err": err}
+                {
+                    "at": time.time() - t_start,
+                    "ms": ms,
+                    "ok": err is None and status is not None and status < 500,
+                    "status": status,
+                    "err": err
+                    or ("HTTP %s" % status if status and status >= 500 else None),
+                }
             )
-            self.stop_flag.wait(0.2)
+            self.stop_flag.wait(self.interval)
 
 
 # --------------------------------------------------------------------------- the probe
+def is_heavy(path):
+    low = path.lower()
+    return any(w in low for w in HEAVY_WORDS)
+
+
 def probe(args, R):
     base = normalize_url(args.url or ask("Server address (Enter = localhost:3000): "))
     R["base"] = base
     headers = {"User-Agent": "kav1-probe/%s" % TOOL_VERSION}
-    extra = args.header
-    if not extra and interactive():
-        say("Optional: to also test pages that need login, paste a request header")
-        say(
-            "(e.g.  Cookie: session=...   or   Authorization: Bearer ...) - or press Enter to skip."
-        )
-        typed = ask("> ")
-        extra = [typed] if typed else []
-    for h in extra or []:
+    for h in args.header or []:
         if ":" in h:
             k, v = h.split(":", 1)
             headers[k.strip()] = v.strip()
-    R["with_auth_header"] = bool(extra)
+    R["header_supplied"] = bool(args.header)
 
-    say("[1/5] Contacting %s ..." % base)
+    say("[1/6] Contacting %s ..." % base)
     status, ms, size, err, body = fetch(base, "/openapi.json", headers)
     R["openapi"] = {"status": status, "ms": ms, "size": size, "err": err}
     if err:
         R["unreachable"] = err
         return
-    endpoints = []
+    endpoints, spec = [], None
     try:
         spec = json.loads(body.decode("utf-8", "replace"))
         for path, item in spec.get("paths", {}).items():
@@ -294,14 +418,36 @@ def probe(args, R):
     except Exception:
         R["no_openapi"] = True
     R["endpoints"] = endpoints
-    base_port = (
-        int(re.search(r":(\d+)", base.split("//", 1)[1]).group(1))
-        if re.search(r":(\d+)", base.split("//", 1)[1])
-        else (443 if base.startswith("https") else 80)
-    )
-    R["port"] = base_port
+    host_port = base.split("//", 1)[1]
+    m = re.search(r":(\d+)", host_port)
+    port = int(m.group(1)) if m else (443 if base.startswith("https") else 80)
+    R["port"] = port
 
-    say("[2/5] Timing a trivial request 20 times ...")
+    # --- optional login
+    R["logged_in"] = False
+    user = args.user
+    wants_login = bool(user or args.password_env)
+    if not wants_login and not args.header and interactive() and spec:
+        say("")
+        say("Without a login every real page answers 401 and cannot be measured.")
+        if ask("Log in so the real pages are measured? (y/N): ").lower() == "y":
+            wants_login = True
+            user = ask("Username: ")
+    if wants_login and spec:
+        password = (
+            os.environ.get(args.password_env or "", "") if args.password_env else ""
+        )
+        if not password:
+            if not user:
+                user = ask("Username: ")
+            password = getpass.getpass("Password (hidden): ") if interactive() else ""
+        ok, note = do_login(base, headers, spec, user or "", password)
+        password = None
+        R["login_note"] = note
+        R["logged_in"] = ok
+        say("      %s" % note)
+
+    say("[2/6] Timing a trivial request 20 times ...")
     lat = []
     for _ in range(20):
         _, ms, _, err, _ = fetch(base, "/openapi.json", headers)
@@ -310,9 +456,16 @@ def probe(args, R):
         time.sleep(0.05)
     R["baseline"] = lat
 
-    say("[3/5] Timing every simple GET endpoint ...")
-    rows = []
-    for ep in [e for e in endpoints if e["simple_get"]][:40]:
+    say("[3/6] Timing every harmless GET endpoint ...")
+    rows, skipped = [], []
+    t_sweep = time.time()
+    for ep in [e for e in endpoints if e["simple_get"]]:
+        if is_heavy(ep["path"]) and not args.include_heavy:
+            skipped.append(ep["path"])
+            continue
+        if time.time() - t_sweep > SWEEP_BUDGET_S:
+            skipped.append(ep["path"] + " (time budget)")
+            continue
         times, st, sz, errs = [], None, 0, None
         for _ in range(3):
             st, ms, sz, errs, _ = fetch(base, ep["path"], headers)
@@ -327,28 +480,52 @@ def probe(args, R):
                 "err": errs,
             }
         )
-    R["sweep"] = rows
+    R["sweep"], R["skipped"] = rows, skipped
+
+    # pick one real data page to time during the watch
+    real = None
+    ok_rows = {r["path"]: r for r in rows if r["status"] == 200}
+    for cand in ("/visitors/inside", "/visitors", "/logs"):
+        if cand in ok_rows:
+            real = cand
+            break
+    if real is None:
+        real = next(
+            (
+                r["path"]
+                for r in sorted(ok_rows.values(), key=lambda r: -r["size"])
+                if r["path"] != "/openapi.json" and not r["path"].startswith("/auth/")
+            ),
+            None,
+        )
+    R["real_path"] = real
 
     pid = (
-        find_server_pid(base_port)
-        if base.split("//")[1].split(":")[0] in ("localhost", "127.0.0.1", "::1")
+        find_server_pid(port)
+        if host_port.split(":")[0] in ("localhost", "127.0.0.1", "[::1]")
         else None
     )
     R["pid"] = pid
     seconds = args.seconds
-    say("[4/5] WATCHING the server for %d seconds." % seconds)
+    say("[4/6] WATCHING the server for %d seconds." % seconds)
     say(
         "      >>> NOW USE THE SYSTEM NORMALLY: log in, open lists, search, save, enter/exit... <<<"
     )
-    watcher = Watcher(base, headers, "/openapi.json")
-    sampler = Sampler(base_port, pid)
-    watcher.start()
+    watchers = [Watcher(base, headers, "/openapi.json", 0.2)]
+    if real:
+        watchers.append(Watcher(base, headers, real, 1.0))
+    sampler = Sampler(port, pid)
+    for w in watchers:
+        w.start()
     sampler.start()
     t0 = time.time()
     while time.time() - t0 < seconds:
         left = int(seconds - (time.time() - t0))
-        done = len(watcher.samples)
-        worst = max([s["ms"] for s in watcher.samples] or [0])
+        done = len(watchers[0].samples)
+        worst = max([s["ms"] for s in watchers[0].samples] or [0])
+        if not interactive():
+            time.sleep(0.5)
+            continue
         sys.stdout.write(
             "\r      %3d s left | %d requests | worst so far %.0f ms   "
             % (left, done, worst)
@@ -356,13 +533,28 @@ def probe(args, R):
         sys.stdout.flush()
         time.sleep(0.5)
     say("")
-    watcher.stop_flag.set()
+    for w in watchers:
+        w.stop_flag.set()
     sampler.stop_flag.set()
-    watcher.join(timeout=TIMEOUT_S + 1)
+    for w in watchers:
+        w.join(timeout=TIMEOUT_S + 1)
     sampler.join(timeout=12)
-    R["watch"] = list(watcher.samples)
+    R["watch"] = list(watchers[0].samples)
+    R["watch_real"] = list(watchers[1].samples) if real else []
     R["proc"] = list(sampler.rows)
     R["conn_max"] = dict(sampler.conn_max)
+
+
+def stats_of(samples):
+    lat = [s["ms"] for s in samples if s["ok"]]
+    return {
+        "n": len(samples),
+        "p50": pct(lat, 50),
+        "p95": pct(lat, 95),
+        "p99": pct(lat, 99),
+        "max": max(lat) if lat else 0,
+        "errors": sum(1 for s in samples if not s["ok"]),
+    }
 
 
 def analyse(R):
@@ -385,6 +577,29 @@ def analyse(R):
             % R["openapi"]["status"],
             "Normal if the API docs are disabled.",
         )
+    sweep = R.get("sweep", [])
+    locked = [r for r in sweep if r["status"] in (401, 403)]
+    R["inconclusive"] = (
+        bool(sweep)
+        and len(locked) >= 0.7 * len(sweep)
+        and not R.get("logged_in")
+        and not R.get("header_supplied")
+    )
+    if R["inconclusive"]:
+        add(
+            "HIGH",
+            "%d of %d endpoints answered 401/403 (login required): the real pages were NOT "
+            "measured. This run only proves the server answers quickly when idle."
+            % (len(locked), len(sweep)),
+            "Run again and answer 'y' to the login question (or pass --user / --header), ideally "
+            "while the system feels slow.",
+        )
+    if R.get("login_note") and not R.get("logged_in"):
+        add(
+            "MEDIUM",
+            "Login did not work: %s." % R["login_note"],
+            "Check the username / password.",
+        )
     base = R.get("baseline", [])
     if base and pct(base, 95) > 150:
         add(
@@ -395,69 +610,76 @@ def analyse(R):
             "Look at CPU / antivirus on the server machine; check the server console window for errors.",
         )
     w = R.get("watch", [])
-    lat = [s["ms"] for s in w if s["ok"]]
     stalls = [s for s in w if (not s["ok"]) or s["ms"] > STALL_MS]
     R["stalls"] = stalls
     if w:
-        R["watch_stats"] = {
-            "n": len(w),
-            "p50": pct(lat, 50),
-            "p95": pct(lat, 95),
-            "p99": pct(lat, 99),
-            "max": max(lat) if lat else 0,
-            "errors": sum(1 for s in w if not s["ok"]),
-        }
+        R["watch_stats"] = stats_of(w)
     if stalls:
         worst = max(s["ms"] for s in stalls)
         add(
             "CRITICAL" if worst > 3000 or any(not s["ok"] for s in stalls) else "HIGH",
-            "The server FROZE %d time(s) during the watch (worst %.1f s, %d timeouts/errors). While "
-            "frozen, it answered nobody - this is the 'not responding' you see."
+            "The server FROZE %d time(s) during the watch (worst %.1f s, %d failures). While frozen it "
+            "answered nobody - this is the 'not responding' you see."
             % (len(stalls), worst / 1000.0, sum(1 for s in stalls if not s["ok"])),
-            "Note what you did at those moments (timeline on page 3). Typical causes: slow work "
-            "(database, password hashing) running inside the server's single event loop.",
+            "Note what you did at those moments (timeline on page 3). Typical cause: slow work "
+            "(database, password hashing, big reports) running inside the server's single event loop.",
         )
-    sweep = R.get("sweep", [])
-    slow = [r for r in sweep if r["best"] > 1000]
-    for r in slow[:3]:
+    wr = R.get("watch_real", [])
+    R["real_stalls"] = [s for s in wr if (not s["ok"]) or s["ms"] > STALL_MS]
+    if wr:
+        R["real_stats"] = stats_of(wr)
+        rs = R["real_stats"]
+        if rs["p95"] > 1000 or rs["max"] > 3000:
+            add(
+                "HIGH",
+                "The real page %s was slow while you worked: median %.0f ms, 95th %.0f ms, worst %.0f ms."
+                % (R["real_path"], rs["p50"], rs["p95"], rs["max"]),
+                "That endpoint (database query, serialisation or page size) is the bottleneck."
+                + (
+                    ""
+                    if stalls
+                    else " The server itself stayed responsive, so it is not a frozen event loop."
+                ),
+            )
+    for r in [r for r in sweep if r["best"] > 1000][:3]:
         add(
             "HIGH",
             "GET %s takes %.0f ms even at best (%d bytes)."
             % (r["path"], r["best"], r["size"]),
             "This endpoint is a bottleneck.",
         )
-    big = [r for r in sweep if r["size"] > 1_000_000]
-    for r in big[:2]:
+    for r in [r for r in sweep if r["size"] > 1_000_000][:2]:
         add(
             "MEDIUM",
             "GET %s returns %.1f MB per call - every refresh moves and renders that much."
             % (r["path"], r["size"] / 1e6),
             "Paging / filtering on the server would help.",
         )
-    unauth = [r for r in sweep if r["status"] in (401, 403)]
-    if unauth and sum(r["avg"] for r in unauth) / len(unauth) > 150:
+    if (
+        locked
+        and not R["inconclusive"]
+        and sum(r["avg"] for r in locked) / len(locked) > 150
+    ):
         add(
             "HIGH",
-            "Requests that are rejected as 'not logged in' still take %.0f ms on average: "
-            "the login/auth check is slow."
-            % (sum(r["avg"] for r in unauth) / len(unauth)),
-            "Typical cause: password-hash or session lookup work done on every request.",
+            "Requests rejected as 'not logged in' still take %.0f ms on average: the auth check is slow."
+            % (sum(r["avg"] for r in locked) / len(locked)),
+            "Typical cause: password-hash or session lookup on every request.",
         )
     cm = R.get("conn_max", {})
     if cm.get("CLOSE_WAIT", 0) > 10:
         add(
             "HIGH",
-            "%d connections stuck in CLOSE_WAIT: the server is not closing connections "
-            "(leak) - eventually it stops accepting new ones." % cm["CLOSE_WAIT"],
-            "Restart the server as a workaround; fix needs a code change.",
+            "%d connections stuck in CLOSE_WAIT: the server is not closing connections (leak)."
+            % cm["CLOSE_WAIT"],
+            "Restart the server as a workaround; the fix needs a code change.",
         )
     proc = R.get("proc", [])
     cpus = [p["cpu_pct"] for p in proc if p.get("cpu_pct") is not None]
     if cpus and max(cpus) > 85:
         add(
             "MEDIUM",
-            "The server process hit %.0f%% of a CPU core: it is CPU-bound (Python uses one "
-            "core for the event loop)." % max(cpus),
+            "The server process hit %.0f%% of a CPU core: it is CPU-bound." % max(cpus),
             "Reduce per-request work; check antivirus.",
         )
     if proc and proc[-1]["mem"] > 1.5e9:
@@ -471,8 +693,7 @@ def analyse(R):
             "LOW",
             "No freeze and no slow endpoint was seen during this watch (%d requests)."
             % len(w),
-            "The problem may only appear with the real workload: run the probe again WHILE the "
-            "slowness is happening, and photograph the browser's Network tab (F12).",
+            "The problem may only appear with the real workload: run again WHILE it is slow.",
         )
     order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
     f.sort(key=lambda x: order[x[0]])
@@ -482,6 +703,8 @@ def analyse(R):
 def verdict(R, findings):
     if R.get("unreachable"):
         return "SERVER NOT REACHABLE"
+    if R.get("inconclusive") and not R.get("stalls"):
+        return "INCONCLUSIVE - login needed to measure the real pages"
     c = sum(1 for s, _, _ in findings if s == "CRITICAL")
     h = sum(1 for s, _, _ in findings if s == "HIGH")
     if c:
@@ -510,15 +733,24 @@ def page_overview(R, findings):
         ws = R.get("watch_stats")
         if ws:
             L.append(
-                "Watch %d requests: median %.1f | 95th %.1f | 99th %.1f | worst %.0f ms | errors %d"
-                % (ws["n"], ws["p50"], ws["p95"], ws["p99"], ws["max"], ws["errors"])
+                "Watch (server alive?) %d requests: median %.1f | 95th %.1f | worst %.0f ms | errors %d"
+                % (ws["n"], ws["p50"], ws["p95"], ws["max"], ws["errors"])
             )
             L.append(
                 "Freezes (> %d ms or failed): %d" % (STALL_MS, len(R.get("stalls", [])))
             )
+        rs = R.get("real_stats")
+        if rs:
+            L.append(
+                "Real page %s: %d requests: median %.0f | 95th %.0f | worst %.0f ms"
+                % (R["real_path"], rs["n"], rs["p50"], rs["p95"], rs["max"])
+            )
         L.append(
-            "Logged-in header supplied: %s"
-            % ("yes" if R.get("with_auth_header") else "no")
+            "Logged in: %s%s"
+            % (
+                "yes" if R.get("logged_in") else "no",
+                " (header supplied)" if R.get("header_supplied") else "",
+            )
         )
     L += ["", bar("-"), "VERDICT:  " + verdict(R, findings), bar("-"), "Top findings:"]
     for sev, text, _ in findings[:5]:
@@ -548,41 +780,46 @@ def page_endpoints(R):
         L.append("(no parameter-less GET endpoints found)")
     L += [
         "",
-        "Status 401/403 = needs login (still shows how fast the server rejects).",
-        "Other endpoints in the API: %s"
-        % ", ".join(
-            "%s %s" % (e["method"], ascii_only(e["path"]))
-            for e in R.get("endpoints", [])
-            if not e["simple_get"]
-        )[:300],
+        "Status 401/403 = needs login. Skipped as heavy/risky: %s"
+        % (", ".join(ascii_only(p) for p in R.get("skipped", [])) or "none"),
     ]
+    other = ", ".join(
+        "%s %s" % (e["method"], ascii_only(e["path"]))
+        for e in R.get("endpoints", [])
+        if not e["simple_get"]
+    )
+    L += wrap("Other endpoints (not called): " + other[:260])
     return "ENDPOINT SPEED", L
 
 
-def page_stalls(R):
+def timeline(samples, label, limit=8):
     L = []
-    stalls = R.get("stalls", [])
-    ws = R.get("watch_stats")
-    if ws:
-        L.append(
-            "Request every 0.2 s for the whole watch. A freeze = a request that took over %d ms."
-            % STALL_MS
-        )
+    stalls = [s for s in samples if (not s["ok"]) or s["ms"] > STALL_MS]
     if not stalls:
-        L.append("No freeze recorded.")
-    else:
-        L.append("TIMELINE OF FREEZES (seconds after the watch started)")
-        for s in stalls[:14]:
-            L.append(
-                "   at %5.1f s   waited %8.1f ms   %s"
-                % (
-                    s["at"],
-                    s["ms"],
-                    ("FAILED: " + ascii_only(s["err"])) if not s["ok"] else "",
-                )
+        return ["%s: no freeze recorded." % label]
+    L.append("%s - freezes (seconds after the watch started):" % label)
+    for s in stalls[:limit]:
+        L.append(
+            "   at %5.1f s   waited %8.1f ms   %s"
+            % (
+                s["at"],
+                s["ms"],
+                ("FAILED: " + ascii_only(s["err"])) if not s["ok"] else "",
             )
-        if len(stalls) > 14:
-            L.append("   ... and %d more" % (len(stalls) - 14))
+        )
+    if len(stalls) > limit:
+        L.append("   ... and %d more" % (len(stalls) - limit))
+    return L
+
+
+def page_stalls(R):
+    L = [
+        "Server check every 0.2 s; real page (%s) every 1 s. A freeze = an answer slower than %d ms."
+        % (R.get("real_path") or "none", STALL_MS)
+    ]
+    L += timeline(R.get("watch", []), "Server alive-check")
+    if R.get("real_path"):
+        L += timeline(R.get("watch_real", []), "Real page")
     L.append("")
     proc = R.get("proc", [])
     L.append("SERVER PROCESS (sampled every 2 s)")
@@ -617,6 +854,9 @@ def page_stalls(R):
             "   Connections to the server port (peak): "
             + ", ".join("%s=%d" % kv for kv in sorted(cm.items()))
         )
+        L.append(
+            "   (TIME_WAIT is normal: this tool itself opens many short connections)"
+        )
     return "FREEZES AND SERVER PROCESS", L
 
 
@@ -630,7 +870,7 @@ def page_findings(R, findings):
         bar("-"),
         "NEXT STEP: if the freezes appear when you do a specific action, tell me which",
         "action and the time (page 3). Also photograph the SERVER's own console window (errors).",
-        "Nothing was changed on the server by this tool.",
+        "Nothing was changed on the server by this tool (apart from the login you agreed to).",
     ]
     return "FINDINGS", L
 
@@ -683,7 +923,7 @@ def show_screens(screens, plain):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Kav1 live server probe (read-only, GET only)."
+        description="Kav1 live server probe (GET only; optional login)."
     )
     ap.add_argument("--url", help="server address, e.g. localhost:3000")
     ap.add_argument(
@@ -691,6 +931,18 @@ def main():
     )
     ap.add_argument(
         "--header", action="append", help='extra request header, e.g. "Cookie: a=b"'
+    )
+    ap.add_argument(
+        "--user", help="log in with this username (the password is asked, hidden)"
+    )
+    ap.add_argument(
+        "--password-env",
+        help="name of an environment variable holding the password (for scripts)",
+    )
+    ap.add_argument(
+        "--include-heavy",
+        action="store_true",
+        help="also call backup/export-like GET endpoints",
     )
     ap.add_argument("--plain", action="store_true", help="no screen clearing / pauses")
     ap.add_argument(

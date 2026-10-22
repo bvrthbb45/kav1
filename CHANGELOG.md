@@ -37,6 +37,10 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Added (tools)
+- `tools/probe_server.py` v2: can log in (hidden password, or `--header`), so the real
+  pages are measured instead of answering 401; never calls backup / export / download /
+  logout-like GET endpoints (`--include-heavy` overrides); times one real data page during
+  the watch next to the server alive-check; says INCONCLUSIVE when everything answered 401.
 - `tools/code_locator.py --preset fields`: also searches `.html` / `.js` (skips minified
   libraries) for where contractor fields are defined and validated in a web UI + API.
 - `tools/permissions_check.py` (+ `6_permissions_check.bat`): snapshots every role's

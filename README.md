@@ -266,7 +266,7 @@ one console window, so it can be photographed page by page.
 | `3_fix_add_indexes.bat` | `fix_02_add_indexes.py` | add missing `visitor_logs` indexes + ANALYZE | preferably stop |
 | `4_fix_vacuum_analyze.bat` | `fix_03_vacuum_analyze.py` | checkpoint, VACUUM, ANALYZE (only if fragmented) | **stop** |
 
-| `5_probe_server.bat` | `probe_server.py` | black-box check of the RUNNING server: freezes (stalls) while you use it, slow endpoints, slow login check, server CPU / memory / connections | running |
+| `5_probe_server.bat` | `probe_server.py` | black-box check of the RUNNING server: freezes (stalls) while you use it, slow endpoints (after an optional login), slow login check, server CPU / memory / connections | running |
 
 | `6_permissions_check.bat` | `permissions_check.py` | snapshot of every role's permissions; run before and after a server restart to see exactly what changed (read-only) | any |
 | `7_find_code.bat` | `code_locator.py` | finds where the server source handles roles / permissions / start-up seeding and shows those lines page by page (read-only; hides sensitive lines) | any |
