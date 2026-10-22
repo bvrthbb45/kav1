@@ -37,6 +37,11 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Added (tools)
+- `tools/permissions_restore.py` (+ `8_restore_permissions.bat`): restores role-permission
+  links lost at a server restart from a saved snapshot / baseline in one run. Adds only,
+  verified backup first, idempotent, confirmation before writing, integrity check after.
+  A stop-gap: it repairs the damage; the cause (code removing admin.* / reports.* /
+  control.panel from non-admin roles) still needs a code fix.
 - `tools/probe_server.py` v2: can log in (hidden password, or `--header`), so the real
   pages are measured instead of answering 401; never calls backup / export / download /
   logout-like GET endpoints (`--include-heavy` overrides); times one real data page during
