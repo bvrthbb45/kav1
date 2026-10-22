@@ -1,6 +1,6 @@
 [Setup]
 AppName=Kav1 App
-AppVersion=1.0
+AppVersion=0.1.0
 DefaultDirName={userappdata}\Kav1
 PrivilegesRequired=lowest
 OutputDir=setup

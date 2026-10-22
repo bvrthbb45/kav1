@@ -19,7 +19,9 @@ class VisitorBase(VisitorCreate):
 class VisitorUpdate(BaseModel):
     name: Optional[str] = None
     visitorid: Optional[str] = None
-    properties: Optional[Dict] = Field(default_factory=dict)
+    # None = "leave the properties alone". (It used to default to {}, so a
+    # rename-only update silently wiped every property of the visitor.)
+    properties: Optional[Dict] = None
 
     class Config:
         orm_mode = True

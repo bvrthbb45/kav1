@@ -9,6 +9,10 @@ from app.utils.log import Log
 
 class ApiClient(QObject):
     response_received = Signal(object)
+    # Responses of requests sent with a tag: (tag, data). They are NOT emitted on
+    # response_received, so they cannot be mistaken for the untagged flows that
+    # swap that signal's handlers.
+    tagged_response = Signal(str, object)
     error_occurred = Signal(str)
 
     logger = Log()
@@ -43,6 +47,18 @@ class ApiClient(QObject):
         url = Settings.get_http_url("/visitors/inside")
         ApiClient.logger.write_to_log(f"GET request to {url}")
         self._send_request(url, "GET")
+
+    def get_projects(self, tag: str = "projects"):
+        url = Settings.get_http_url("/projects")
+        ApiClient.logger.write_to_log(f"GET request to {url}")
+        self._send_request(url, "GET", tag=tag)
+
+    def get_expiring(self, days: int, tag: str = "expiring", inside_only=False):
+        url = Settings.get_http_url(
+            f"/visitors/expiring?days={int(days)}&inside_only={str(inside_only).lower()}"
+        )
+        ApiClient.logger.write_to_log(f"GET request to {url}")
+        self._send_request(url, "GET", tag=tag)
 
     def get_visitor_by_id(self, query: str):
         url = Settings.get_http_url(f"/visitors/{query}")
@@ -105,9 +121,11 @@ class ApiClient(QObject):
         )
         self._send_request(url, "PUT", visitor_data)
 
-    def _send_request(self, url: str, method: str, data: dict = None):
+    def _send_request(self, url: str, method: str, data: dict = None, tag: str = None):
         request = QNetworkRequest(QUrl(url))
         request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
+        if tag:
+            request.setAttribute(QNetworkRequest.User, tag)
 
         if method == "GET":
             ApiClient.logger.write_to_log(f"GET request to {url}")
@@ -151,7 +169,11 @@ class ApiClient(QObject):
             else:
                 decoded_data = raw_data.data().decode("utf-8")
                 data = json.loads(decoded_data)
-                self.response_received.emit(data)
+                tag = reply.request().attribute(QNetworkRequest.User)
+                if tag:
+                    self.tagged_response.emit(str(tag), data)
+                else:
+                    self.response_received.emit(data)
         finally:
             reply.deleteLater()
             ApiClient.logger.write_to_log("Response handling complete, cleaned up.")
