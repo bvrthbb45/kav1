@@ -270,6 +270,7 @@ one console window, so it can be photographed page by page.
 
 | `6_permissions_check.bat` | `permissions_check.py` | snapshot of every role's permissions; run before and after a server restart to see exactly what changed (read-only) | any |
 | `8_restore_permissions.bat` | `permissions_restore.py` | puts back role-permission links that disappeared after a server restart (adds only, backup first, idempotent, asks Y); `--check` compares, `--save-baseline` records the good state | any |
+| `9_watch_permissions.bat` | `permissions_watch.py` | live read-only watcher: prints the exact time and keys when a role gains / loses a permission (start it, restart the server, log in) | any |
 | `7_find_code.bat` | `code_locator.py` | finds where the server source handles roles / permissions / start-up seeding and shows those lines page by page (read-only; hides sensitive lines) | any |
 
 Why Kav1 is slow and what each fix buys: [docs/DB_DIAGNOSIS.md](docs/DB_DIAGNOSIS.md).

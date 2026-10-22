@@ -37,6 +37,9 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
   longer raises.
 
 ### Added (tools)
+- `tools/permissions_watch.py` (+ `9_watch_permissions.bat`): read-only live watcher that
+  records the exact moment a role gains / loses a permission, to tell a start-up change
+  from a login-time change.
 - `tools/permissions_restore.py` (+ `8_restore_permissions.bat`): restores role-permission
   links lost at a server restart from a saved snapshot / baseline in one run. Adds only,
   verified backup first, idempotent, confirmation before writing, integrity check after.
