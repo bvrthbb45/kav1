@@ -9,6 +9,7 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 ## [Unreleased]
 
 ### Added
+- `tools/code_patch.py` (+ `windows/10_apply_patch.bat`): applies a small reviewed `*.patch.json` text patch to server source files with preview, backup, syntax check, idempotence and `--revert`
 - Contractors currently inside are listed **latest arrival first**
   (`GET /visitors/inside` is sorted by the time of the latest `entry` log).
 - **Project filter**: new `פרויקט` property, `GET /projects`,
