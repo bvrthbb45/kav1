@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layoutDirection="rtl">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="@dimen/screen_padding">
+
+        <TextView
+            android:id="@+id/txtName"
+            style="@style/BodyText"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtQr"
+            style="@style/BodyText" />
+
+        <TextView
+            android:id="@+id/txtCategory"
+            style="@style/BodyText"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txtStatus"
+            style="@style/BodyText" />
+
+        <TextView
+            android:id="@+id/txtStock"
+            style="@style/BodyText"
+            android:textColor="@color/primary"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txtHolder"
+            style="@style/BodyText"
+            android:background="?attr/selectableItemBackground"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/accent"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txtLastAction"
+            style="@style/BodyText"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txtUnknown"
+            style="@style/BodyText"
+            android:layout_marginTop="@dimen/gap"
+            android:text="@string/item_unknown"
+            android:textColor="@color/warning"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnBorrow"
+            style="@style/BigButton"
+            android:layout_marginTop="32dp"
+            android:text="@string/btn_borrow"
+            app:backgroundTint="@color/borrow" />
+
+        <Button
+            android:id="@+id/btnIssue"
+            style="@style/BigButton"
+            android:text="@string/btn_issue"
+            app:backgroundTint="@color/issued" />
+
+        <Button
+            android:id="@+id/btnReturn"
+            style="@style/BigButton"
+            android:text="@string/btn_return"
+            app:backgroundTint="@color/return_green" />
+
+        <Button
+            android:id="@+id/btnRegister"
+            style="@style/BigButton"
+            android:text="@string/btn_register_item"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnBack"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/gap"
+            android:text="@string/btn_back"
+            android:textSize="@dimen/body_text" />
+
+        <TextView
+            android:id="@+id/txtHoldersTitle"
+            style="@style/SectionTitle"
+            android:text="@string/holders_title"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/listHolders"
+            style="@style/Card"
+            android:layout_marginTop="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txtHistoryTitle"
+            style="@style/SectionTitle"
+            android:text="@string/history_title"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/listHistory"
+            style="@style/Card"
+            android:layout_marginTop="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:visibility="gone" />
+    </LinearLayout>
+</ScrollView>
