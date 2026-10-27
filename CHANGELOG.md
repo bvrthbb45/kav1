@@ -9,6 +9,7 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 ## [Unreleased]
 
 ### Added
+- `tools/install_update.py`: one-click installer for the seed.py fix + locations feature (DB backup, all-patches check, ordered install, `--revert`)
 - Optional feature **"שליטה ומיקומים"** (control & locations): escort + location rows per project, uploaded maps stored in the DB, points placed on a map, admin switches for the feature and for "group list by project" (`backend/production_modules/locations`, patch `tools/patches/locations_feature.patch.json`); `code_patch.py` can now create new files
 - `tools/code_patch.py` (+ `windows/10_apply_patch.bat`): applies a small reviewed `*.patch.json` text patch to server source files with preview, backup, syntax check, idempotence and `--revert`
 - Contractors currently inside are listed **latest arrival first**
