@@ -285,6 +285,8 @@ def plan_file(path, replaces):
         new = r["new"].replace("\r\n", "\n")
         expect = int(r.get("expect", 1))
         found = new_text.count(old)
+        if old in new and new_text.count(new) >= 1:
+            continue  # the new text contains the old one and is already in place
         if found == expect:
             new_text = new_text.replace(old, new)
             applied += 1
@@ -371,6 +373,16 @@ def run(args):
     plans, bad = {}, False
     for f in files:
         path = folder / f["path"]
+        if "create" in f:  # whole new file (or an update of a file this patch owns)
+            content = f["create"].replace("\r\n", "\n")
+            before = read_text(path)[0] if path.is_file() else ""
+            if path.is_file():
+                status = "already patched" if before == content else "will change"
+            else:
+                status = "will create"
+            plans[f["path"]] = (path, before, content, "utf-8", "\n", status, [])
+            say("  %-24s %s" % (f["path"], status.upper()))
+            continue
         if not path.is_file():
             say("  %-24s FILE NOT FOUND" % f["path"])
             bad = True
@@ -390,7 +402,9 @@ def run(args):
             "\nNothing was changed: the files do not match what this patch expects.\n"
             "Send me a photo of this screen and of the lines around the place to change."
         )
-    changing = {k: v for k, v in plans.items() if v[5] == "will change"}
+    changing = {
+        k: v for k, v in plans.items() if v[5] in ("will change", "will create")
+    }
     for rel, (path, bt, nt, *_rest) in changing.items():
         say("")
         say("--- changes in %s ---" % rel)
@@ -412,27 +426,38 @@ def run(args):
         ):
             sys.exit("Cancelled - nothing was changed.")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backups = {}
+    backups, created = {}, []
     try:
         for rel, (path, bt, nt, enc, newline, *_r) in changing.items():
+            if not path.is_file():
+                continue  # a new file: nothing to back up
             b = path.with_name(path.name + ".bak_" + stamp)
             shutil.copy2(str(path), str(b))
             backups[rel] = (path, b)
         for rel, (path, bt, nt, enc, newline, *_r) in changing.items():
+            if not path.is_file():
+                created.append(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
             write_text(path, nt, enc, newline)
             if path.suffix == ".py":
                 ast.parse(read_text(path)[0], str(path))
     except Exception as e:
         for rel, (path, b) in backups.items():
             shutil.copy2(str(b), str(path))
+        for path in created:
+            try:
+                path.unlink()
+            except OSError:
+                pass
         sys.exit(
             "ERROR: %s\nAll files were restored from their backups. Nothing is changed."
             % e
         )
     say("")
     say(bar("-"))
-    for rel, (path, b) in backups.items():
-        say("patched %s   (backup: %s)" % (rel, b.name))
+    for rel in changing:
+        b = backups.get(rel, (None, None))[1]
+        say("patched %s   (backup: %s)" % (rel, b.name if b else "none - new file"))
     say(
         "DONE. Syntax check passed. RESTART the Kav1 server for the change to take effect."
     )
