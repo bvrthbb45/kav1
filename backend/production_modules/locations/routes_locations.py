@@ -235,7 +235,10 @@ def put_flags(
         _set_flag(db, FLAG_REQUIRE_INFOSEC, payload.require_infosec)
     if payload.expiry_days is not None:
         if payload.expiry_days not in ALLOWED_EXPIRY_DAYS:
-            raise HTTPException(status_code=422, detail="expiry_days must be one of %s" % (ALLOWED_EXPIRY_DAYS,))
+            raise HTTPException(
+                status_code=422,
+                detail="expiry_days must be one of %s" % (ALLOWED_EXPIRY_DAYS,),
+            )
         _set_text(db, KEY_EXPIRY_DAYS, str(payload.expiry_days))
     db.commit()
     return get_flags(_user, db)
