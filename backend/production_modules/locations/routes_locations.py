@@ -42,7 +42,10 @@ LOCATION_PERMISSIONS = [
 
 FLAG_LOCATIONS = "locations.enabled"
 FLAG_GROUPING = "list.group_by_project"
-FLAGS = (FLAG_LOCATIONS, FLAG_GROUPING)
+FLAG_REQUIRE_INFOSEC = "visitors.require_infosec"
+KEY_EXPIRY_DAYS = "visitors.expiry_warn_days"
+DEFAULT_EXPIRY_DAYS = 30
+ALLOWED_EXPIRY_DAYS = (7, 14, 30, 60, 90)
 
 MAX_MAP_BYTES = 15 * 1024 * 1024
 MAX_TEXT = 200
@@ -93,6 +96,26 @@ def _set_flag(db: Session, key: str, on: bool) -> None:
         db.add(FeatureFlag(key=key, value="1" if on else "0"))
     else:
         row.value = "1" if on else "0"
+
+
+def get_int_setting(db: Session, key: str, default: int) -> int:
+    row = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    try:
+        return int(row.value) if row is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _set_text(db: Session, key: str, value: str) -> None:
+    row = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    if row is None:
+        db.add(FeatureFlag(key=key, value=value))
+    else:
+        row.value = value
+
+
+def flag_enabled(db: Session, key: str) -> bool:
+    return _flag(db, key)
 
 
 def _require_enabled(
@@ -164,6 +187,8 @@ def ensure_locations_permissions(db: Session) -> None:
 class FlagsUpdate(BaseModel):
     locations_enabled: Optional[bool] = None
     group_by_project: Optional[bool] = None
+    require_infosec: Optional[bool] = None
+    expiry_days: Optional[int] = None
 
 
 class EntryIn(BaseModel):
@@ -191,6 +216,8 @@ def get_flags(
     return {
         "locations_enabled": _flag(db, FLAG_LOCATIONS),
         "group_by_project": _flag(db, FLAG_GROUPING),
+        "require_infosec": _flag(db, FLAG_REQUIRE_INFOSEC),
+        "expiry_days": get_int_setting(db, KEY_EXPIRY_DAYS, DEFAULT_EXPIRY_DAYS),
     }
 
 
@@ -204,6 +231,12 @@ def put_flags(
         _set_flag(db, FLAG_LOCATIONS, payload.locations_enabled)
     if payload.group_by_project is not None:
         _set_flag(db, FLAG_GROUPING, payload.group_by_project)
+    if payload.require_infosec is not None:
+        _set_flag(db, FLAG_REQUIRE_INFOSEC, payload.require_infosec)
+    if payload.expiry_days is not None:
+        if payload.expiry_days not in ALLOWED_EXPIRY_DAYS:
+            raise HTTPException(status_code=422, detail="expiry_days must be one of %s" % (ALLOWED_EXPIRY_DAYS,))
+        _set_text(db, KEY_EXPIRY_DAYS, str(payload.expiry_days))
     db.commit()
     return get_flags(_user, db)
 

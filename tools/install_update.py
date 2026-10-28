@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """Kav1 - one-click update installer (standalone, stdlib only, Python 3.8+).
 
-Installs, in this order, into the production server:
-  1. seed.py patch      - role permissions no longer disappear after a restart
-  2. locations feature  - new file routes_locations.py + 3 lines in main.py
-  3. locations.html     - copied into the web folder
-Before touching anything it (a) optionally backs up the database, (b) checks that EVERY patch
-applies cleanly, and only then (c) asks for confirmation. Each changed file gets a .bak_<time> copy.
+Installs, in this order, into the production system (after a database backup and a full dry run):
+  1. backend patch  - permissions fix (the real cause of permissions shrinking at restart), database
+                      settings, visitor additions (latest entry first, project, expiry), optional features
+  2. frontend patch - the web pages (additions only; design files are not touched) + the new page
+  3. database steps - indexes on visitor_logs, ANALYZE, (optional) WAL mode
+  4. verification   - every table's row count before == after, integrity check, the server code imports
+
+Nothing is ever deleted. Visitors and their logs are counted before and after.
 
   python install_update.py             install
-  python install_update.py --revert    put the backups back (code only; data is never touched)
+  python install_update.py --revert    put the code backups back (the database is never touched)
 Output is plain ASCII so it is readable on any Windows console.
 """
 
+import hashlib
 import shutil
 import sqlite3
 import subprocess
@@ -21,14 +24,12 @@ from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PATCHES = [
-    (
-        "permissions fix: migrate_db.py (root cause) + seed.py",
-        "patches/permissions_fix.patch.json",
-    ),
-    ("control & locations feature", "patches/locations_feature.patch.json"),
+BACKEND_PATCH = "patches/backend.patch.json"
+FRONTEND_PATCH = "patches/frontend.patch.json"
+INDEXES = [
+    "CREATE INDEX IF NOT EXISTS ix_visitor_logs_visitor_dbid_timestamp ON visitor_logs (visitor_dbid, timestamp)",
+    "CREATE INDEX IF NOT EXISTS ix_visitor_logs_timestamp ON visitor_logs (timestamp)",
 ]
-HTML = HERE / "files" / "locations.html"
 
 
 def say(text=""):
@@ -36,7 +37,10 @@ def say(text=""):
 
 
 def clean(text):
-    return text.strip().strip('"').strip("'").strip("& ").strip().strip('"').strip("'")
+    t = text.strip()
+    if t.startswith("& "):
+        t = t[2:].strip()
+    return t.strip('"').strip("'")
 
 
 def ask(prompt):
@@ -44,6 +48,32 @@ def ask(prompt):
         return input(prompt)
     except EOFError:
         return ""
+
+
+# ------------------------------------------------------------------ locating things
+def verify_package():
+    """Every file of this package must match checksums.txt (catches damage during the transfer)."""
+    f = HERE / "checksums.txt"
+    if not f.is_file():
+        say("  (no checksums.txt next to the installer: package integrity not checked)")
+        return True
+    bad = []
+    for line in f.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        digest, name = line.split("  ", 1)
+        p = HERE / name
+        if not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest() != digest:
+            bad.append(name)
+    if bad:
+        say(
+            "  [!!] the package is damaged or incomplete (transfer problem?). Mismatching files:"
+        )
+        for n in bad[:12]:
+            say("       " + n)
+        return False
+    say("  [ok] package integrity verified")
+    return True
 
 
 def find_app_folder(raw):
@@ -59,22 +89,20 @@ def find_web_folder(app):
         app.parent.parent / "frontend" / "web",
         app.parent / "frontend" / "web",
         app / "frontend" / "web",
-        Path.cwd() / "frontend" / "web",
-        Path.cwd() / "kav1" / "frontend" / "web",
     ):
-        if cand.is_dir():
+        if (cand / "index.html").is_file():
             return cand.resolve()
     return None
 
 
-def run_patch(patch, app, *flags):
+def run_patch(patch, folder, *flags):
     cmd = [
         sys.executable,
         str(HERE / "code_patch.py"),
         "--patch",
         str(HERE / patch),
         "--folder",
-        str(app),
+        str(folder),
         "--plain",
         "--no-pause",
         *flags,
@@ -85,24 +113,64 @@ def run_patch(patch, app, *flags):
     return res.returncode, (res.stdout + res.stderr).strip()
 
 
-def backup_db(raw):
-    src = Path(clean(raw)).expanduser()
-    if not src.is_file():
-        say("  Not a file - database backup SKIPPED.")
-        return False
-    dst = src.with_name(
-        src.name + ".before_update_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".bak"
+# ------------------------------------------------------------------ database helpers (counts only, never names)
+def table_counts(conn):
+    names = [
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+    ]
+    return {
+        t: conn.execute('SELECT COUNT(*) FROM "%s"' % t).fetchone()[0] for t in names
+    }
+
+
+def db_locked(path):
+    try:
+        conn = sqlite3.connect(str(path), timeout=0.3)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("ROLLBACK")
+            return False
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return True
+
+
+def backup_db(path):
+    dst = path.with_name(
+        path.name
+        + ".before_update_"
+        + datetime.now().strftime("%Y%m%d_%H%M%S")
+        + ".bak"
     )
-    a = sqlite3.connect("file:%s?mode=ro" % src.as_posix(), uri=True)
+    a = sqlite3.connect("file:%s?mode=ro" % path.as_posix(), uri=True)
     b = sqlite3.connect(str(dst))
     try:
         a.backup(b)
-        ok = b.execute("PRAGMA quick_check").fetchone()[0]
+        counts_a, counts_b = table_counts(a), table_counts(b)
+        ok = b.execute("PRAGMA integrity_check").fetchone()[0]
     finally:
         a.close()
         b.close()
-    say("  Database backup: %s  (check: %s)" % (dst.name, ok))
-    return ok == "ok"
+    if ok != "ok" or counts_a != counts_b:
+        raise RuntimeError("the backup copy did not verify (integrity=%s)" % ok)
+    return dst
+
+
+def import_check(backend):
+    """Does the patched server code still import? (no database access, no server start)"""
+    res = subprocess.run(
+        [sys.executable, "-c", "import app.main"],
+        cwd=str(backend),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return res.returncode == 0, (res.stdout + res.stderr).strip()
 
 
 def main():
@@ -113,6 +181,9 @@ def main():
     if sys.version_info < (3, 8):
         say("Python 3.8+ is required.")
         return 1
+    if not verify_package():
+        say("Nothing was changed. Copy the package again and re-run.")
+        return 1
     say("")
     say("Step 1. Drag the server's APP folder (backend\\app - the one with main.py and")
     say("        seed.py) into this window, then press Enter.")
@@ -120,66 +191,116 @@ def main():
     if app is None:
         say("main.py and seed.py were not found there. Nothing was changed.")
         return 1
-    say("  Using: %s" % app)
+    backend = app.parent
+    web = find_web_folder(app)
+    say("  Server code : %s" % app)
+    say("  Web pages   : %s" % (web or "NOT FOUND"))
+    if web is None:
+        say(
+            "  The web folder (frontend\\web, with index.html) was not found next to the server code."
+        )
+        say("  Drag it here, or press Enter to stop.")
+        typed = clean(ask("> "))
+        web = (
+            Path(typed).resolve()
+            if typed and (Path(typed) / "index.html").is_file()
+            else None
+        )
+        if web is None:
+            say("Stopped. Nothing was changed.")
+            return 1
 
     if revert:
-        for title, patch in reversed(PATCHES):
-            code, out = run_patch(patch, app, "--revert")
+        for title, patch, folder in (
+            ("web pages", FRONTEND_PATCH, web),
+            ("server code", BACKEND_PATCH, app),
+        ):
+            code, out = run_patch(patch, folder, "--revert")
             say("  [%s] %s" % ("ok" if code == 0 else "!!", title))
             say("      " + out.replace("\n", "\n      "))
         say(
-            "Reverted code files. routes_locations.py / locations.html may stay; data is untouched."
+            "Code files were restored from their backups. The database was NOT touched."
         )
         say("Restart the server.")
         return 0
 
+    db = backend / "local_database.db"
     say("")
-    say(
-        "Step 2. (recommended) Drag the database file local_database.db here to back it up"
-    )
-    say("        first, or just press Enter to skip.")
-    raw = ask("> ")
-    if clean(raw):
-        try:
-            if not backup_db(raw):
-                say(
-                    "  The backup check did not return ok - stopping so nothing is changed."
-                )
-                return 1
-        except Exception as e:  # noqa
-            say("  Database backup FAILED (%s). Stopping so nothing is changed." % e)
-            return 1
+    say("Step 2. Database: %s" % (db if db.is_file() else "NOT FOUND here"))
+    say("        Press Enter to use it, or drag another local_database.db here.")
+    typed = clean(ask("> "))
+    if typed:
+        db = Path(typed).resolve()
+    if not db.is_file():
+        say(
+            "  No database file: only the code will be updated (the server creates a new empty one itself)."
+        )
+        db = None
 
+    # ---------------- dry run: nothing is written in this block
     say("")
-    say(
-        "Step 3. Checking that every patch fits your files (nothing is written yet) ..."
-    )
+    say("Step 3. Dry run - nothing is written yet ...")
+    before = None
+    if db is not None:
+        if db_locked(db):
+            say(
+                "  The database is in use. STOP the Kav1 server first, then run this again."
+            )
+            return 1
+        conn = sqlite3.connect("file:%s?mode=ro" % db.as_posix(), uri=True)
+        try:
+            ok = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            before = table_counts(conn)
+            journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        finally:
+            conn.close()
+        if ok != "ok":
+            say(
+                "  The database fails its integrity check (%s). Nothing was changed - send me this screen."
+                % ok
+            )
+            return 1
+        say(
+            "  database ok - visitors: %s, log rows: %s, journal mode: %s"
+            % (before.get("visitors", "-"), before.get("visitor_logs", "-"), journal)
+        )
     bad = False
-    for title, patch in PATCHES:
-        code, out = run_patch(patch, app, "--check")
+    for title, patch, folder in (
+        ("server code", BACKEND_PATCH, app),
+        ("web pages", FRONTEND_PATCH, web),
+    ):
+        code, out = run_patch(patch, folder, "--check")
         say("  [%s] %s" % ("ok" if code == 0 else "!!", title))
         if code != 0:
             bad = True
             say("      " + out.replace("\n", "\n      "))
-    web = find_web_folder(app)
-    if web is None:
-        say("  The web folder was not found automatically.")
-        say(
-            "  Drag the folder that contains index.html (the one printed at server startup as"
-        )
-        say(
-            "  'Serving web frontend from') here, or press Enter to copy locations.html yourself."
-        )
-        typed = clean(ask("> "))
-        web = Path(typed).resolve() if typed and Path(typed).is_dir() else None
-    say("  Web folder: %s" % (web or "(you will copy locations.html by hand)"))
     if bad:
         say("")
-        say("Nothing was changed. Photograph this screen and send it.")
+        say(
+            "Nothing was changed: your files differ from the ones this update was built for."
+        )
+        say("Photograph this screen and send it.")
         return 1
 
+    want_wal = False
+    if db is not None and journal.lower() != "wal":
+        say("")
+        say(
+            "  Optional: WAL mode lets readers and writers work at the same time (fewer 'locked' waits)."
+        )
+        say(
+            "  Trade-off: the database then has side files (-wal, -shm); copy the .db only with"
+        )
+        say(
+            "  db_portability.py or the admin backup button, or after a clean shutdown."
+        )
+        want_wal = (
+            ask("  Switch to WAL mode? Type Y for yes, Enter for no: ").strip().lower()
+            == "y"
+        )
+
     if (
-        ask("\nInstall now?  Stop the server first.  Type Y to continue: ")
+        ask("\nInstall now?  The server must be stopped.  Type Y to continue: ")
         .strip()
         .lower()
         != "y"
@@ -187,34 +308,96 @@ def main():
         say("Cancelled - nothing was changed.")
         return 0
 
+    # ---------------- install
     say("")
-    for title, patch in PATCHES:
-        code, out = run_patch(patch, app, "--yes")
+    if db is not None:
+        try:
+            bak = backup_db(db)
+        except Exception as exc:  # noqa
+            say("Database backup FAILED (%s). Nothing was changed." % exc)
+            return 1
+        say("  [ok] database backup: %s (verified)" % bak.name)
+    for title, patch, folder in (
+        ("server code", BACKEND_PATCH, app),
+        ("web pages", FRONTEND_PATCH, web),
+    ):
+        code, out = run_patch(patch, folder, "--yes")
         say("  [%s] %s" % ("ok" if code == 0 else "!!", title))
         if code != 0:
             say("      " + out.replace("\n", "\n      "))
             say(
-                "Stopped. Files that were already changed have backups (.bak_*); run with --revert."
+                "Stopped. Files already changed have backups (.bak_*); run with --revert. The database is intact."
             )
             return 1
-    if web is not None:
-        target = web / "locations.html"
-        if target.is_file():
-            shutil.copy2(
-                str(target),
-                str(target) + ".bak_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+    ok_import, out = import_check(backend)
+    if (
+        not ok_import
+        and "ModuleNotFoundError" in out
+        and "No module named 'app" not in out
+    ):
+        say(
+            "  [..] import check skipped: this Python does not have the server's libraries (%s)"
+            % out.strip().splitlines()[-1]
+        )
+        ok_import = True
+    elif ok_import:
+        say("  [ok] the patched server code imports cleanly")
+    if not ok_import:
+        say("  [!!] the patched server code does not import:")
+        say("      " + out[-1500:].replace("\n", "\n      "))
+        for _t, patch, folder in (
+            ("web pages", FRONTEND_PATCH, web),
+            ("server code", BACKEND_PATCH, app),
+        ):
+            run_patch(patch, folder, "--revert")
+        say(
+            "  The code was put back automatically. The database is intact. Send me this screen."
+        )
+        return 1
+
+    if db is not None:
+        conn = sqlite3.connect(str(db))
+        try:
+            has_logs = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='visitor_logs'"
+            ).fetchone()
+            if has_logs:
+                for sql in INDEXES:
+                    conn.execute(sql)
+                say("  [ok] indexes on visitor_logs in place")
+            conn.execute("ANALYZE")
+            say("  [ok] statistics refreshed (ANALYZE)")
+            if want_wal:
+                mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+                say(
+                    "  [%s] journal mode: %s"
+                    % ("ok" if mode.lower() == "wal" else "!!", mode)
+                )
+            conn.commit()
+            after = table_counts(conn)
+            ok = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            conn.close()
+        diff = [t for t in before if after.get(t) != before[t]]
+        if diff or ok != "ok":
+            say(
+                "  [!!] VERIFICATION FAILED: integrity=%s, changed tables: %s"
+                % (ok, ", ".join(diff) or "-")
             )
-        shutil.copy2(str(HTML), str(target))
-        say("  [ok] locations.html copied to %s" % web)
-    else:
-        say("  [..] copy files\\locations.html into the web folder by hand")
+            say("       Restore the .before_update_ backup and send me this screen.")
+            return 1
+        say(
+            "  [ok] verified: every table has the same number of rows as before (visitors %d, log rows %d), integrity ok"
+            % (after.get("visitors", 0), after.get("visitor_logs", 0))
+        )
 
     say("")
     say("-" * 70)
     say(
-        "DONE. Now: start the server, log in as admin, open  /locations.html  and tick 'Enable'."
+        "DONE. Start the server (run_server.bat). The first start adds the new tables and"
     )
-    say("The role permissions fix is active from the first restart.")
+    say("permissions by itself. Then, as admin: Settings > 'Optional features'.")
+    say("To undo the code changes: UNDO.bat. Your data is never modified or deleted.")
     say("-" * 70)
     return 0
 

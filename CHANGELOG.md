@@ -8,6 +8,13 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 
 ## [Unreleased]
 
+### Update package for the production system (`tools/build_package.py`)
+- **Fixed** role permissions shrinking after a restart: `migrate_db.py` (run by `run_server.bat` at every start) held an old 12-permission list and deleted the other 9, which also removed them from every non-admin role. It now carries all 21 and never deletes; `seed.py` no longer deletes either.
+- **Fixed** hangs/slowness: indexes on `visitor_logs`, one grouped query for `/visitors/inside`, blocking writes moved off the event loop, `busy_timeout`, optional WAL (clean-shutdown checkpoint).
+- **Fixed** `PUT /visitors/{id}` without `properties` wiping them; restore now uses the online-backup API, releases pooled connections, removes stale `-wal/-shm` and reports visitor counts.
+- **Added** the database path printed at start (`KAV1_DB` override), `tools/db_portability.py` (check / export / import, never drops visitors), `tools/install_update.py` (dry run, verified backup, row-count verification, auto-revert).
+- **Added** additive visitor features (latest entry first, project, expiry badges, information-security select, optional grouping, optional "Control & Locations") behind admin switches, design unchanged; docs in `docs/package/`.
+
 ### Added
 - `tools/install_update.py`: one-click installer for the seed.py fix + locations feature (DB backup, all-patches check, ordered install, `--revert`)
 - Optional feature **"שליטה ומיקומים"** (control & locations): escort + location rows per project, uploaded maps stored in the DB, points placed on a map, admin switches for the feature and for "group list by project" (`backend/production_modules/locations`, patch `tools/patches/locations_feature.patch.json`); `code_patch.py` can now create new files
