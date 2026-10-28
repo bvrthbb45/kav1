@@ -48,7 +48,7 @@ def main():
     )
     for name in ("install_update.py", "code_patch.py", "db_portability.py"):
         shutil.copy2(HERE / name, pkg / name)
-    for name in ("INSTALL.bat", "UNDO.bat", "DB_PORTABILITY.bat"):
+    for name in ("INSTALL.bat", "DRY_RUN.bat", "UNDO.bat", "DB_PORTABILITY.bat"):
         shutil.copy2(HERE / "windows" / name, pkg / name)
 
     # ready files + the table for the README

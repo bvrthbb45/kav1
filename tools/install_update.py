@@ -11,6 +11,7 @@ Installs, in this order, into the production system (after a database backup and
 Nothing is ever deleted. Visitors and their logs are counted before and after.
 
   python install_update.py             install
+  python install_update.py --dry-run   only check everything (writes nothing)
   python install_update.py --revert    put the code backups back (the database is never touched)
 Output is plain ASCII so it is readable on any Windows console.
 """
@@ -160,6 +161,29 @@ def backup_db(path):
     return dst
 
 
+def test_copy(path):
+    """Copy the database to a temporary file with the online-backup API, verify it, delete it.
+
+    Proves that a real backup of THIS database works (space, permissions, integrity, row counts)
+    without touching the database or leaving anything behind."""
+    import tempfile
+
+    tmp = Path(tempfile.mkdtemp(prefix="kav1_dryrun_"))
+    dst = tmp / "copy.db"
+    a = sqlite3.connect("file:%s?mode=ro" % path.as_posix(), uri=True)
+    b = sqlite3.connect(str(dst))
+    try:
+        a.backup(b)
+        same = table_counts(a) == table_counts(b)
+        ok = b.execute("PRAGMA integrity_check").fetchone()[0]
+        size = dst.stat().st_size
+    finally:
+        a.close()
+        b.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+    return ok == "ok" and same, size
+
+
 def import_check(backend):
     """Does the patched server code still import? (no database access, no server start)"""
     res = subprocess.run(
@@ -175,6 +199,7 @@ def import_check(backend):
 
 def main():
     revert = "--revert" in sys.argv
+    dry_run = "--dry-run" in sys.argv
     say("=" * 70)
     say("Kav1 update installer  -  " + datetime.now().strftime("%Y-%m-%d %H:%M"))
     say("=" * 70)
@@ -264,6 +289,16 @@ def main():
             "  database ok - visitors: %s, log rows: %s, journal mode: %s"
             % (before.get("visitors", "-"), before.get("visitor_logs", "-"), journal)
         )
+        copied, size = test_copy(db)
+        say(
+            "  [%s] test copy of the database: %s (%d KB; integrity and row counts match; the copy was deleted)"
+            % ("ok" if copied else "!!", "works" if copied else "FAILED", size // 1024)
+        )
+        if not copied:
+            say(
+                "  A backup of this database does not verify. Nothing was changed - send me this screen."
+            )
+            return 1
     bad = False
     for title, patch, folder in (
         ("server code", BACKEND_PATCH, app),
@@ -281,6 +316,16 @@ def main():
         )
         say("Photograph this screen and send it.")
         return 1
+
+    if dry_run:
+        say("")
+        say("-" * 70)
+        say(
+            "DRY RUN ONLY: everything above checked out and NOTHING was written or changed."
+        )
+        say("To install for real, run INSTALL.bat.")
+        say("-" * 70)
+        return 0
 
     want_wal = False
     if db is not None and journal.lower() != "wal":
