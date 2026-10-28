@@ -28,7 +28,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
-from . import models, database
+from . import models, database, settings_store
 from .dependencies import get_current_user, require_permission
 
 VIEW_PERMISSION = "locations.view"
@@ -227,12 +227,20 @@ def put_flags(
     _user: models.User = Depends(require_permission(SETTINGS_PERMISSION)),
     db: Session = Depends(database.get_db),
 ):
+    changes = []
+
+    def _on_off(label, value):
+        changes.append("%s: %s" % (label, "הופעל" if value else "כובה"))
+
     if payload.locations_enabled is not None:
         _set_flag(db, FLAG_LOCATIONS, payload.locations_enabled)
+        _on_off("שליטה ומיקומים", payload.locations_enabled)
     if payload.group_by_project is not None:
         _set_flag(db, FLAG_GROUPING, payload.group_by_project)
+        _on_off("קיבוץ לפי פרויקט", payload.group_by_project)
     if payload.require_infosec is not None:
         _set_flag(db, FLAG_REQUIRE_INFOSEC, payload.require_infosec)
+        _on_off("חובה לבחור אבטחת מידע", payload.require_infosec)
     if payload.expiry_days is not None:
         if payload.expiry_days not in ALLOWED_EXPIRY_DAYS:
             raise HTTPException(
@@ -240,7 +248,10 @@ def put_flags(
                 detail="expiry_days must be one of %s" % (ALLOWED_EXPIRY_DAYS,),
             )
         _set_text(db, KEY_EXPIRY_DAYS, str(payload.expiry_days))
+        changes.append("ימי התראת תוקף: %d" % payload.expiry_days)
     db.commit()
+    if changes:
+        settings_store.audit(db, _user, "features.update", "; ".join(changes))
     return get_flags(_user, db)
 
 
@@ -287,6 +298,7 @@ async def upload_map(
     row = LocationMap(name=name, content_type=content_type, data=body)
     db.add(row)
     db.commit()
+    settings_store.audit(db, _user, "map.upload", "הועלתה מפה: %s" % name)
     return {"id": row.id, "name": row.name}
 
 
@@ -316,8 +328,10 @@ def rename_map(
     row = db.get(LocationMap, map_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Not found")
+    old_name = row.name
     row.name = _clean(payload.name, "name", required=True)
     db.commit()
+    settings_store.audit(db, _user, "map.rename", "%s ← %s" % (old_name, row.name))
     return {"id": row.id, "name": row.name}
 
 
@@ -335,8 +349,10 @@ def delete_map(
         e.map_id = None
         e.x = None
         e.y = None
+    map_name = row.name
     db.delete(row)
     db.commit()
+    settings_store.audit(db, _user, "map.delete", "נמחקה מפה: %s" % map_name)
     return {"detail": "deleted"}
 
 
