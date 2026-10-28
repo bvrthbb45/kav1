@@ -23,8 +23,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PATCHES = [
     (
-        "seed.py - keep permissions at startup",
-        "patches/seed_keep_permissions.patch.json",
+        "permissions fix: migrate_db.py (root cause) + seed.py",
+        "patches/permissions_fix.patch.json",
     ),
     ("control & locations feature", "patches/locations_feature.patch.json"),
 ]
