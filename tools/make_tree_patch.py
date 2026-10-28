@@ -94,23 +94,23 @@ def build(orig, new, prefix_map):
     return entries
 
 
-def main():
-    orig, new, out = (Path(x).resolve() for x in sys.argv[1:4])
-    out.mkdir(parents=True, exist_ok=True)
+def make_set(orig, new, out, suffix):
+    """backend{suffix}.patch.json / frontend{suffix}.patch.json for orig -> new, self-checked."""
     pm_back = {
         "app": ("backend/app/", ""),
         "mig": ("backend/migrate_db.py", "../migrate_db.py"),
     }
-    # backend/app/* -> "X"; backend/migrate_db.py -> "../migrate_db.py"
     back = build(orig, new, pm_back)
     back_files = back["app"] + [dict(e, path="../migrate_db.py") for e in back["mig"]]
     front = build(orig, new, {"web": ("frontend/web/", "")})["web"]
     names = {
-        "backend.patch.json": (
+        "backend%s.patch.json"
+        % suffix: (
             "Kav1 update: backend (permissions fix, database settings, visitor additions, optional features)",
             back_files,
         ),
-        "frontend.patch.json": (
+        "frontend%s.patch.json"
+        % suffix: (
             "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
             front,
         ),
@@ -122,19 +122,21 @@ def main():
             encoding="utf-8",
         )
         print("wrote", out / fname, "(%d files)" % len(files))
-    # self-check
     here = Path(__file__).resolve().parent
     tmp = Path(tempfile.mkdtemp())
     try:
         shutil.copytree(
             orig,
             tmp / "k",
-            ignore=shutil.ignore_patterns("__pycache__", "*.bak", "visitor_logs"),
+            ignore=shutil.ignore_patterns(
+                "__pycache__", "*.bak", "*.bak_*", "visitor_logs", "*.db*"
+            ),
         )
-        for fname, folder in (
-            ("backend.patch.json", tmp / "k/backend/app"),
-            ("frontend.patch.json", tmp / "k/frontend/web"),
-        ):
+        pairs = (
+            ("backend%s.patch.json" % suffix, tmp / "k/backend/app"),
+            ("frontend%s.patch.json" % suffix, tmp / "k/frontend/web"),
+        )
+        for fname, folder in pairs:
             r = subprocess.run(
                 [
                     sys.executable,
@@ -159,11 +161,7 @@ def main():
             t = tmp / "k" / rel
             if not t.exists() or read(t) != read(new / rel):
                 bad.append(str(rel))
-        # second run must change nothing (idempotent)
-        for fname, folder in (
-            ("backend.patch.json", tmp / "k/backend/app"),
-            ("frontend.patch.json", tmp / "k/frontend/web"),
-        ):
+        for fname, folder in pairs:
             r = subprocess.run(
                 [
                     sys.executable,
@@ -184,10 +182,21 @@ def main():
         if bad:
             raise SystemExit("self-check FAILED: " + ", ".join(bad))
         print(
-            "self-check ok: ORIG + patches == NEW (byte for byte), second run changes nothing"
+            "self-check ok (%s): applying the patches gives NEW byte for byte, a second run changes nothing"
+            % (suffix or "orig")
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def main():
+    orig, new, out = (Path(x).resolve() for x in sys.argv[1:4])
+    out.mkdir(parents=True, exist_ok=True)
+    make_set(orig, new, out, "")
+    if (
+        len(sys.argv) > 4
+    ):  # an earlier version of the update that may already be installed
+        make_set(Path(sys.argv[4]).resolve(), new, out, ".upgrade")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,18 @@
+{
+ "name": "Kav1 update: backend (permissions fix, database settings, visitor additions, optional features)",
+ "files": [
+  {
+   "path": "main.py",
+   "replace": [
+    {
+     "old": "\n# API routers first - these take priority over the static mount.\n",
+     "new": "\n\nclass _RevalidatingStaticFiles(StaticFiles):\n    \"\"\"Static files that the browser re-checks on every load (cheap: 304 when unchanged).\n\n    Without this, a browser may keep serving an old kav1.js for days after an update, and the\n    new pages then break. (Found the hard way.)\"\"\"\n\n    async def get_response(self, path, scope):\n        response = await super().get_response(path, scope)\n        response.headers[\"Cache-Control\"] = \"no-cache\"\n        return response\n\n\n# API routers first - these take priority over the static mount.\n"
+    },
+    {
+     "old": "    print(f\"[Kav1] Serving web frontend from: {_WEB_DIR}\")\n    app.mount(\"/\", StaticFiles(directory=_WEB_DIR, html=True), name=\"web\")\nelse:\n",
+     "new": "    print(f\"[Kav1] Serving web frontend from: {_WEB_DIR}\")\n    app.mount(\"/\", _RevalidatingStaticFiles(directory=_WEB_DIR, html=True), name=\"web\")\nelse:\n"
+    }
+   ]
+  }
+ ]
+}

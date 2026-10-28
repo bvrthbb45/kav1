@@ -17,6 +17,7 @@ Output is plain ASCII so it is readable on any Windows console.
 """
 
 import hashlib
+import json
 import shutil
 import sqlite3
 import subprocess
@@ -27,6 +28,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 BACKEND_PATCH = "patches/backend.patch.json"
 FRONTEND_PATCH = "patches/frontend.patch.json"
+STATE_FILE = "kav1_update_last.json"
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_visitor_logs_visitor_dbid_timestamp ON visitor_logs (visitor_dbid, timestamp)",
     "CREATE INDEX IF NOT EXISTS ix_visitor_logs_timestamp ON visitor_logs (timestamp)",
@@ -94,6 +96,24 @@ def find_web_folder(app):
         if (cand / "index.html").is_file():
             return cand.resolve()
     return None
+
+
+def pick_patch(patch, folder):
+    """The patch to use for a folder: the full one, or - when this system already has an earlier
+    version of this update - the upgrade patch. Returns (patch, note) or (None, output of the failure).
+    """
+    code, out = run_patch(patch, folder, "--check")
+    if code == 0:
+        return patch, ""
+    upgrade = patch.replace(".patch.json", ".upgrade.patch.json")
+    if (HERE / upgrade).is_file():
+        code2, out2 = run_patch(upgrade, folder, "--check")
+        if code2 == 0:
+            return (
+                upgrade,
+                "(an earlier version of this update was found: upgrading it)",
+            )
+    return None, out
 
 
 def run_patch(patch, folder, *flags):
@@ -236,10 +256,13 @@ def main():
             return 1
 
     if revert:
-        for title, patch, folder in (
-            ("web pages", FRONTEND_PATCH, web),
-            ("server code", BACKEND_PATCH, app),
-        ):
+        todo = [("web pages", FRONTEND_PATCH, web), ("server code", BACKEND_PATCH, app)]
+        try:  # revert exactly what the last install applied (full or upgrade patch)
+            last = json.loads((backend / STATE_FILE).read_text(encoding="utf-8"))
+            todo = [(t, p, Path(f)) for t, p, f in reversed(last["patches"])]
+        except (OSError, ValueError, KeyError):
+            pass
+        for title, patch, folder in todo:
             code, out = run_patch(patch, folder, "--revert")
             say("  [%s] %s" % ("ok" if code == 0 else "!!", title))
             say("      " + out.replace("\n", "\n      "))
@@ -300,15 +323,18 @@ def main():
             )
             return 1
     bad = False
+    chosen = []
     for title, patch, folder in (
         ("server code", BACKEND_PATCH, app),
         ("web pages", FRONTEND_PATCH, web),
     ):
-        code, out = run_patch(patch, folder, "--check")
-        say("  [%s] %s" % ("ok" if code == 0 else "!!", title))
-        if code != 0:
+        picked, note = pick_patch(patch, folder)
+        say("  [%s] %s %s" % ("ok" if picked else "!!", title, note if picked else ""))
+        if picked:
+            chosen.append((title, picked, folder))
+        else:
             bad = True
-            say("      " + out.replace("\n", "\n      "))
+            say("      " + note.replace("\n", "\n      "))
     if bad:
         say("")
         say(
@@ -362,10 +388,7 @@ def main():
             say("Database backup FAILED (%s). Nothing was changed." % exc)
             return 1
         say("  [ok] database backup: %s (verified)" % bak.name)
-    for title, patch, folder in (
-        ("server code", BACKEND_PATCH, app),
-        ("web pages", FRONTEND_PATCH, web),
-    ):
+    for title, patch, folder in chosen:
         code, out = run_patch(patch, folder, "--yes")
         say("  [%s] %s" % ("ok" if code == 0 else "!!", title))
         if code != 0:
@@ -390,15 +413,20 @@ def main():
     if not ok_import:
         say("  [!!] the patched server code does not import:")
         say("      " + out[-1500:].replace("\n", "\n      "))
-        for _t, patch, folder in (
-            ("web pages", FRONTEND_PATCH, web),
-            ("server code", BACKEND_PATCH, app),
-        ):
+        for _t, patch, folder in reversed(chosen):
             run_patch(patch, folder, "--revert")
         say(
             "  The code was put back automatically. The database is intact. Send me this screen."
         )
         return 1
+
+    try:
+        (backend / STATE_FILE).write_text(
+            json.dumps({"patches": [[t, p, str(f)] for t, p, f in chosen]}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
     if db is not None:
         conn = sqlite3.connect(str(db))

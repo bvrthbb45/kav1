@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Assembles the final update package (a folder and a zip) from the original and the updated source trees.
 
-  python build_package.py ORIG_KAV1_DIR NEW_KAV1_DIR OUT_DIR
+  python build_package.py ORIG_KAV1_DIR NEW_KAV1_DIR OUT_DIR [PREV_KAV1_DIR]
+
+PREV is an earlier version of the update (already installed somewhere): an extra *.upgrade.patch.json
+is built so that INSTALL.bat also works on a system that already has it.
 
 ORIG / NEW are the project roots that contain backend/ and frontend/. The package contains:
   INSTALL.bat UNDO.bat DB_PORTABILITY.bat      one-click wrappers
@@ -43,12 +46,24 @@ def main():
             str(orig),
             str(new),
             str(pkg / "patches"),
-        ],
+        ]
+        + ([str(Path(sys.argv[4]).resolve())] if len(sys.argv) > 4 else []),
         check=True,
     )
-    for name in ("install_update.py", "code_patch.py", "db_portability.py"):
+    for name in (
+        "install_update.py",
+        "code_patch.py",
+        "db_portability.py",
+        "db_keys_report.py",
+    ):
         shutil.copy2(HERE / name, pkg / name)
-    for name in ("INSTALL.bat", "DRY_RUN.bat", "UNDO.bat", "DB_PORTABILITY.bat"):
+    for name in (
+        "INSTALL.bat",
+        "DRY_RUN.bat",
+        "UNDO.bat",
+        "DB_PORTABILITY.bat",
+        "DB_KEYS_REPORT.bat",
+    ):
         shutil.copy2(HERE / "windows" / name, pkg / name)
 
     # ready files + the table for the README

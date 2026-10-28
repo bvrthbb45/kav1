@@ -30,12 +30,12 @@
      "new": "        run_seed(db)\n        ensure_locations_permissions(db)\n    finally:\n"
     },
     {
-     "old": "    yield\n\n",
-     "new": "    yield\n\n    # clean shutdown: merge a WAL-mode database's side file back into the main file, so\n    # the single .db file is complete when it is copied\n    try:\n        with engine.connect() as _conn:\n            _conn.exec_driver_sql(\"PRAGMA wal_checkpoint(TRUNCATE)\")\n    except Exception:\n        pass\n\n"
+     "old": "\n\napp = FastAPI(lifespan=lifespan)\n\n# API routers first - these take priority over the static mount.\napp.include_router(auth_router)\napp.include_router(admin_router)\n",
+     "new": "\n    # clean shutdown: merge a WAL-mode database's side file back into the main file, so\n    # the single .db file is complete when it is copied\n    try:\n        with engine.connect() as _conn:\n            _conn.exec_driver_sql(\"PRAGMA wal_checkpoint(TRUNCATE)\")\n    except Exception:\n        pass\n\n\napp = FastAPI(lifespan=lifespan)\n\n\nclass _RevalidatingStaticFiles(StaticFiles):\n    \"\"\"Static files that the browser re-checks on every load (cheap: 304 when unchanged).\n\n    Without this, a browser may keep serving an old kav1.js for days after an update, and the\n    new pages then break. (Found the hard way.)\"\"\"\n\n    async def get_response(self, path, scope):\n        response = await super().get_response(path, scope)\n        response.headers[\"Cache-Control\"] = \"no-cache\"\n        return response\n\n\n# API routers first - these take priority over the static mount.\napp.include_router(auth_router)\n# extras BEFORE the visitor router: /visitors/overview must not be read as /visitors/{id}\napp.include_router(extras_router)\napp.include_router(locations_router)\napp.include_router(admin_router)\n"
     },
     {
-     "old": "app.include_router(auth_router)\napp.include_router(admin_router)\n",
-     "new": "app.include_router(auth_router)\n# extras BEFORE the visitor router: /visitors/overview must not be read as /visitors/{id}\napp.include_router(extras_router)\napp.include_router(locations_router)\napp.include_router(admin_router)\n"
+     "old": "    print(f\"[Kav1] Serving web frontend from: {_WEB_DIR}\")\n    app.mount(\"/\", StaticFiles(directory=_WEB_DIR, html=True), name=\"web\")\nelse:\n",
+     "new": "    print(f\"[Kav1] Serving web frontend from: {_WEB_DIR}\")\n    app.mount(\"/\", _RevalidatingStaticFiles(directory=_WEB_DIR, html=True), name=\"web\")\nelse:\n"
     }
    ]
   },
