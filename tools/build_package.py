@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assembles the final update package (a folder and a zip) from the original and the updated source trees.
 
-  python build_package.py ORIG_KAV1_DIR NEW_KAV1_DIR OUT_DIR [PREV_KAV1_DIR]
+  python build_package.py ORIG_KAV1_DIR NEW_KAV1_DIR OUT_DIR [PREV_KAV1_DIR ...]
 
 PREV is an earlier version of the update (already installed somewhere): an extra *.upgrade.patch.json
 is built so that INSTALL.bat also works on a system that already has it.
@@ -47,7 +47,7 @@ def main():
             str(new),
             str(pkg / "patches"),
         ]
-        + ([str(Path(sys.argv[4]).resolve())] if len(sys.argv) > 4 else []),
+        + [str(Path(a).resolve()) for a in sys.argv[4:]],
         check=True,
     )
     for name in (

@@ -1,0 +1,14 @@
+{
+ "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
+ "files": [
+  {
+   "path": "visitors.html",
+   "replace": [
+    {
+     "old": "            infosec: [\"אבטחת מידע\"],\n            approval: [\"תוקף אישור\", \"תוקף אבטחת מידע\", \"תאריך תום אישור\"],\n            cls: ['תוקף סב\"ט', \"תוקף סב״ט\", \"תוקף סיווג\", \"תוקף סיווג בטחוני\"],\n          };\n          const props = Object.assign({}, v.properties || {});\n          const find = (field) => Object.keys(props).find(k => ALIASES[field].includes(k.trim()) || ALIASES[field].includes(k.trim().toLowerCase()));\n          const o = this.ov[v.dbid] || {};\n",
+     "new": "            infosec: [\"אבטחת מידע\"],\n            approval: [\"תוקף אישור\", \"תאריך תום אישור\"],\n            cls: ['תוקף סב\"ט', \"תוקף סב״ט\", \"תוקף סיווג\", \"תוקף סיווג בטחוני\"],\n          };\n          const props = Object.assign({}, v.properties || {});\n          // aliases are in order of preference: the first one that holds a value wins\n          const find = (field) => {\n            const keys = Object.keys(props);\n            const hit = (a) => keys.filter(k => k.trim() === a || k.trim().toLowerCase() === a);\n            for (const a of ALIASES[field]) {\n              const k = hit(a).find(x => String(props[x] == null ? \"\" : props[x]).trim() !== \"\");\n              if (k !== undefined) return k;\n            }\n            for (const a of ALIASES[field]) { const k = hit(a)[0]; if (k !== undefined) return k; }   // present but empty\n            return undefined;\n          };\n          const o = this.ov[v.dbid] || {};\n"
+    }
+   ]
+  }
+ ]
+}

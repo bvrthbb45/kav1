@@ -105,8 +105,9 @@ def pick_patch(patch, folder):
     code, out = run_patch(patch, folder, "--check")
     if code == 0:
         return patch, ""
-    upgrade = patch.replace(".patch.json", ".upgrade.patch.json")
-    if (HERE / upgrade).is_file():
+    stem = Path(patch).name.replace(".patch.json", "")
+    for f in sorted((HERE / "patches").glob(stem + ".upgrade*.patch.json")):
+        upgrade = "patches/" + f.name
         code2, out2 = run_patch(upgrade, folder, "--check")
         if code2 == 0:
             return (

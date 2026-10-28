@@ -1,0 +1,35 @@
+{
+ "name": "Kav1 update: backend (permissions fix, database settings, visitor additions, optional features)",
+ "files": [
+  {
+   "path": "main.py",
+   "replace": [
+    {
+     "old": "\n# API routers first - these take priority over the static mount.\n",
+     "new": "\n\nclass _RevalidatingStaticFiles(StaticFiles):\n    \"\"\"Static files that the browser re-checks on every load (cheap: 304 when unchanged).\n\n    Without this, a browser may keep serving an old kav1.js for days after an update, and the\n    new pages then break. (Found the hard way.)\"\"\"\n\n    async def get_response(self, path, scope):\n        response = await super().get_response(path, scope)\n        response.headers[\"Cache-Control\"] = \"no-cache\"\n        return response\n\n\n# API routers first - these take priority over the static mount.\n"
+    },
+    {
+     "old": "    print(f\"[Kav1] Serving web frontend from: {_WEB_DIR}\")\n    app.mount(\"/\", StaticFiles(directory=_WEB_DIR, html=True), name=\"web\")\nelse:\n",
+     "new": "    print(f\"[Kav1] Serving web frontend from: {_WEB_DIR}\")\n    app.mount(\"/\", _RevalidatingStaticFiles(directory=_WEB_DIR, html=True), name=\"web\")\nelse:\n"
+    }
+   ]
+  },
+  {
+   "path": "visitor_extras.py",
+   "replace": [
+    {
+     "old": "INFOSEC_EXPIRY_KEY = \"תוקף אישור\"\nINFOSEC_EXPIRY_ALIASES = (\"תוקף אישור\", \"תוקף אבטחת מידע\", \"תאריך תום אישור\")\nINFOSEC_APPROVED = \"מאושר\"\n",
+     "new": "INFOSEC_EXPIRY_KEY = \"תוקף אישור\"\nINFOSEC_EXPIRY_ALIASES = (\n    \"תוקף אישור\",\n    \"תאריך תום אישור\",\n)  # in this order of preference\nINFOSEC_APPROVED = \"מאושר\"\n"
+    },
+    {
+     "old": "        return None\n    wanted = {a.strip().lower() for a in aliases}\n    for key in properties:\n        if str(key).strip().lower() in wanted:\n            return key\n    return None\n",
+     "new": "        return None\n    # aliases are in order of preference: the first alias that holds a value wins, so a visitor that\n    # has both \"תוקף אישור\" and the older \"תאריך תום אישור\" shows the current one\n    names = [a.strip().lower() for a in aliases]\n    matches = {}\n    for key, value in properties.items():\n        name = str(key).strip().lower()\n        if name in names:\n            matches.setdefault(name, []).append((key, value))\n    for name in names:\n        for key, value in matches.get(name, []):\n            if _text(value) is not None:\n                return key\n    for name in names:  # present but empty\n        if matches.get(name):\n            return matches[name][0][0]\n    return None\n"
+    },
+    {
+     "old": "        return None\n    wanted = {k.strip().lower() for k in ([keys] if isinstance(keys, str) else keys)}\n    for key, value in properties.items():\n        if str(key).strip().lower() in wanted:\n            text = _text(value)\n            if text:\n                return text\n    return None\n\n",
+     "new": "        return None\n    key = find_key(properties, [keys] if isinstance(keys, str) else keys)\n    return _text(properties[key]) if key is not None else None\n\n"
+    }
+   ]
+  }
+ ]
+}

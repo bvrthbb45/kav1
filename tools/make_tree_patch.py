@@ -193,10 +193,10 @@ def main():
     orig, new, out = (Path(x).resolve() for x in sys.argv[1:4])
     out.mkdir(parents=True, exist_ok=True)
     make_set(orig, new, out, "")
-    if (
-        len(sys.argv) > 4
-    ):  # an earlier version of the update that may already be installed
-        make_set(Path(sys.argv[4]).resolve(), new, out, ".upgrade")
+    for i, prev in enumerate(
+        sys.argv[4:], 1
+    ):  # earlier versions that may already be installed
+        make_set(Path(prev).resolve(), new, out, ".upgrade%d" % i)
 
 
 if __name__ == "__main__":

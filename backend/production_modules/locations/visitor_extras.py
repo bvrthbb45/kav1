@@ -46,7 +46,10 @@ CLASSIFICATION_EXPIRY_ALIASES = (
 # the status is "not approved".
 INFOSEC_KEY = "אבטחת מידע"
 INFOSEC_EXPIRY_KEY = "תוקף אישור"
-INFOSEC_EXPIRY_ALIASES = ("תוקף אישור", "תוקף אבטחת מידע", "תאריך תום אישור")
+INFOSEC_EXPIRY_ALIASES = (
+    "תוקף אישור",
+    "תאריך תום אישור",
+)  # in this order of preference
 INFOSEC_APPROVED = "מאושר"
 INFOSEC_EXCEPTION = "מאושר חריג על ידי מפקד היחידה"
 INFOSEC_DENIED = "לא מאושר"
@@ -78,10 +81,21 @@ def find_key(properties, aliases) -> Optional[str]:
     """The key actually present in `properties` for any alias, else None."""
     if not properties:
         return None
-    wanted = {a.strip().lower() for a in aliases}
-    for key in properties:
-        if str(key).strip().lower() in wanted:
-            return key
+    # aliases are in order of preference: the first alias that holds a value wins, so a visitor that
+    # has both "תוקף אישור" and the older "תאריך תום אישור" shows the current one
+    names = [a.strip().lower() for a in aliases]
+    matches = {}
+    for key, value in properties.items():
+        name = str(key).strip().lower()
+        if name in names:
+            matches.setdefault(name, []).append((key, value))
+    for name in names:
+        for key, value in matches.get(name, []):
+            if _text(value) is not None:
+                return key
+    for name in names:  # present but empty
+        if matches.get(name):
+            return matches[name][0][0]
     return None
 
 
@@ -89,13 +103,8 @@ def get_value(properties, keys) -> Optional[str]:
     """First non-empty value stored under any of `keys` (aliases), as text."""
     if not properties:
         return None
-    wanted = {k.strip().lower() for k in ([keys] if isinstance(keys, str) else keys)}
-    for key, value in properties.items():
-        if str(key).strip().lower() in wanted:
-            text = _text(value)
-            if text:
-                return text
-    return None
+    key = find_key(properties, [keys] if isinstance(keys, str) else keys)
+    return _text(properties[key]) if key is not None else None
 
 
 def get_project(properties) -> Optional[str]:

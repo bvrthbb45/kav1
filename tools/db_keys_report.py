@@ -24,7 +24,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 PROJECT_KEYS = ("פרויקט", "פרויקטים", "project", "projects")
-APPROVAL_KEYS = ("תוקף אישור", "תוקף אבטחת מידע", "תאריך תום אישור")
+APPROVAL_KEYS = ("תוקף אישור", "תאריך תום אישור")  # in this order of preference
 CLASSIFICATION_KEYS = ('תוקף סב"ט', "תוקף סב״ט", "תוקף סיווג", "תוקף סיווג בטחוני")
 INFOSEC_KEYS = ("אבטחת מידע",)
 OPTIONS = ("מאושר", "מאושר חריג על ידי מפקד היחידה", "לא מאושר")
@@ -63,9 +63,11 @@ def pattern(text):
 
 
 def find_value(props, names):
-    wanted = {n.strip().lower() for n in names}
-    for k, v in props.items():
-        if str(k).strip().lower() in wanted and v is not None and str(v).strip():
+    """First non-empty value, trying the names in order of preference."""
+    lowered = {str(k).strip().lower(): v for k, v in props.items()}
+    for n in names:
+        v = lowered.get(n.strip().lower())
+        if v is not None and str(v).strip():
             return str(v).strip()
     return None
 
