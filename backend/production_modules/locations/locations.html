@@ -4,10 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kav1 - שליטה ומיקומים</title>
-  <link rel="stylesheet" href="static/css/kav1.css">
+  <link rel="stylesheet" href="static/css/kav1.css?v=20261029">
   <style>
-    .split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+    .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+    .stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
     .stage { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; line-height: 0; display: inline-block; max-width: 100%; }
     .stage img { display: block; max-width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
     .stage.placing { outline: 2px dashed var(--accent); cursor: crosshair; }
@@ -18,6 +19,9 @@
     tr.sel td { background: #2f3b4d; }
     tr.clickable { cursor: pointer; }
     .wrap { flex-wrap: wrap; }
+    .pool-table td input[type=text] { min-width: 110px; }
+    .sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    h3.sec { font-size: 15px; margin: 0 0 10px; color: var(--text-bright); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -46,6 +50,7 @@
       <div class="page-head">
         <h1>שליטה ומיקומים</h1>
         <div class="row">
+          <span class="badge badge-active" x-text="canManage() ? 'ניהול פאנל' : 'הפעלה'"></span>
           <select x-model="projFilter" style="width:170px;">
             <option value="">כל הפרויקטים</option>
             <template x-for="p in projects" :key="p"><option :value="p" x-text="p"></option></template>
@@ -58,6 +63,7 @@
       </template>
 
       <template x-if="loaded && enabled">
+        <div style="display:grid;gap:16px;">
         <div class="split">
           <!-- map -->
           <div class="card">
@@ -65,27 +71,25 @@
               <select x-model.number="mapId" x-effect="$nextTick(() => $el.value = mapId)" style="width:180px;" @change="selectMap()">
                 <template x-for="m in maps" :key="m.id"><option :value="m.id" x-text="m.name"></option></template>
               </select>
-              <template x-if="canEdit()">
+              <template x-if="canManage()">
                 <div class="row wrap">
                   <button class="btn btn-sm" @click="renameMap()" :disabled="!mapId">שינוי שם</button>
                   <button class="btn btn-sm btn-danger" @click="deleteMap()" :disabled="!mapId">מחיקת מפה</button>
                 </div>
               </template>
             </div>
-            <template x-if="canEdit()">
+            <template x-if="canManage()">
               <div class="row wrap" style="margin-bottom:10px;">
                 <input type="file" accept="image/png,image/jpeg" @change="onFile($event)" style="font-size:13px;width:auto;">
                 <input type="text" x-model="newMapName" placeholder="שם למפה" style="width:150px;">
                 <button class="btn btn-primary btn-sm" @click="uploadMap()" :disabled="!file">העלאת מפה</button>
               </div>
             </template>
-            <template x-if="canEdit()">
-              <div class="row wrap" style="margin-bottom:10px;">
-                <button class="btn btn-sm" @click="startPlace()" :disabled="!selected || !mapId">מקם נקודה לשורה שנבחרה</button>
-                <button class="btn btn-sm" @click="clearPoint()" :disabled="!selected || selected.x == null">הסר נקודה</button>
-                <span class="muted" style="font-size:12px;" x-text="hint"></span>
-              </div>
-            </template>
+            <div class="row wrap" style="margin-bottom:10px;">
+              <button class="btn btn-sm" @click="startPlace()" :disabled="!selected || !mapId">מקם נקודה לשורה שנבחרה</button>
+              <button class="btn btn-sm" @click="clearPoint()" :disabled="!selected || selected.x == null">הסר נקודה</button>
+              <span class="muted" style="font-size:12px;" x-text="hint"></span>
+            </div>
             <p x-show="msg" x-text="msg" :style="'font-size:13px;margin:0 0 10px;color:' + (msgErr ? 'var(--danger)' : 'var(--success)')"></p>
             <template x-if="mapId">
               <div class="stage" :class="placing ? 'placing' : ''" @click="onStage($event)" x-ref="stage">
@@ -96,68 +100,120 @@
                 </template>
               </div>
             </template>
-            <template x-if="!mapId"><p class="muted">אין מפה להצגה.</p></template>
+            <template x-if="!mapId"><p class="muted">אין מפה להצגה.<span x-show="canManage()"> אפשר להעלות מפה למעלה.</span></p></template>
           </div>
 
-          <!-- escorts and locations -->
-          <div class="card">
-            <template x-if="canEdit()">
+          <div class="stack">
+            <!-- placements: project + escort + location -->
+            <div class="card">
+              <h3 class="sec">הצבות: פרויקט, מלווה ומיקום</h3>
               <div class="row wrap" style="margin-bottom:10px;">
                 <input type="text" x-model="nProj" placeholder="פרויקט" list="locProjects" style="flex:1;min-width:90px;">
                 <datalist id="locProjects"><template x-for="p in projects" :key="p"><option :value="p"></option></template></datalist>
-                <input type="text" x-model="nEsc" placeholder="מלווה" style="flex:1;min-width:90px;">
+                <select x-model.number="nEscId" style="flex:1;min-width:120px;">
+                  <option value="">מלווה: טקסט חופשי</option>
+                  <template x-for="p in activePool" :key="p.id"><option :value="p.id" x-text="p.name + (p.catalog_number ? ' (' + p.catalog_number + ')' : '')"></option></template>
+                </select>
+                <input type="text" x-show="!nEscId" x-model="nEsc" placeholder="שם מלווה" style="flex:1;min-width:90px;">
                 <input type="text" x-model="nLoc" placeholder="מיקום" style="flex:1;min-width:90px;">
-                <button class="btn btn-primary btn-sm" @click="addEntry()">הוסף מלווה ומיקום</button>
+                <button class="btn btn-primary btn-sm" @click="addEntry()">הוסף</button>
               </div>
-            </template>
-            <p x-show="entMsg" x-text="entMsg" style="font-size:13px;margin:0 0 10px;color:var(--danger);"></p>
-            <div class="tbl-wrap">
-              <table class="data">
-                <thead><tr><th>מלווה</th><th>מיקום</th><th>נקודה</th><th></th></tr></thead>
-                <tbody>
-                  <template x-for="r in rows" :key="r.__g ? 'g:' + r.key : r.id">
-                    <tr :class="(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')" @click="r.__g ? toggle(r.key) : select(r.id)">
-                      <td x-show="r.__g" colspan="4" x-text="r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''"></td>
-                      <td x-show="!r.__g">
-                        <template x-if="canEdit() && !r.__g"><input type="text" x-model="r.escort_name" maxlength="200" @click.stop></template>
-                        <template x-if="!canEdit() && !r.__g"><span x-text="r.escort_name"></span></template>
-                      </td>
-                      <td x-show="!r.__g">
-                        <template x-if="canEdit() && !r.__g"><input type="text" x-model="r.location_text" maxlength="200" @click.stop></template>
-                        <template x-if="!canEdit() && !r.__g"><span x-text="r.location_text"></span></template>
-                      </td>
-                      <td x-show="!r.__g" x-text="r.x == null ? '—' : '✔'"></td>
-                      <td x-show="!r.__g">
-                        <div class="row" x-show="canEdit()">
-                          <button class="btn btn-sm" @click.stop="saveEntry(r)">שמירה</button>
-                          <button class="btn btn-sm btn-danger" @click.stop="removeEntry(r)">מחיקה</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-              <template x-if="rows.length === 0"><p class="muted" style="text-align:center;">אין שורות להצגה.</p></template>
+              <p x-show="entMsg" x-text="entMsg" style="font-size:13px;margin:0 0 10px;color:var(--danger);"></p>
+              <div class="tbl-wrap">
+                <table class="data">
+                  <thead><tr><th>מלווה</th><th>מיקום</th><th>נקודה</th><th></th></tr></thead>
+                  <tbody>
+                    <template x-for="r in rows" :key="r.__g ? 'g:' + r.key : r.id">
+                      <tr :class="(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')" @click="r.__g ? toggle(r.key) : select(r.id)">
+                        <td class="grp-cell" colspan="4" x-text="r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''"></td>
+                        <td>
+                          <template x-if="!r.__g">
+                            <div @click.stop>
+                              <select x-model.number="r.escort_id" x-effect="$nextTick(() => $el.value = r.escort_id == null ? '' : r.escort_id)" @change="onPick(r)">
+                                <option value="">טקסט חופשי</option>
+                                <template x-for="p in optionsFor(r)" :key="p.id"><option :value="p.id" x-text="p.name + (p.active ? '' : ' (לא פעיל)')"></option></template>
+                              </select>
+                              <input type="text" x-show="!r.escort_id" x-model="r.escort_name" maxlength="200" placeholder="שם מלווה" style="margin-top:4px;">
+                              <div class="sub" x-show="r.escort_id" x-text="[r.escort_phone, r.escort_catalog ? 'מס׳ קטלוגי ' + r.escort_catalog : ''].filter(Boolean).join(' · ')"></div>
+                            </div>
+                          </template>
+                        </td>
+                        <td><template x-if="!r.__g"><input type="text" x-model="r.location_text" maxlength="200" @click.stop></template></td>
+                        <td x-text="r.__g ? '' : (r.x == null ? '—' : '✔')"></td>
+                        <td>
+                          <template x-if="!r.__g">
+                            <div class="row">
+                              <button class="btn btn-sm" @click.stop="saveEntry(r)">שמירה</button>
+                              <button class="btn btn-sm btn-danger" @click.stop="removeEntry(r)">מחיקה</button>
+                            </div>
+                          </template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <template x-if="rows.length === 0"><p class="muted" style="text-align:center;">אין שורות להצגה.</p></template>
+              </div>
             </div>
+
           </div>
+        </div>
+        <!-- escort pool (full width) -->
+        <div class="card">
+          <h3 class="sec">פול מלווים</h3>
+          <div class="row wrap" style="margin-bottom:10px;">
+            <input type="text" x-model="pName" placeholder="שם" style="flex:2;min-width:110px;">
+            <input type="text" x-model="pCat" placeholder="מספר קטלוגי" dir="ltr" style="flex:1;min-width:90px;">
+            <input type="text" x-model="pPhone" placeholder="טלפון" dir="ltr" style="flex:1;min-width:100px;">
+            <button class="btn btn-primary btn-sm" @click="addEscort()">הוסף לפול</button>
+          </div>
+          <p x-show="poolMsg" x-text="poolMsg" :style="'font-size:13px;margin:0 0 10px;color:' + (poolErr ? 'var(--danger)' : 'var(--success)')"></p>
+          <div class="tbl-wrap pool-table">
+            <table class="data">
+              <thead><tr><th>שם</th><th>מספר קטלוגי</th><th>טלפון</th><th>מצב</th><th></th></tr></thead>
+              <tbody>
+                <template x-for="p in pool" :key="p.id">
+                  <tr>
+                    <td><input type="text" x-model="p.name" maxlength="200"></td>
+                    <td><input type="text" x-model="p.catalog_number" maxlength="50" dir="ltr"></td>
+                    <td><input type="text" x-model="p.phone" maxlength="30" dir="ltr"></td>
+                    <td><span class="badge" :class="p.active ? 'badge-in' : 'badge-out'" x-text="p.active ? 'פעיל' : 'לא פעיל'"></span></td>
+                    <td>
+                      <div class="row">
+                        <button class="btn btn-sm" @click="saveEscort(p)">שמירה</button>
+                        <button class="btn btn-sm" @click="p.active = !p.active; saveEscort(p)" x-text="p.active ? 'השבתה' : 'הפעלה'"></button>
+                        <button class="btn btn-sm btn-danger" @click="removeEscort(p)">מחיקה</button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <template x-if="pool.length === 0"><p class="muted" style="text-align:center;">הפול ריק. אפשר להוסיף מלווים למעלה.</p></template>
+          </div>
+          <p class="muted" style="font-size:12px;margin:8px 0 0;">מלווה ששויך להצבה לא נמחק אלא מושבת (השיוך נשמר).</p>
+        </div>
         </div>
       </template>
     </div>
   </div>
 
-  <script src="static/js/kav1.js"></script>
+  <script src="static/js/kav1.js?v=20261029"></script>
   <script>
     function locationsPage() {
       return {
         Kav1, me: null, brand: {}, loaded: false, enabled: false,
-        maps: [], entries: [], mapId: null, selId: null, placing: false,
+        maps: [], entries: [], pool: [], mapId: null, selId: null, placing: false,
         projFilter: "", collapsed: {}, hint: "בחר שורה בטבלה, לחץ \"מקם\" ואז לחץ על המפה.",
         file: null, newMapName: "", msg: "", msgErr: false, entMsg: "",
-        nProj: "", nEsc: "", nLoc: "",
+        nProj: "", nEscId: "", nEsc: "", nLoc: "",
+        pName: "", pCat: "", pPhone: "", poolMsg: "", poolErr: false,
 
         can(perm) { return !!(this.me && this.me.permissions && this.me.permissions.includes(perm)); },
-        canEdit() { return this.can("locations.edit"); },
+        canManage() { return this.can("locations.manage"); },                      // panel management
+        canOperate() { return this.canManage() || this.can("locations.operate"); }, // operation
 
+        get activePool() { return this.pool.filter(p => p.active); },
         get projects() { return [...new Set(this.entries.map(e => e.project))].sort(); },
         get selected() { return this.entries.find(e => e.id === this.selId) || null; },
         get mapEntries() { return this.entries.filter(e => e.map_id === this.mapId && e.x != null && (!this.projFilter || e.project === this.projFilter)); },
@@ -172,10 +228,12 @@
           });
           return out;
         },
+        // active escorts, plus the one this row already has (even if it was deactivated since)
+        optionsFor(r) { return this.pool.filter(p => p.active || p.id === r.escort_id); },
 
         async init() {
           try { this.me = await Kav1.me(); } catch (e) { location.href = "/login.html"; return; }
-          if (!this.can("locations.view")) { location.href = "/index.html"; return; }
+          if (!this.canOperate()) { location.href = "/index.html"; return; }
           try { this.brand = await Kav1.get("auth/branding"); } catch (e) {}
           const flags = await Kav1.extras.flags();
           this.enabled = !!flags.locations_enabled;
@@ -185,7 +243,9 @@
 
         async refresh() {
           try {
-            [this.maps, this.entries] = await Promise.all([Kav1.get("locations/maps"), Kav1.get("locations/entries")]);
+            [this.maps, this.entries, this.pool] = await Promise.all([
+              Kav1.get("locations/maps"), Kav1.get("locations/entries"), Kav1.get("locations/escorts?include_inactive=true"),
+            ]);
             if (!this.maps.some(m => m.id === this.mapId)) this.mapId = this.maps.length ? this.maps[0].id : null;
           } catch (e) { if (e.message !== "unauthorized") Kav1.toast(e.message, "error"); }
         },
@@ -193,6 +253,7 @@
         toggle(k) { this.collapsed = { ...this.collapsed, [k]: !this.collapsed[k] }; },
         select(id) { this.selId = id; this.placing = false; },
 
+        // ---- maps (panel management)
         onFile(ev) { this.file = ev.target.files[0] || null; },
         async uploadMap() {
           const f = this.file; if (!f) return;
@@ -216,14 +277,20 @@
           try { await Kav1.del("locations/maps/" + this.mapId); await this.refresh(); } catch (e) { this.msgErr = true; this.msg = e.message; }
         },
 
+        // ---- placements (operation)
         async addEntry() {
           this.entMsg = "";
           try {
-            const r = await Kav1.post("locations/entries", { project: this.nProj, escort_name: this.nEsc, location_text: this.nLoc });
-            this.nEsc = ""; this.nLoc = ""; await this.refresh(); this.selId = r.id;
+            const r = await Kav1.post("locations/entries", {
+              project: this.nProj, escort_id: this.nEscId || null, escort_name: this.nEscId ? "" : this.nEsc, location_text: this.nLoc,
+            });
+            this.nEsc = ""; this.nEscId = ""; this.nLoc = ""; await this.refresh(); this.selId = r.id;
           } catch (e) { this.entMsg = e.message; }
         },
-        body(e, patch) { return { project: e.project, escort_name: e.escort_name, location_text: e.location_text, map_id: e.map_id, x: e.x, y: e.y, ...patch }; },
+        body(e, patch) {
+          return { project: e.project, escort_id: e.escort_id || null, escort_name: e.escort_id ? "" : e.escort_name, location_text: e.location_text, map_id: e.map_id, x: e.x, y: e.y, ...patch };
+        },
+        onPick(r) { if (r.escort_id) { const p = this.pool.find(x => x.id === r.escort_id); if (p) { r.escort_phone = p.phone; r.escort_catalog = p.catalog_number; } } },
         async saveEntry(e, patch) {
           this.entMsg = "";
           try { await Kav1.put("locations/entries/" + e.id, this.body(e, patch || {})); Kav1.toast("נשמר"); await this.refresh(); }
@@ -233,7 +300,6 @@
           if (!confirm("למחוק את השורה?")) return;
           try { await Kav1.del("locations/entries/" + e.id); await this.refresh(); } catch (er) { this.entMsg = er.message; }
         },
-
         startPlace() { this.placing = true; this.hint = "לחץ על המפה במקום הרצוי"; },
         async onStage(ev) {
           if (!this.placing || !this.selected) return;
@@ -245,6 +311,28 @@
           await this.saveEntry(this.selected, { map_id: this.mapId, x, y });
         },
         clearPoint() { if (this.selected) this.saveEntry(this.selected, { map_id: null, x: null, y: null }); },
+
+        // ---- escort pool (operation)
+        poolSay(text, err) { this.poolMsg = text; this.poolErr = !!err; },
+        async addEscort() {
+          try {
+            await Kav1.post("locations/escorts", { name: this.pName, catalog_number: this.pCat, phone: this.pPhone });
+            this.pName = ""; this.pCat = ""; this.pPhone = ""; this.poolSay("נוסף לפול", false); await this.refresh();
+          } catch (e) { this.poolSay(e.message, true); }
+        },
+        async saveEscort(p) {
+          try {
+            await Kav1.put("locations/escorts/" + p.id, { name: p.name, catalog_number: p.catalog_number || "", phone: p.phone || "", active: !!p.active });
+            this.poolSay("נשמר", false); await this.refresh();
+          } catch (e) { this.poolSay(e.message, true); await this.refresh(); }
+        },
+        async removeEscort(p) {
+          if (!confirm("למחוק את " + p.name + " מהפול? מלווה ששויך להצבה יושבת במקום זאת.")) return;
+          try {
+            const r = await Kav1.del("locations/escorts/" + p.id);
+            this.poolSay(r.detail === "deactivated" ? "המלווה משויך להצבות, ולכן הושבת (לא נמחק)" : "נמחק מהפול", false); await this.refresh();
+          } catch (e) { this.poolSay(e.message, true); }
+        },
       };
     }
   </script>

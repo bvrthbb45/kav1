@@ -35,6 +35,10 @@ the permission column is what the role must hold (`or` = any one of them). `-` m
 | POST | `/locations/entries` | - | routes_locations.py |  |
 | DELETE | `/locations/entries/{entry_id}` | - | routes_locations.py |  |
 | PUT | `/locations/entries/{entry_id}` | - | routes_locations.py |  |
+| GET | `/locations/escorts` | - | routes_locations.py |  |
+| POST | `/locations/escorts` | - | routes_locations.py |  |
+| DELETE | `/locations/escorts/{escort_id}` | - | routes_locations.py | An escort that is assigned somewhere is only deactivated (the assignments keep their data); |
+| PUT | `/locations/escorts/{escort_id}` | - | routes_locations.py |  |
 | GET | `/locations/flags` | - | routes_locations.py |  |
 | PUT | `/locations/flags` | - | routes_locations.py |  |
 | GET | `/locations/maps` | - | routes_locations.py |  |
