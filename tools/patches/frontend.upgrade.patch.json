@@ -1,0 +1,73 @@
+{
+ "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
+ "files": [
+  {
+   "path": "admin/settings.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - הגדרות מערכת</title>\n  <link rel=\"stylesheet\" href=\"../static/css/kav1.css\">\n  <style>\n",
+     "new": "  <title>Kav1 - הגדרות מערכת</title>\n  <link rel=\"stylesheet\" href=\"../static/css/kav1.css?v=20261029\">\n  <style>\n"
+    },
+    {
+     "old": "\n  <script src=\"../static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"../static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    }
+   ]
+  },
+  {
+   "path": "index.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n</head>\n",
+     "new": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n",
+     "new": "        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n"
+    },
+    {
+     "old": "        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
+     "new": "        async loadExtras() {\n          // the additions are optional: if anything fails here, the list is shown as it always was\n          try {\n            this.xFlags = await Kav1.extras.flags();\n            this.ov = await Kav1.extras.overview();\n            this.projects = Kav1.extras.projects(this.ov);\n          } catch (e) {\n            this.xFlags = {}; this.ov = {}; this.projects = [];\n          }\n        },\n"
+    }
+   ]
+  },
+  {
+   "path": "locations.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - שליטה ומיקומים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n  <style>\n",
+     "new": "  <title>Kav1 - שליטה ומיקומים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n  <style>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    }
+   ]
+  },
+  {
+   "path": "visitors.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n</head>\n",
+     "new": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n",
+     "new": "        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n"
+    },
+    {
+     "old": "        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
+     "new": "        async loadExtras() {\n          // the additions are optional: if anything fails here, the list is shown as it always was\n          try {\n            this.xFlags = await Kav1.extras.flags();\n            this.ov = await Kav1.extras.overview();\n            this.projects = Kav1.extras.projects(this.ov);\n          } catch (e) {\n            this.xFlags = {}; this.ov = {}; this.projects = [];\n          }\n        },\n"
+    }
+   ]
+  }
+ ]
+}

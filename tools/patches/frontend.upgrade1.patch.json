@@ -1,0 +1,142 @@
+{
+ "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
+ "files": [
+  {
+   "path": "admin/settings.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - הגדרות מערכת</title>\n  <link rel=\"stylesheet\" href=\"../static/css/kav1.css\">\n  <style>\n",
+     "new": "  <title>Kav1 - הגדרות מערכת</title>\n  <link rel=\"stylesheet\" href=\"../static/css/kav1.css?v=20261029\">\n  <style>\n"
+    },
+    {
+     "old": "\n  <script src=\"../static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"../static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    }
+   ]
+  },
+  {
+   "path": "index.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n</head>\n",
+     "new": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n",
+     "new": "        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n"
+    },
+    {
+     "old": "        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
+     "new": "        async loadExtras() {\n          // the additions are optional: if anything fails here, the list is shown as it always was\n          try {\n            this.xFlags = await Kav1.extras.flags();\n            this.ov = await Kav1.extras.overview();\n            this.projects = Kav1.extras.projects(this.ov);\n          } catch (e) {\n            this.xFlags = {}; this.ov = {}; this.projects = [];\n          }\n        },\n"
+    }
+   ]
+  },
+  {
+   "path": "locations.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - שליטה ומיקומים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n  <style>\n    .split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }\n    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }\n    .stage { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; line-height: 0; display: inline-block; max-width: 100%; }\n",
+     "new": "  <title>Kav1 - שליטה ומיקומים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n  <style>\n    .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }\n    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }\n    .stack { display: grid; gap: 16px; align-content: start; min-width: 0; }\n    .stage { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; line-height: 0; display: inline-block; max-width: 100%; }\n"
+    },
+    {
+     "old": "    .wrap { flex-wrap: wrap; }\n  </style>\n",
+     "new": "    .wrap { flex-wrap: wrap; }\n    .pool-table td input[type=text] { min-width: 110px; }\n    .sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }\n    h3.sec { font-size: 15px; margin: 0 0 10px; color: var(--text-bright); font-weight: 600; }\n  </style>\n"
+    },
+    {
+     "old": "        <div class=\"row\">\n          <select x-model=\"projFilter\" style=\"width:170px;\">\n",
+     "new": "        <div class=\"row\">\n          <span class=\"badge badge-active\" x-text=\"canManage() ? 'ניהול פאנל' : 'הפעלה'\"></span>\n          <select x-model=\"projFilter\" style=\"width:170px;\">\n"
+    },
+    {
+     "old": "      <template x-if=\"loaded && enabled\">\n        <div class=\"split\">\n",
+     "new": "      <template x-if=\"loaded && enabled\">\n        <div style=\"display:grid;gap:16px;\">\n        <div class=\"split\">\n"
+    },
+    {
+     "old": "              </select>\n              <template x-if=\"canEdit()\">\n                <div class=\"row wrap\">\n",
+     "new": "              </select>\n              <template x-if=\"canManage()\">\n                <div class=\"row wrap\">\n"
+    },
+    {
+     "old": "            </div>\n            <template x-if=\"canEdit()\">\n              <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n",
+     "new": "            </div>\n            <template x-if=\"canManage()\">\n              <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n"
+    },
+    {
+     "old": "            </template>\n            <template x-if=\"canEdit()\">\n              <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n                <button class=\"btn btn-sm\" @click=\"startPlace()\" :disabled=\"!selected || !mapId\">מקם נקודה לשורה שנבחרה</button>\n                <button class=\"btn btn-sm\" @click=\"clearPoint()\" :disabled=\"!selected || selected.x == null\">הסר נקודה</button>\n                <span class=\"muted\" style=\"font-size:12px;\" x-text=\"hint\"></span>\n              </div>\n            </template>\n            <p x-show=\"msg\" x-text=\"msg\" :style=\"'font-size:13px;margin:0 0 10px;color:' + (msgErr ? 'var(--danger)' : 'var(--success)')\"></p>\n",
+     "new": "            </template>\n            <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n              <button class=\"btn btn-sm\" @click=\"startPlace()\" :disabled=\"!selected || !mapId\">מקם נקודה לשורה שנבחרה</button>\n              <button class=\"btn btn-sm\" @click=\"clearPoint()\" :disabled=\"!selected || selected.x == null\">הסר נקודה</button>\n              <span class=\"muted\" style=\"font-size:12px;\" x-text=\"hint\"></span>\n            </div>\n            <p x-show=\"msg\" x-text=\"msg\" :style=\"'font-size:13px;margin:0 0 10px;color:' + (msgErr ? 'var(--danger)' : 'var(--success)')\"></p>\n"
+    },
+    {
+     "old": "            </template>\n            <template x-if=\"!mapId\"><p class=\"muted\">אין מפה להצגה.</p></template>\n          </div>\n\n          <!-- escorts and locations -->\n          <div class=\"card\">\n            <template x-if=\"canEdit()\">\n              <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n                <input type=\"text\" x-model=\"nProj\" placeholder=\"פרויקט\" list=\"locProjects\" style=\"flex:1;min-width:90px;\">\n                <datalist id=\"locProjects\"><template x-for=\"p in projects\" :key=\"p\"><option :value=\"p\"></option></template></datalist>\n                <input type=\"text\" x-model=\"nEsc\" placeholder=\"מלווה\" style=\"flex:1;min-width:90px;\">\n                <input type=\"text\" x-model=\"nLoc\" placeholder=\"מיקום\" style=\"flex:1;min-width:90px;\">\n                <button class=\"btn btn-primary btn-sm\" @click=\"addEntry()\">הוסף מלווה ומיקום</button>\n              </div>\n            </template>\n            <p x-show=\"entMsg\" x-text=\"entMsg\" style=\"font-size:13px;margin:0 0 10px;color:var(--danger);\"></p>\n            <div class=\"tbl-wrap\">\n              <table class=\"data\">\n                <thead><tr><th>מלווה</th><th>מיקום</th><th>נקודה</th><th></th></tr></thead>\n                <tbody>\n                  <template x-for=\"r in rows\" :key=\"r.__g ? 'g:' + r.key : r.id\">\n                    <tr :class=\"(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')\" @click=\"r.__g ? toggle(r.key) : select(r.id)\">\n                      <td x-show=\"r.__g\" colspan=\"4\" x-text=\"r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''\"></td>\n                      <td x-show=\"!r.__g\">\n                        <template x-if=\"canEdit() && !r.__g\"><input type=\"text\" x-model=\"r.escort_name\" maxlength=\"200\" @click.stop></template>\n                        <template x-if=\"!canEdit() && !r.__g\"><span x-text=\"r.escort_name\"></span></template>\n                      </td>\n                      <td x-show=\"!r.__g\">\n                        <template x-if=\"canEdit() && !r.__g\"><input type=\"text\" x-model=\"r.location_text\" maxlength=\"200\" @click.stop></template>\n                        <template x-if=\"!canEdit() && !r.__g\"><span x-text=\"r.location_text\"></span></template>\n                      </td>\n                      <td x-show=\"!r.__g\" x-text=\"r.x == null ? '—' : '✔'\"></td>\n                      <td x-show=\"!r.__g\">\n                        <div class=\"row\" x-show=\"canEdit()\">\n                          <button class=\"btn btn-sm\" @click.stop=\"saveEntry(r)\">שמירה</button>\n                          <button class=\"btn btn-sm btn-danger\" @click.stop=\"removeEntry(r)\">מחיקה</button>\n                        </div>\n                      </td>\n                    </tr>\n                  </template>\n                </tbody>\n              </table>\n              <template x-if=\"rows.length === 0\"><p class=\"muted\" style=\"text-align:center;\">אין שורות להצגה.</p></template>\n            </div>\n          </div>\n        </div>\n",
+     "new": "            </template>\n            <template x-if=\"!mapId\"><p class=\"muted\">אין מפה להצגה.<span x-show=\"canManage()\"> אפשר להעלות מפה למעלה.</span></p></template>\n          </div>\n\n          <div class=\"stack\">\n            <!-- placements: project + escort + location -->\n            <div class=\"card\">\n              <h3 class=\"sec\">הצבות: פרויקט, מלווה ומיקום</h3>\n              <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n                <input type=\"text\" x-model=\"nProj\" placeholder=\"פרויקט\" list=\"locProjects\" style=\"flex:1;min-width:90px;\">\n                <datalist id=\"locProjects\"><template x-for=\"p in projects\" :key=\"p\"><option :value=\"p\"></option></template></datalist>\n                <select x-model.number=\"nEscId\" style=\"flex:1;min-width:120px;\">\n                  <option value=\"\">מלווה: טקסט חופשי</option>\n                  <template x-for=\"p in activePool\" :key=\"p.id\"><option :value=\"p.id\" x-text=\"p.name + (p.catalog_number ? ' (' + p.catalog_number + ')' : '')\"></option></template>\n                </select>\n                <input type=\"text\" x-show=\"!nEscId\" x-model=\"nEsc\" placeholder=\"שם מלווה\" style=\"flex:1;min-width:90px;\">\n                <input type=\"text\" x-model=\"nLoc\" placeholder=\"מיקום\" style=\"flex:1;min-width:90px;\">\n                <button class=\"btn btn-primary btn-sm\" @click=\"addEntry()\">הוסף</button>\n              </div>\n              <p x-show=\"entMsg\" x-text=\"entMsg\" style=\"font-size:13px;margin:0 0 10px;color:var(--danger);\"></p>\n              <div class=\"tbl-wrap\">\n                <table class=\"data\">\n                  <thead><tr><th>מלווה</th><th>מיקום</th><th>נקודה</th><th></th></tr></thead>\n                  <tbody>\n                    <template x-for=\"r in rows\" :key=\"r.__g ? 'g:' + r.key : r.id\">\n                      <tr :class=\"(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')\" @click=\"r.__g ? toggle(r.key) : select(r.id)\">\n                        <td class=\"grp-cell\" colspan=\"4\" x-text=\"r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''\"></td>\n                        <td>\n                          <template x-if=\"!r.__g\">\n                            <div @click.stop>\n                              <select x-model.number=\"r.escort_id\" x-effect=\"$nextTick(() => $el.value = r.escort_id == null ? '' : r.escort_id)\" @change=\"onPick(r)\">\n                                <option value=\"\">טקסט חופשי</option>\n                                <template x-for=\"p in optionsFor(r)\" :key=\"p.id\"><option :value=\"p.id\" x-text=\"p.name + (p.active ? '' : ' (לא פעיל)')\"></option></template>\n                              </select>\n                              <input type=\"text\" x-show=\"!r.escort_id\" x-model=\"r.escort_name\" maxlength=\"200\" placeholder=\"שם מלווה\" style=\"margin-top:4px;\">\n                              <div class=\"sub\" x-show=\"r.escort_id\" x-text=\"[r.escort_phone, r.escort_catalog ? 'מס׳ קטלוגי ' + r.escort_catalog : ''].filter(Boolean).join(' · ')\"></div>\n                            </div>\n                          </template>\n                        </td>\n                        <td><template x-if=\"!r.__g\"><input type=\"text\" x-model=\"r.location_text\" maxlength=\"200\" @click.stop></template></td>\n                        <td x-text=\"r.__g ? '' : (r.x == null ? '—' : '✔')\"></td>\n                        <td>\n                          <template x-if=\"!r.__g\">\n                            <div class=\"row\">\n                              <button class=\"btn btn-sm\" @click.stop=\"saveEntry(r)\">שמירה</button>\n                              <button class=\"btn btn-sm btn-danger\" @click.stop=\"removeEntry(r)\">מחיקה</button>\n                            </div>\n                          </template>\n                        </td>\n                      </tr>\n                    </template>\n                  </tbody>\n                </table>\n                <template x-if=\"rows.length === 0\"><p class=\"muted\" style=\"text-align:center;\">אין שורות להצגה.</p></template>\n              </div>\n            </div>\n\n          </div>\n        </div>\n        <!-- escort pool (full width) -->\n        <div class=\"card\">\n          <h3 class=\"sec\">פול מלווים</h3>\n          <div class=\"row wrap\" style=\"margin-bottom:10px;\">\n            <input type=\"text\" x-model=\"pName\" placeholder=\"שם\" style=\"flex:2;min-width:110px;\">\n            <input type=\"text\" x-model=\"pCat\" placeholder=\"מספר קטלוגי\" dir=\"ltr\" style=\"flex:1;min-width:90px;\">\n            <input type=\"text\" x-model=\"pPhone\" placeholder=\"טלפון\" dir=\"ltr\" style=\"flex:1;min-width:100px;\">\n            <button class=\"btn btn-primary btn-sm\" @click=\"addEscort()\">הוסף לפול</button>\n          </div>\n          <p x-show=\"poolMsg\" x-text=\"poolMsg\" :style=\"'font-size:13px;margin:0 0 10px;color:' + (poolErr ? 'var(--danger)' : 'var(--success)')\"></p>\n          <div class=\"tbl-wrap pool-table\">\n            <table class=\"data\">\n              <thead><tr><th>שם</th><th>מספר קטלוגי</th><th>טלפון</th><th>מצב</th><th></th></tr></thead>\n              <tbody>\n                <template x-for=\"p in pool\" :key=\"p.id\">\n                  <tr>\n                    <td><input type=\"text\" x-model=\"p.name\" maxlength=\"200\"></td>\n                    <td><input type=\"text\" x-model=\"p.catalog_number\" maxlength=\"50\" dir=\"ltr\"></td>\n                    <td><input type=\"text\" x-model=\"p.phone\" maxlength=\"30\" dir=\"ltr\"></td>\n                    <td><span class=\"badge\" :class=\"p.active ? 'badge-in' : 'badge-out'\" x-text=\"p.active ? 'פעיל' : 'לא פעיל'\"></span></td>\n                    <td>\n                      <div class=\"row\">\n                        <button class=\"btn btn-sm\" @click=\"saveEscort(p)\">שמירה</button>\n                        <button class=\"btn btn-sm\" @click=\"p.active = !p.active; saveEscort(p)\" x-text=\"p.active ? 'השבתה' : 'הפעלה'\"></button>\n                        <button class=\"btn btn-sm btn-danger\" @click=\"removeEscort(p)\">מחיקה</button>\n                      </div>\n                    </td>\n                  </tr>\n                </template>\n              </tbody>\n            </table>\n            <template x-if=\"pool.length === 0\"><p class=\"muted\" style=\"text-align:center;\">הפול ריק. אפשר להוסיף מלווים למעלה.</p></template>\n          </div>\n          <p class=\"muted\" style=\"font-size:12px;margin:8px 0 0;\">מלווה ששויך להצבה לא נמחק אלא מושבת (השיוך נשמר).</p>\n        </div>\n        </div>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        Kav1, me: null, brand: {}, loaded: false, enabled: false,\n        maps: [], entries: [], mapId: null, selId: null, placing: false,\n        projFilter: \"\", collapsed: {}, hint: \"בחר שורה בטבלה, לחץ \\\"מקם\\\" ואז לחץ על המפה.\",\n        file: null, newMapName: \"\", msg: \"\", msgErr: false, entMsg: \"\",\n        nProj: \"\", nEsc: \"\", nLoc: \"\",\n\n        can(perm) { return !!(this.me && this.me.permissions && this.me.permissions.includes(perm)); },\n        canEdit() { return this.can(\"locations.edit\"); },\n\n        get projects() { return [...new Set(this.entries.map(e => e.project))].sort(); },\n",
+     "new": "        Kav1, me: null, brand: {}, loaded: false, enabled: false,\n        maps: [], entries: [], pool: [], mapId: null, selId: null, placing: false,\n        projFilter: \"\", collapsed: {}, hint: \"בחר שורה בטבלה, לחץ \\\"מקם\\\" ואז לחץ על המפה.\",\n        file: null, newMapName: \"\", msg: \"\", msgErr: false, entMsg: \"\",\n        nProj: \"\", nEscId: \"\", nEsc: \"\", nLoc: \"\",\n        pName: \"\", pCat: \"\", pPhone: \"\", poolMsg: \"\", poolErr: false,\n\n        can(perm) { return !!(this.me && this.me.permissions && this.me.permissions.includes(perm)); },\n        canManage() { return this.can(\"locations.manage\"); },                      // panel management\n        canOperate() { return this.canManage() || this.can(\"locations.operate\"); }, // operation\n\n        get activePool() { return this.pool.filter(p => p.active); },\n        get projects() { return [...new Set(this.entries.map(e => e.project))].sort(); },\n"
+    },
+    {
+     "old": "        },\n\n        async init() {\n          try { this.me = await Kav1.me(); } catch (e) { location.href = \"/login.html\"; return; }\n          if (!this.can(\"locations.view\")) { location.href = \"/index.html\"; return; }\n          try { this.brand = await Kav1.get(\"auth/branding\"); } catch (e) {}\n",
+     "new": "        },\n        // active escorts, plus the one this row already has (even if it was deactivated since)\n        optionsFor(r) { return this.pool.filter(p => p.active || p.id === r.escort_id); },\n\n        async init() {\n          try { this.me = await Kav1.me(); } catch (e) { location.href = \"/login.html\"; return; }\n          if (!this.canOperate()) { location.href = \"/index.html\"; return; }\n          try { this.brand = await Kav1.get(\"auth/branding\"); } catch (e) {}\n"
+    },
+    {
+     "old": "          try {\n            [this.maps, this.entries] = await Promise.all([Kav1.get(\"locations/maps\"), Kav1.get(\"locations/entries\")]);\n            if (!this.maps.some(m => m.id === this.mapId)) this.mapId = this.maps.length ? this.maps[0].id : null;\n",
+     "new": "          try {\n            [this.maps, this.entries, this.pool] = await Promise.all([\n              Kav1.get(\"locations/maps\"), Kav1.get(\"locations/entries\"), Kav1.get(\"locations/escorts?include_inactive=true\"),\n            ]);\n            if (!this.maps.some(m => m.id === this.mapId)) this.mapId = this.maps.length ? this.maps[0].id : null;\n"
+    },
+    {
+     "old": "\n        onFile(ev) { this.file = ev.target.files[0] || null; },\n",
+     "new": "\n        // ---- maps (panel management)\n        onFile(ev) { this.file = ev.target.files[0] || null; },\n"
+    },
+    {
+     "old": "\n        async addEntry() {\n          this.entMsg = \"\";\n          try {\n            const r = await Kav1.post(\"locations/entries\", { project: this.nProj, escort_name: this.nEsc, location_text: this.nLoc });\n            this.nEsc = \"\"; this.nLoc = \"\"; await this.refresh(); this.selId = r.id;\n          } catch (e) { this.entMsg = e.message; }\n        },\n        body(e, patch) { return { project: e.project, escort_name: e.escort_name, location_text: e.location_text, map_id: e.map_id, x: e.x, y: e.y, ...patch }; },\n        async saveEntry(e, patch) {\n",
+     "new": "\n        // ---- placements (operation)\n        async addEntry() {\n          this.entMsg = \"\";\n          try {\n            const r = await Kav1.post(\"locations/entries\", {\n              project: this.nProj, escort_id: this.nEscId || null, escort_name: this.nEscId ? \"\" : this.nEsc, location_text: this.nLoc,\n            });\n            this.nEsc = \"\"; this.nEscId = \"\"; this.nLoc = \"\"; await this.refresh(); this.selId = r.id;\n          } catch (e) { this.entMsg = e.message; }\n        },\n        body(e, patch) {\n          return { project: e.project, escort_id: e.escort_id || null, escort_name: e.escort_id ? \"\" : e.escort_name, location_text: e.location_text, map_id: e.map_id, x: e.x, y: e.y, ...patch };\n        },\n        onPick(r) { if (r.escort_id) { const p = this.pool.find(x => x.id === r.escort_id); if (p) { r.escort_phone = p.phone; r.escort_catalog = p.catalog_number; } } },\n        async saveEntry(e, patch) {\n"
+    },
+    {
+     "old": "        },\n\n        startPlace() { this.placing = true; this.hint = \"לחץ על המפה במקום הרצוי\"; },\n",
+     "new": "        },\n        startPlace() { this.placing = true; this.hint = \"לחץ על המפה במקום הרצוי\"; },\n"
+    },
+    {
+     "old": "        clearPoint() { if (this.selected) this.saveEntry(this.selected, { map_id: null, x: null, y: null }); },\n      };\n",
+     "new": "        clearPoint() { if (this.selected) this.saveEntry(this.selected, { map_id: null, x: null, y: null }); },\n\n        // ---- escort pool (operation)\n        poolSay(text, err) { this.poolMsg = text; this.poolErr = !!err; },\n        async addEscort() {\n          try {\n            await Kav1.post(\"locations/escorts\", { name: this.pName, catalog_number: this.pCat, phone: this.pPhone });\n            this.pName = \"\"; this.pCat = \"\"; this.pPhone = \"\"; this.poolSay(\"נוסף לפול\", false); await this.refresh();\n          } catch (e) { this.poolSay(e.message, true); }\n        },\n        async saveEscort(p) {\n          try {\n            await Kav1.put(\"locations/escorts/\" + p.id, { name: p.name, catalog_number: p.catalog_number || \"\", phone: p.phone || \"\", active: !!p.active });\n            this.poolSay(\"נשמר\", false); await this.refresh();\n          } catch (e) { this.poolSay(e.message, true); await this.refresh(); }\n        },\n        async removeEscort(p) {\n          if (!confirm(\"למחוק את \" + p.name + \" מהפול? מלווה ששויך להצבה יושבת במקום זאת.\")) return;\n          try {\n            const r = await Kav1.del(\"locations/escorts/\" + p.id);\n            this.poolSay(r.detail === \"deactivated\" ? \"המלווה משויך להצבות, ולכן הושבת (לא נמחק)\" : \"נמחק מהפול\", false); await this.refresh();\n          } catch (e) { this.poolSay(e.message, true); }\n        },\n      };\n"
+    }
+   ]
+  },
+  {
+   "path": "static/js/kav1.js",
+   "replace": [
+    {
+     "old": "    const me = await Kav1.me();\n    if (!me || !(me.permissions || []).includes(\"locations.view\")) return;\n    const f = await Kav1.extras.flags();\n",
+     "new": "    const me = await Kav1.me();\n    const perms = (me && me.permissions) || [];\n    if (!perms.includes(\"locations.manage\") && !perms.includes(\"locations.operate\")) return;\n    const f = await Kav1.extras.flags();\n"
+    }
+   ]
+  },
+  {
+   "path": "visitors.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n</head>\n",
+     "new": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n",
+     "new": "        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n"
+    },
+    {
+     "old": "        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
+     "new": "        async loadExtras() {\n          // the additions are optional: if anything fails here, the list is shown as it always was\n          try {\n            this.xFlags = await Kav1.extras.flags();\n            this.ov = await Kav1.extras.overview();\n            this.projects = Kav1.extras.projects(this.ov);\n          } catch (e) {\n            this.xFlags = {}; this.ov = {}; this.projects = [];\n          }\n        },\n"
+    },
+    {
+     "old": "            infosec: [\"אבטחת מידע\"],\n            approval: [\"תוקף אישור\", \"תוקף אבטחת מידע\", \"תאריך תום אישור\"],\n            cls: ['תוקף סב\"ט', \"תוקף סב״ט\", \"תוקף סיווג\", \"תוקף סיווג בטחוני\"],\n          };\n          const props = Object.assign({}, v.properties || {});\n          const find = (field) => Object.keys(props).find(k => ALIASES[field].includes(k.trim()) || ALIASES[field].includes(k.trim().toLowerCase()));\n          const o = this.ov[v.dbid] || {};\n",
+     "new": "            infosec: [\"אבטחת מידע\"],\n            approval: [\"תוקף אישור\", \"תאריך תום אישור\"],\n            cls: ['תוקף סב\"ט', \"תוקף סב״ט\", \"תוקף סיווג\", \"תוקף סיווג בטחוני\"],\n          };\n          const props = Object.assign({}, v.properties || {});\n          // aliases are in order of preference: the first one that holds a value wins\n          const find = (field) => {\n            const keys = Object.keys(props);\n            const hit = (a) => keys.filter(k => k.trim() === a || k.trim().toLowerCase() === a);\n            for (const a of ALIASES[field]) {\n              const k = hit(a).find(x => String(props[x] == null ? \"\" : props[x]).trim() !== \"\");\n              if (k !== undefined) return k;\n            }\n            for (const a of ALIASES[field]) { const k = hit(a)[0]; if (k !== undefined) return k; }   // present but empty\n            return undefined;\n          };\n          const o = this.ov[v.dbid] || {};\n"
+    }
+   ]
+  }
+ ]
+}
