@@ -169,7 +169,9 @@ def validate_properties(properties):
             continue
         parsed = parse_date(raw)
         if parsed is not None:
-            result[key] = parsed.strftime("%d.%m.%Y")  # day.month.year, like the existing data
+            result[key] = parsed.strftime(
+                "%d.%m.%Y"
+            )  # day.month.year, like the existing data
 
     if status in (INFOSEC_APPROVED, INFOSEC_EXCEPTION) and not get_value(
         result, INFOSEC_EXPIRY_ALIASES
@@ -247,7 +249,9 @@ def visitors_overview(inside: bool = False, db: Session = Depends(database.get_d
     )
     rows = []
     q = db.query(models.Visitor.dbid, models.Visitor.properties)
-    if inside:  # the control panel only needs those inside now (a few rows instead of everyone)
+    if (
+        inside
+    ):  # the control panel only needs those inside now (a few rows instead of everyone)
         q = q.filter(models.Visitor.inside.is_(True))
     for dbid, props in q.all():
         props = props if isinstance(props, dict) else {}
