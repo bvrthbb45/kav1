@@ -233,9 +233,58 @@ def _check_point(map_id, x, y, db: Session) -> None:
         raise HTTPException(status_code=422, detail="unknown map")
 
 
+def _retire_old_permissions(db: Session) -> None:
+    """The first versions of this feature used locations.view / locations.edit (admin only). They are
+    replaced by locations.manage / locations.operate. A role that had `edit` keeps its power as `manage`;
+    `view` is dropped (read-only does not exist any more, and `operate` would be MORE than it was).
+    Without this, the role editor refuses to save a role that still holds the old keys.
+    """
+    old = ("locations.view", "locations.edit")
+    links = (
+        db.query(models.RolePermission)
+        .filter(models.RolePermission.permission_key.in_(old))
+        .all()
+    )
+    if (
+        not links
+        and not db.query(models.Permission)
+        .filter(models.Permission.key.in_(old))
+        .first()
+    ):
+        return
+    for link in links:
+        if link.permission_key == "locations.edit":
+            has = (
+                db.query(models.RolePermission)
+                .filter(
+                    models.RolePermission.role_id == link.role_id,
+                    models.RolePermission.permission_key == "locations.manage",
+                )
+                .first()
+            )
+            if (
+                has is None
+                and db.get(models.Permission, "locations.manage") is not None
+            ):
+                db.add(
+                    models.RolePermission(
+                        role_id=link.role_id, permission_key="locations.manage"
+                    )
+                )
+        db.delete(link)
+    db.flush()
+    for key in old:
+        perm = db.get(models.Permission, key)
+        if perm is not None:
+            db.delete(perm)
+    db.commit()
+
+
 def ensure_locations_setup(db: Session) -> None:
     """Idempotent, additive: adds the escort link column to a location_entries table created by an
-    earlier version of this feature (create_all never alters existing tables)."""
+    earlier version of this feature (create_all never alters existing tables), and retires the
+    permission keys of the first versions."""
+    _retire_old_permissions(db)
     cols = {
         r[1] for r in db.execute(text("PRAGMA table_info(location_entries)")).fetchall()
     }

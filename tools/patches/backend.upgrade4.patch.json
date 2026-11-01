@@ -2,6 +2,15 @@
  "name": "Kav1 update: backend (permissions fix, database settings, visitor additions, optional features)",
  "files": [
   {
+   "path": "crud_admin.py",
+   "replace": [
+    {
+     "old": "    )\n    return [r[0] for r in rows]\n\n",
+     "new": "    )\n    # keys that are no longer in the catalog (retired permissions) are not shown to the editor; if they\n    # were, the editor would send them back on save and be refused (\"unknown permissions\")\n    return [r[0] for r in rows if r[0] in PERMISSION_KEYS]\n\n"
+    }
+   ]
+  },
+  {
    "path": "main.py",
    "replace": [
     {
@@ -11,6 +20,15 @@
     {
      "old": "app = FastAPI(lifespan=lifespan)\n\n",
      "new": "app = FastAPI(lifespan=lifespan)\n# the visitor lists are large JSON (hundreds of KB); compressed they are ~10x smaller on the network\napp.add_middleware(GZipMiddleware, minimum_size=1024)\n\n"
+    }
+   ]
+  },
+  {
+   "path": "routes_locations.py",
+   "replace": [
+    {
+     "old": "\ndef ensure_locations_setup(db: Session) -> None:\n    \"\"\"Idempotent, additive: adds the escort link column to a location_entries table created by an\n    earlier version of this feature (create_all never alters existing tables).\"\"\"\n    cols = {\n",
+     "new": "\ndef _retire_old_permissions(db: Session) -> None:\n    \"\"\"The first versions of this feature used locations.view / locations.edit (admin only). They are\n    replaced by locations.manage / locations.operate. A role that had `edit` keeps its power as `manage`;\n    `view` is dropped (read-only does not exist any more, and `operate` would be MORE than it was).\n    Without this, the role editor refuses to save a role that still holds the old keys.\n    \"\"\"\n    old = (\"locations.view\", \"locations.edit\")\n    links = (\n        db.query(models.RolePermission)\n        .filter(models.RolePermission.permission_key.in_(old))\n        .all()\n    )\n    if (\n        not links\n        and not db.query(models.Permission)\n        .filter(models.Permission.key.in_(old))\n        .first()\n    ):\n        return\n    for link in links:\n        if link.permission_key == \"locations.edit\":\n            has = (\n                db.query(models.RolePermission)\n                .filter(\n                    models.RolePermission.role_id == link.role_id,\n                    models.RolePermission.permission_key == \"locations.manage\",\n                )\n                .first()\n            )\n            if (\n                has is None\n                and db.get(models.Permission, \"locations.manage\") is not None\n            ):\n                db.add(\n                    models.RolePermission(\n                        role_id=link.role_id, permission_key=\"locations.manage\"\n                    )\n                )\n        db.delete(link)\n    db.flush()\n    for key in old:\n        perm = db.get(models.Permission, key)\n        if perm is not None:\n            db.delete(perm)\n    db.commit()\n\n\ndef ensure_locations_setup(db: Session) -> None:\n    \"\"\"Idempotent, additive: adds the escort link column to a location_entries table created by an\n    earlier version of this feature (create_all never alters existing tables), and retires the\n    permission keys of the first versions.\"\"\"\n    _retire_old_permissions(db)\n    cols = {\n"
     }
    ]
   },
