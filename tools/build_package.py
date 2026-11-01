@@ -109,6 +109,7 @@ def main():
         "code_locator.py",
     ):
         shutil.copy2(HERE / n, tools / n)
+    shutil.copy2(HERE / "db_tools_README.txt", tools / "README.txt")
     for n in sorted((HERE / "windows").glob("[1-9]_*.bat")):
         if not n.name.startswith("10_"):
             shutil.copy2(n, tools / n.name)
