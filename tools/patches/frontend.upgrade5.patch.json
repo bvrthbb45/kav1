@@ -1,4 +1,66 @@
 {
  "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
- "files": []
+ "files": [
+  {
+   "path": "reports.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - דוחות וסטטיסטיקות</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css\">\n  <style>\n",
+     "new": "  <title>Kav1 - דוחות וסטטיסטיקות</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n  <style>\n"
+    },
+    {
+     "old": "    @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }\n    @media print {\n      .topbar, .no-print { display: none !important; }\n",
+     "new": "    @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }\n    .print-only { display: none; }\n    @media print {\n      .print-only { display: block; color: #000; }\n      .topbar, .no-print { display: none !important; }\n"
+    },
+    {
+     "old": "        <a x-show=\"can('reports.view')\" href=\"reports.html\" class=\"active\">דוחות</a>\n        <a x-show=\"can('roles.manage') || can('users.view')\" href=\"admin/index.html\">ניהול</a>\n      </nav>\n",
+     "new": "        <a x-show=\"can('reports.view')\" href=\"reports.html\" class=\"active\">דוחות</a>\n        <a x-show=\"can('roles.manage') || can('users.view') || can('admin.dashboard')\" href=\"admin/index.html\">ניהול</a>\n      </nav>\n"
+    },
+    {
+     "old": "          <select x-model.number=\"days\" @change=\"load()\" style=\"width:120px;\">\n            <option :value=\"7\">7 ימים</option>\n            <option :value=\"14\">14 ימים</option>\n            <option :value=\"30\">30 ימים</option>\n          </select>\n",
+     "new": "          <select x-model.number=\"days\" @change=\"load()\" style=\"width:120px;\">\n            <option value=\"1\">היום</option>\n            <option value=\"7\">7 ימים</option>\n            <option value=\"14\">14 ימים</option>\n            <option value=\"30\">30 ימים</option>\n            <option value=\"60\">60 ימים</option>\n            <option value=\"90\">90 ימים</option>\n          </select>\n"
+    },
+    {
+     "old": "        </div>\n      </div>\n\n      <!-- Summary cards -->\n",
+     "new": "        </div>\n      </div>\n\n      <p class=\"muted print-only\" style=\"margin:0 0 12px;\" x-text=\"periodText()\"></p>\n      <p class=\"muted no-print\" style=\"margin:-8px 0 14px;font-size:13px;\" x-show=\"data\" x-text=\"periodText()\"></p>\n\n      <!-- Summary cards -->\n"
+    },
+    {
+     "old": "          <div class=\"value\" x-text=\"data ? data.summary.total_visitors : '—'\"></div>\n        </div>\n      </div>\n\n",
+     "new": "          <div class=\"value\" x-text=\"data ? data.summary.total_visitors : '—'\"></div>\n        </div>\n        <div class=\"stat-card\">\n          <div class=\"label\">מבקרים שונים שנכנסו היום</div>\n          <div class=\"value\" x-text=\"data ? data.summary.unique_today : '—'\"></div>\n        </div>\n        <div class=\"stat-card\">\n          <div class=\"label\">כניסות בתקופה</div>\n          <div class=\"value\" x-text=\"data ? data.summary.entries_period : '—'\"></div>\n        </div>\n        <div class=\"stat-card\">\n          <div class=\"label\">יציאות בתקופה</div>\n          <div class=\"value\" x-text=\"data ? data.summary.exits_period : '—'\"></div>\n        </div>\n        <div class=\"stat-card\">\n          <div class=\"label\">מבקרים שונים בתקופה</div>\n          <div class=\"value\" x-text=\"data ? data.summary.unique_period : '—'\"></div>\n        </div>\n      </div>\n\n"
+    },
+    {
+     "old": "      <div class=\"chart-card\" x-show=\"data\">\n        <h3>התפלגות פעילות לפי שעה</h3>\n        <div class=\"chart-wrap\"><canvas id=\"hourlyChart\"></canvas></div>\n",
+     "new": "      <div class=\"chart-card\" x-show=\"data\">\n        <h3>כניסות ויציאות לפי שעה</h3>\n        <div class=\"chart-wrap\"><canvas id=\"hourlyChart\"></canvas></div>\n"
+    },
+    {
+     "old": "  <script src=\"static/vendor/chart.min.js\"></script>\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
+     "new": "  <script src=\"static/vendor/chart.min.js\"></script>\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        Kav1, me: null, data: null, days: 7,\n        charts: {},\n\n",
+     "new": "        Kav1, me: null, data: null, days: 7,\n        charts: {}, printing: false,\n\n        periodText() {\n          if (!this.data) return \"\";\n          const f = iso => iso.slice(8, 10) + \".\" + iso.slice(5, 7) + \".\" + iso.slice(0, 4);\n          const when = this.data.period_days === 1 ? f(this.data.period_end) : f(this.data.period_start) + \" - \" + f(this.data.period_end);\n          return \"תקופה: \" + when + \"   |   הופק: \" + Kav1.fmtDateTime(this.data.generated_at);\n        },\n\n"
+    },
+    {
+     "old": "          });\n          const gridColor = \"rgba(255,255,255,0.08)\";\n          const tickColor = \"#9a9a94\";\n          const baseOpts = {\n            responsive: true, maintainAspectRatio: false,\n            animation: false,\n            plugins: { legend: { labels: { color: \"#e0e0e0\", font: { family: \"Segoe UI\" } } } },\n            scales: {\n",
+     "new": "          });\n          const gridColor = this.printing ? \"rgba(0,0,0,0.12)\" : \"rgba(255,255,255,0.08)\";\n          const tickColor = this.printing ? \"#222\" : \"#9a9a94\";\n          const textColor = this.printing ? \"#000\" : \"#e0e0e0\";\n          const baseOpts = {\n            responsive: true, maintainAspectRatio: false,\n            animation: false,\n            plugins: { legend: { labels: { color: textColor, font: { family: \"Segoe UI\" } } } },\n            scales: {\n"
+    },
+    {
+     "old": "                backgroundColor: [\"#4caf7d\", \"#3a7bd5\", \"#d8a93a\", \"#d35a5a\", \"#9b6dd8\", \"#888\"],\n                borderColor: \"#2d2d2d\", borderWidth: 2,\n              }],\n",
+     "new": "                backgroundColor: [\"#4caf7d\", \"#3a7bd5\", \"#d8a93a\", \"#d35a5a\", \"#9b6dd8\", \"#888\"],\n                borderColor: this.printing ? \"#fff\" : \"#2d2d2d\", borderWidth: 2,\n              }],\n"
+    },
+    {
+     "old": "              animation: false,\n              plugins: { legend: { position: \"bottom\", labels: { color: \"#e0e0e0\", font: { family: \"Segoe UI\" }, padding: 12 } } },\n            },\n",
+     "new": "              animation: false,\n              plugins: { legend: { position: \"bottom\", labels: { color: textColor, font: { family: \"Segoe UI\" }, padding: 12 } } },\n            },\n"
+    },
+    {
+     "old": "              labels: h.labels,\n              datasets: [{ label: \"פעולות\", data: h.counts, backgroundColor: \"#3a7bd5\" }],\n            },\n",
+     "new": "              labels: h.labels,\n              datasets: [\n                { label: \"כניסות\", data: h.entries, backgroundColor: \"#4caf7d\" },\n                { label: \"יציאות\", data: h.exits, backgroundColor: \"#3a7bd5\" },\n              ],\n            },\n"
+    },
+    {
+     "old": "          // Browser print -> save as PDF. Handles Hebrew RTL natively,\n          // no embedded fonts needed (ideal offline).\n          window.print();\n        },\n",
+     "new": "          // Browser print -> save as PDF. Handles Hebrew RTL natively,\n          // no embedded fonts needed (ideal offline). The charts are redrawn with dark text first\n          // (the on-screen colours are light and would be invisible on the white page), then restored.\n          this.printing = true;\n          this.renderCharts();\n          const restore = () => { this.printing = false; this.renderCharts(); window.removeEventListener(\"afterprint\", restore); };\n          window.addEventListener(\"afterprint\", restore);\n          setTimeout(() => window.print(), 150);\n        },\n"
+    }
+   ]
+  }
+ ]
 }
