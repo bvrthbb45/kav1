@@ -100,7 +100,7 @@
                 <span x-show="!canManage()">מי שיש לו הרשאת "ניהול פאנל" צריך להעלות מפה.</span>
               </div>
 
-              <!-- the pin bar: project (from the control panel) + escort (from the pool) + location, then click the map -->
+              <!-- the pin bar: project (from the control panel) + escort (from the pool) then click the map -->
               <div class="pinbar">
                 <div class="row wrap" style="align-items:flex-end;">
                   <div class="fld">
@@ -118,10 +118,6 @@
                       <option value="">בחר מלווה</option>
                       <template x-for="p in activePool" :key="p.id"><option :value="p.id" x-text="escortLabel(p)"></option></template>
                     </select>
-                  </div>
-                  <div class="fld">
-                    <label>מיקום (אופציונלי)</label>
-                    <input type="text" x-model="pin.location" maxlength="200" placeholder="למשל: שער צפוני">
                   </div>
                   <button class="btn btn-primary" @click="startPin()" :disabled="!mapId" x-text="placing ? 'לחץ על המפה...' : '📍 נעץ על המפה'"></button>
                 </div>
@@ -142,16 +138,16 @@
             <!-- ===== placements ===== -->
             <div class="card">
               <h3 class="sec">הצבות לפי פרויקט</h3>
-              <p class="muted" style="font-size:12px;margin:-4px 0 10px;">כל פרויקט מופיע פעם אחת. נעיצה חדשה לאותו פרויקט, מלווה ומיקום מזיזה את הנקודה הקיימת.</p>
+              <p class="muted" style="font-size:12px;margin:-4px 0 10px;">כל פרויקט מופיע פעם אחת. המיקום נקבע לפי הנעיצה על המפה. נעיצה חדשה לאותו פרויקט ומלווה מזיזה את הנקודה הקיימת.</p>
               <p x-show="entMsg" x-text="entMsg" style="font-size:13px;margin:0 0 10px;color:var(--danger);"></p>
               <div class="tbl-wrap">
                 <table class="data">
-                  <thead><tr><th>מלווה</th><th>מיקום</th><th>נקודה</th><th></th></tr></thead>
+                  <thead><tr><th>מלווה</th><th>נקודה על המפה</th><th></th></tr></thead>
                   <tbody>
                     <template x-for="r in rows" :key="r.__g ? 'g:' + r.key : r.id">
                       <tr :class="(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')" @click="r.__g ? toggle(r.key) : select(r.id)">
-                        <td class="grp-cell" colspan="4" x-text="r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''"></td>
-                        <td>
+                        <td :class="r.__g ? 'grp-cell' : ''" :colspan="r.__g ? 3 : 1">
+                          <span x-show="r.__g" x-text="r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''"></span>
                           <template x-if="!r.__g">
                             <div @click.stop>
                               <select x-model.number="r.escort_id" x-effect="$nextTick(() => $el.value = r.escort_id == null ? '' : r.escort_id)" @change="onPick(r)">
@@ -163,18 +159,15 @@
                             </div>
                           </template>
                         </td>
-                        <td><template x-if="!r.__g"><input type="text" x-model="r.location_text" maxlength="200" @click.stop></template></td>
-                        <td x-text="r.__g ? '' : (r.x == null ? '—' : '✔')"></td>
-                        <td>
-                          <template x-if="!r.__g">
+                        <template x-if="!r.__g"><td x-text="r.x == null ? '—' : '✔'"></td></template>
+                        <template x-if="!r.__g"><td>
                             <div class="row wrap">
                               <button class="btn btn-sm" @click.stop="repin(r)" :disabled="!mapId" x-text="r.x == null ? '📍 נעץ' : '📍 הזז'"></button>
                               <button class="btn btn-sm" @click.stop="clearPoint(r)" x-show="r.x != null">הסר נקודה</button>
                               <button class="btn btn-sm" @click.stop="saveEntry(r)">שמירה</button>
                               <button class="btn btn-sm btn-danger" @click.stop="removeEntry(r)">מחיקה</button>
                             </div>
-                          </template>
-                        </td>
+                        </td></template>
                       </tr>
                     </template>
                   </tbody>
@@ -285,7 +278,7 @@
         placing: null,                       // null | {mode: "new"} | {mode: "entry", id}
         projFilter: "", collapsed: {},
         hint: "בחר פרויקט ומלווה, לחץ \"נעץ על המפה\" ואז לחץ על המקום במפה.",
-        pin: { project: "", escortId: "", location: "" },
+        pin: { project: "", escortId: "" },
         file: null, newMapName: "", msg: "", msgErr: false, entMsg: "",
         cProject: "", cInside: true, contractors: [], bulkEscort: "", asgMsg: "", asgErr: false,
         pName: "", pCat: "", pPhone: "", poolMsg: "", poolErr: false,
@@ -393,9 +386,9 @@
             if (e) await this.saveEntry(e, { map_id: this.mapId, x, y });
             return;
           }
-          // a new pin: the same project + escort + location is the same placement, so it only moves
-          const loc = (this.pin.location || "").trim();
-          const same = this.entries.find(e => e.project === this.pin.project && e.escort_id === this.pin.escortId && (e.location_text || "").trim().toLowerCase() === loc.toLowerCase());
+          // a new pin: the same project + escort is the same placement, so it only moves
+          const loc = "";
+          const same = this.entries.find(e => e.project === this.pin.project && e.escort_id === this.pin.escortId);
           try {
             if (same) {
               await Kav1.put("locations/entries/" + same.id, this.body(same, { map_id: this.mapId, x, y }));

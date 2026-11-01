@@ -1,0 +1,38 @@
+{
+ "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
+ "files": [
+  {
+   "path": "locations.html",
+   "replace": [
+    {
+     "old": "\n              <!-- the pin bar: project (from the control panel) + escort (from the pool) + location, then click the map -->\n              <div class=\"pinbar\">\n",
+     "new": "\n              <!-- the pin bar: project (from the control panel) + escort (from the pool) then click the map -->\n              <div class=\"pinbar\">\n"
+    },
+    {
+     "old": "                    </select>\n                  </div>\n                  <div class=\"fld\">\n                    <label>מיקום (אופציונלי)</label>\n                    <input type=\"text\" x-model=\"pin.location\" maxlength=\"200\" placeholder=\"למשל: שער צפוני\">\n                  </div>\n",
+     "new": "                    </select>\n                  </div>\n"
+    },
+    {
+     "old": "              <h3 class=\"sec\">הצבות לפי פרויקט</h3>\n              <p class=\"muted\" style=\"font-size:12px;margin:-4px 0 10px;\">כל פרויקט מופיע פעם אחת. נעיצה חדשה לאותו פרויקט, מלווה ומיקום מזיזה את הנקודה הקיימת.</p>\n              <p x-show=\"entMsg\" x-text=\"entMsg\" style=\"font-size:13px;margin:0 0 10px;color:var(--danger);\"></p>\n              <div class=\"tbl-wrap\">\n                <table class=\"data\">\n                  <thead><tr><th>מלווה</th><th>מיקום</th><th>נקודה</th><th></th></tr></thead>\n                  <tbody>\n                    <template x-for=\"r in rows\" :key=\"r.__g ? 'g:' + r.key : r.id\">\n                      <tr :class=\"(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')\" @click=\"r.__g ? toggle(r.key) : select(r.id)\">\n                        <td class=\"grp-cell\" colspan=\"4\" x-text=\"r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''\"></td>\n                        <td>\n                          <template x-if=\"!r.__g\">\n",
+     "new": "              <h3 class=\"sec\">הצבות לפי פרויקט</h3>\n              <p class=\"muted\" style=\"font-size:12px;margin:-4px 0 10px;\">כל פרויקט מופיע פעם אחת. המיקום נקבע לפי הנעיצה על המפה. נעיצה חדשה לאותו פרויקט ומלווה מזיזה את הנקודה הקיימת.</p>\n              <p x-show=\"entMsg\" x-text=\"entMsg\" style=\"font-size:13px;margin:0 0 10px;color:var(--danger);\"></p>\n              <div class=\"tbl-wrap\">\n                <table class=\"data\">\n                  <thead><tr><th>מלווה</th><th>נקודה על המפה</th><th></th></tr></thead>\n                  <tbody>\n                    <template x-for=\"r in rows\" :key=\"r.__g ? 'g:' + r.key : r.id\">\n                      <tr :class=\"(r.__g ? 'grp-row' : 'clickable') + (r.id === selId ? ' sel' : '')\" @click=\"r.__g ? toggle(r.key) : select(r.id)\">\n                        <td :class=\"r.__g ? 'grp-cell' : ''\" :colspan=\"r.__g ? 3 : 1\">\n                          <span x-show=\"r.__g\" x-text=\"r.__g ? (collapsed[r.key] ? '◀ ' : '▼ ') + r.title + ' (' + r.count + ')' : ''\"></span>\n                          <template x-if=\"!r.__g\">\n"
+    },
+    {
+     "old": "                        </td>\n                        <td><template x-if=\"!r.__g\"><input type=\"text\" x-model=\"r.location_text\" maxlength=\"200\" @click.stop></template></td>\n                        <td x-text=\"r.__g ? '' : (r.x == null ? '—' : '✔')\"></td>\n                        <td>\n                          <template x-if=\"!r.__g\">\n                            <div class=\"row wrap\">\n",
+     "new": "                        </td>\n                        <template x-if=\"!r.__g\"><td x-text=\"r.x == null ? '—' : '✔'\"></td></template>\n                        <template x-if=\"!r.__g\"><td>\n                            <div class=\"row wrap\">\n"
+    },
+    {
+     "old": "                            </div>\n                          </template>\n                        </td>\n                      </tr>\n",
+     "new": "                            </div>\n                        </td></template>\n                      </tr>\n"
+    },
+    {
+     "old": "        hint: \"בחר פרויקט ומלווה, לחץ \\\"נעץ על המפה\\\" ואז לחץ על המקום במפה.\",\n        pin: { project: \"\", escortId: \"\", location: \"\" },\n        file: null, newMapName: \"\", msg: \"\", msgErr: false, entMsg: \"\",\n",
+     "new": "        hint: \"בחר פרויקט ומלווה, לחץ \\\"נעץ על המפה\\\" ואז לחץ על המקום במפה.\",\n        pin: { project: \"\", escortId: \"\" },\n        file: null, newMapName: \"\", msg: \"\", msgErr: false, entMsg: \"\",\n"
+    },
+    {
+     "old": "          }\n          // a new pin: the same project + escort + location is the same placement, so it only moves\n          const loc = (this.pin.location || \"\").trim();\n          const same = this.entries.find(e => e.project === this.pin.project && e.escort_id === this.pin.escortId && (e.location_text || \"\").trim().toLowerCase() === loc.toLowerCase());\n          try {\n",
+     "new": "          }\n          // a new pin: the same project + escort is the same placement, so it only moves\n          const loc = \"\";\n          const same = this.entries.find(e => e.project === this.pin.project && e.escort_id === this.pin.escortId);\n          try {\n"
+    }
+   ]
+  }
+ ]
+}
