@@ -169,7 +169,7 @@ def validate_properties(properties):
             continue
         parsed = parse_date(raw)
         if parsed is not None:
-            result[key] = parsed.isoformat()
+            result[key] = parsed.strftime("%d.%m.%Y")  # day.month.year, like the existing data
 
     if status in (INFOSEC_APPROVED, INFOSEC_EXCEPTION) and not get_value(
         result, INFOSEC_EXPIRY_ALIASES
@@ -235,7 +235,7 @@ router = APIRouter()
     "/visitors/overview",
     dependencies=[Depends(require_any_permission("visitor.view", "control.panel"))],
 )
-def visitors_overview(db: Session = Depends(database.get_db)):
+def visitors_overview(inside: bool = False, db: Session = Depends(database.get_db)):
     """Extra columns for the visitor lists (see the module header)."""
     warn = get_int_setting(db, KEY_EXPIRY_DAYS, DEFAULT_EXPIRY_DAYS)
     today = today_local()
@@ -246,7 +246,10 @@ def visitors_overview(db: Session = Depends(database.get_db)):
         .all()
     )
     rows = []
-    for dbid, props in db.query(models.Visitor.dbid, models.Visitor.properties).all():
+    q = db.query(models.Visitor.dbid, models.Visitor.properties)
+    if inside:  # the control panel only needs those inside now (a few rows instead of everyone)
+        q = q.filter(models.Visitor.inside.is_(True))
+    for dbid, props in q.all():
         props = props if isinstance(props, dict) else {}
         approval = find_key(props, INFOSEC_EXPIRY_ALIASES)
         classif = find_key(props, CLASSIFICATION_EXPIRY_ALIASES)

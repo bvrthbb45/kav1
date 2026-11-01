@@ -98,23 +98,95 @@ def find_web_folder(app):
     return None
 
 
-def pick_patch(patch, folder):
-    """The patch to use for a folder: the full one, or - when this system already has an earlier
-    version of this update - the upgrade patch. Returns (patch, note) or (None, output of the failure).
-    """
-    code, out = run_patch(patch, folder, "--check")
-    if code == 0:
-        return patch, ""
-    stem = Path(patch).name.replace(".patch.json", "")
-    for f in sorted((HERE / "patches").glob(stem + ".upgrade*.patch.json")):
-        upgrade = "patches/" + f.name
-        code2, out2 = run_patch(upgrade, folder, "--check")
-        if code2 == 0:
-            return (
-                upgrade,
-                "(an earlier version of this update was found: upgrading it)",
+def kind_of(patch):
+    return "backend" if Path(patch).name.startswith("backend") else "frontend"
+
+
+def expected_file(kind, rel):
+    """The shipped (finished) version of a file, from ready_files/."""
+    rel = rel.replace("\\", "/")
+    if kind == "backend":
+        sub = (
+            "backend/migrate_db.py"
+            if rel == "../migrate_db.py"
+            else "backend/app/" + rel
+        )
+    else:
+        sub = "frontend/web/" + rel
+    return HERE / "ready_files" / sub
+
+
+def matches_shipped(kind, folder):
+    """Names of the files (of the full patch) that do NOT equal the shipped version; [] = all equal."""
+    full = json.loads(
+        (HERE / ("patches/%s.patch.json" % kind)).read_text(encoding="utf-8")
+    )
+    bad = []
+    for f in full["files"]:
+        target = (folder / f["path"]).resolve()
+        exp = expected_file(kind, f["path"])
+        if not target.is_file() or not exp.is_file():
+            bad.append(f["path"])
+        elif target.read_bytes().replace(b"\r\n", b"\n") != exp.read_bytes().replace(
+            b"\r\n", b"\n"
+        ):
+            bad.append(f["path"])
+    return bad
+
+
+def simulate(patch, folder):
+    """Apply a patch to a TEMPORARY COPY of the folder and compare the result with the shipped files.
+    Returns (ok, output, files that differ). Nothing in the real folder is touched."""
+    import tempfile
+
+    kind = kind_of(patch)
+    tmp = Path(tempfile.mkdtemp(prefix="kav1_sim_"))
+    try:
+        if kind == "backend":
+            work = tmp / "backend" / "app"
+            shutil.copytree(
+                folder, work, ignore=shutil.ignore_patterns("__pycache__", "*.bak_*")
             )
-    return None, out
+            mig = folder.parent / "migrate_db.py"
+            if mig.is_file():
+                shutil.copy2(mig, tmp / "backend" / "migrate_db.py")
+        else:
+            work = tmp / "frontend" / "web"
+            shutil.copytree(folder, work, ignore=shutil.ignore_patterns("*.bak_*"))
+        code, out = run_patch(patch, work, "--yes")
+        bad = (
+            matches_shipped(kind, work) if code == 0 else ["(the patch did not apply)"]
+        )
+        return code == 0 and not bad, out, bad
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def pick_patch(patch, folder):
+    """The patch that turns THIS folder into exactly the shipped version: the full one, or - when an
+    earlier version of this update is already installed - one of the upgrade patches. Each candidate is
+    tried on a temporary copy and must give the shipped files byte for byte.
+    Returns (patch, note) or (None, explanation)."""
+    stem = Path(patch).name.replace(".patch.json", "")
+    candidates = [patch] + [
+        "patches/" + f.name
+        for f in sorted((HERE / "patches").glob(stem + ".upgrade*.patch.json"))
+    ]
+    last = ""
+    for cand in candidates:
+        ok, out, bad = simulate(cand, folder)
+        if ok:
+            return cand, (
+                ""
+                if cand == patch
+                else "(an earlier version of this update was found: upgrading it)"
+            )
+        last = (
+            out
+            if not bad or bad == ["(the patch did not apply)"]
+            else "files that would not end up as shipped: " + ", ".join(bad[:8])
+        )
+    return None, last
 
 
 def run_patch(patch, folder, *flags):
@@ -398,6 +470,20 @@ def main():
                 "Stopped. Files already changed have backups (.bak_*); run with --revert. The database is intact."
             )
             return 1
+    for title, patch, folder in chosen:
+        bad = matches_shipped(kind_of(patch), folder)
+        if bad:
+            say(
+                "  [!!] %s: these files are not the shipped version: %s"
+                % (title, ", ".join(bad[:8]))
+            )
+            for _t, p2, f2 in reversed(chosen):
+                run_patch(p2, f2, "--revert")
+            say(
+                "  The code was put back automatically. The database is intact. Send me this screen."
+            )
+            return 1
+    say("  [ok] every installed file equals the shipped version")
     ok_import, out = import_check(backend)
     if (
         not ok_import

@@ -2,6 +2,15 @@
  "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
  "files": [
   {
+   "path": "admin/audit.html",
+   "replace": [
+    {
+     "old": "          if (!ts) return \"—\";\n          try { return new Date(ts).toLocaleString(\"he-IL\"); }\n          catch (e) { return ts; }\n",
+     "new": "          if (!ts) return \"—\";\n          try { return Kav1.fmtDateTime(ts); }\n          catch (e) { return ts; }\n"
+    }
+   ]
+  },
+  {
    "path": "admin/settings.html",
    "replace": [
     {
@@ -22,16 +31,52 @@
      "new": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n"
     },
     {
+     "old": "        </table>\n      </template>\n\n      <template x-if=\"rows.length === 0 && !loading\">\n",
+     "new": "        </table>\n      </template>\n\n      <div x-show=\"total > shown\" class=\"row\" style=\"justify-content:center;margin-top:12px;\">\n        <span class=\"muted\" x-text=\"'מוצגים ' + shown + ' מתוך ' + total\"></span>\n        <button class=\"btn btn-sm\" @click=\"limit += 200\">הצג עוד 200</button>\n        <button class=\"btn btn-sm btn-ghost\" @click=\"limit = 100000\">הצג הכל</button>\n      </div>\n\n      <template x-if=\"rows.length === 0 && !loading\">\n"
+    },
+    {
      "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
      "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
     },
     {
-     "old": "        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n",
-     "new": "        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n"
+     "old": "        me: null, brand: {},\n        allVisitors: [],       // full registry (loaded for search)\n        insideVisitors: [],    // only those inside (default view)\n",
+     "new": "        me: null, brand: {},\n        allVisitors: [],       // full registry (loaded when the first search is made)\n        allLoaded: false,\n        insideVisitors: [],    // only those inside (default view)\n"
     },
     {
-     "old": "        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
-     "new": "        async loadExtras() {\n          // the additions are optional: if anything fails here, the list is shown as it always was\n          try {\n            this.xFlags = await Kav1.extras.flags();\n            this.ov = await Kav1.extras.overview();\n            this.projects = Kav1.extras.projects(this.ov);\n          } catch (e) {\n            this.xFlags = {}; this.ov = {}; this.projects = [];\n          }\n        },\n"
+     "old": "        ov: {}, xFlags: {}, projFilter: \"\", projects: [], collapsed: {}, expOpen: false,\n        rows: [], expList: [],\n        // rows / expList are rebuilt only when their inputs change (not on every binding read)\n        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n          this.expList = Kav1.extras.alerts(this.allVisitors, this.ov);\n        },\n        toggleGroup(k) { this.collapsed = { ...this.collapsed, [k]: !this.collapsed[k] }; },\n        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
+     "new": "        ov: {}, xFlags: {}, projFilter: \"\", projects: [], collapsed: {}, expOpen: false,\n        rows: [], expList: [], limit: 200, shown: 0, total: 0,\n        // rows / expList are rebuilt only when their inputs change (not on every binding read)\n        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          const all = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n          const lim = Kav1.extras.limitRows(all, this.limit);   // a long list is drawn in pages of 200\n          this.rows = lim.rows; this.shown = lim.shown; this.total = lim.total;\n          this.expList = Kav1.extras.alerts(this.allLoaded ? this.allVisitors : this.insideVisitors, this.ov);\n        },\n        toggleGroup(k) { this.collapsed = { ...this.collapsed, [k]: !this.collapsed[k] }; },\n        async loadExtras() {\n          // the additions are optional: if anything fails here, the list is shown as it always was\n          try {\n            this.xFlags = await Kav1.extras.flags();\n            this.ov = await Kav1.extras.overview(!this.allLoaded);   // only those inside, until the search needs everyone\n            this.projects = Kav1.extras.projects(this.ov);\n          } catch (e) {\n            this.xFlags = {}; this.ov = {}; this.projects = [];\n          }\n        },\n"
+    },
+    {
+     "old": "        async init() {\n          [\"filtered\", \"projFilter\", \"collapsed\"].forEach(k => this.$watch(k, () => this.refreshRows()));\n          try {\n",
+     "new": "        async init() {\n          [\"filtered\", \"projFilter\", \"collapsed\", \"limit\"].forEach(k => this.$watch(k, () => this.refreshRows()));\n          [\"filtered\", \"projFilter\"].forEach(k => this.$watch(k, () => { this.limit = 200; }));\n          try {\n"
+    },
+    {
+     "old": "          try {\n            // Default control-panel view: only those currently inside.\n            this.allVisitors = await Kav1.get(\"visitors\");\n            this.insideVisitors = this.allVisitors.filter(v => v.inside);\n            await this.loadExtras();          // before filtered changes: the list renders once, complete\n",
+     "new": "          try {\n            // Default control-panel view: only those currently inside. That is a tiny request\n            // (a few KB); the whole registry (hundreds of KB) is loaded only when someone searches.\n            if (this.allLoaded) {\n              this.allVisitors = await Kav1.get(\"visitors\");\n              this.insideVisitors = this.allVisitors.filter(v => v.inside);\n            } else {\n              this.insideVisitors = await Kav1.get(\"visitors/inside\");\n            }\n            await this.loadExtras();          // before filtered changes: the list renders once, complete\n"
+    },
+    {
+     "old": "\n        applySearch() {\n          // Control panel search reaches the FULL registry (inside + outside),\n",
+     "new": "\n        async ensureAll() {\n          if (this.allLoaded) return;\n          this.allVisitors = await Kav1.get(\"visitors\");\n          this.allLoaded = true;\n          await this.loadExtras();            // now for everyone\n        },\n\n        async applySearch() {\n          // Control panel search reaches the FULL registry (inside + outside),\n"
+    },
+    {
+     "old": "          this.searching = true;\n          let list = this.allVisitors;\n",
+     "new": "          this.searching = true;\n          await this.ensureAll();\n          if (this.search.trim() !== q) return;   // typed on meanwhile: the newer call shows the result\n          let list = this.allVisitors;\n"
+    },
+    {
+     "old": "          if (!ts) return \"—\";\n          try { return new Date(ts).toLocaleString(\"he-IL\"); }\n          catch (e) { return ts; }\n        },\n",
+     "new": "          if (!ts) return \"—\";\n          return Kav1.fmtDateTime(ts);\n        },\n"
+    },
+    {
+     "old": "            // refresh registry + inside list, preserving search if active\n            this.allVisitors = await Kav1.get(\"visitors\");\n            this.insideVisitors = this.allVisitors.filter(x => x.inside);\n            if (this.searching) {\n",
+     "new": "            // refresh registry + inside list, preserving search if active\n            if (this.allLoaded) {\n              this.allVisitors = await Kav1.get(\"visitors\");\n              this.insideVisitors = this.allVisitors.filter(x => x.inside);\n            } else {\n              this.insideVisitors = await Kav1.get(\"visitors/inside\");\n            }\n            await this.loadExtras();\n            if (this.searching) {\n"
+    },
+    {
+     "old": "\n        connectWs() {\n",
+     "new": "\n        // every entry / exit / edit by anybody sends \"sync\"; several in a row must cause ONE reload\n        scheduleReload() {\n          if (this._reloadTimer) return;\n          this._reloadTimer = setTimeout(async () => {\n            this._reloadTimer = null;\n            if (this.loading) { this.scheduleReload(); return; }\n            await this.load();\n          }, 600);\n        },\n\n        connectWs() {\n"
+    },
+    {
+     "old": "            this.ws = new WebSocket(proto + \"//\" + location.host + \"/ws\");\n            this.ws.onmessage = () => this.load();\n          } catch (e) {}\n",
+     "new": "            this.ws = new WebSocket(proto + \"//\" + location.host + \"/ws\");\n            this.ws.onmessage = () => this.scheduleReload();\n          } catch (e) {}\n"
     }
    ]
   },
@@ -105,8 +150,42 @@
    ]
   },
   {
+   "path": "logs.html",
+   "replace": [
+    {
+     "old": "        fmt(ts) {\n          try {\n            const d = new Date(ts);\n            return d.toLocaleString(\"he-IL\");\n          } catch (e) { return ts; }\n        },\n",
+     "new": "        fmt(ts) {\n          return Kav1.fmtDateTime(ts);\n        },\n"
+    }
+   ]
+  },
+  {
+   "path": "reports.html",
+   "replace": [
+    {
+     "old": "            data: {\n              labels: t.labels.map(d => d.slice(5)),\n              datasets: [\n",
+     "new": "            data: {\n              labels: t.labels.map(d => d.slice(8, 10) + \".\" + d.slice(5, 7)),   // day.month\n              datasets: [\n"
+    }
+   ]
+  },
+  {
    "path": "static/js/kav1.js",
    "replace": [
+    {
+     "old": "\n  // ---- logout ----\n",
+     "new": "\n  // ---- dates: always day.month.year (European), 24-hour clock, whatever the browser's language is ----\n  fmtDateTime(ts) {\n    if (!ts) return \"—\";\n    const d = new Date(ts);\n    if (isNaN(d.getTime())) return String(ts);\n    const p = n => String(n).padStart(2, \"0\");\n    return p(d.getDate()) + \".\" + p(d.getMonth() + 1) + \".\" + d.getFullYear() + \" \" + p(d.getHours()) + \":\" + p(d.getMinutes()) + \":\" + p(d.getSeconds());\n  },\n\n  // ---- logout ----\n"
+    },
+    {
+     "old": "  // {dbid: {last_entry, project, infosec, approval, classification}} - {} on any failure\n  async overview() {\n    try {\n      const res = await Kav1.get(\"visitors/overview\");\n      const map = {};\n",
+     "new": "  // {dbid: {last_entry, project, infosec, approval, classification}} - {} on any failure\n  async overview(insideOnly) {\n    try {\n      const res = await Kav1.get(\"visitors/overview\" + (insideOnly ? \"?inside=true\" : \"\"));\n      const map = {};\n"
+    },
+    {
+     "old": "  fmtDate(iso) { return iso ? iso.slice(8, 10) + \".\" + iso.slice(5, 7) + \".\" + iso.slice(0, 4) : \"\"; },\n  // one expiry -> {label, cls}; cls is a badge colour class, label may be \"\" when there is nothing to show\n",
+     "new": "  fmtDate(iso) { return iso ? iso.slice(8, 10) + \".\" + iso.slice(5, 7) + \".\" + iso.slice(0, 4) : \"\"; },\n  // typed text -> \"dd.mm.yyyy\" (day first), or null. Accepts 31.12.2026, 31/12/26, 31-12-2026, 2026-12-31,\n  // and a range (the last date counts).\n  parseDate(text) {\n    let t = String(text == null ? \"\" : text).trim();\n    if (!t) return null;\n    const parts = t.split(/\\s+[-–—]\\s+|\\s+עד\\s+/).filter(x => x.trim());\n    if (parts.length) t = parts[parts.length - 1].trim();\n    let y, m, d, mt;\n    if ((mt = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(t))) { y = +mt[1]; m = +mt[2]; d = +mt[3]; }\n    else if ((mt = /^(\\d{1,2})\\s*[./\\-]\\s*(\\d{1,2})\\s*[./\\-]\\s*(\\d{4}|\\d{2})$/.exec(t))) { d = +mt[1]; m = +mt[2]; y = +mt[3]; if (mt[3].length === 2) y += 2000; }\n    else return null;\n    if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > new Date(y, m, 0).getDate()) return null;\n    const p = n => String(n).padStart(2, \"0\");\n    return p(d) + \".\" + p(m) + \".\" + y;\n  },\n  // keep a long list light: only the first `limit` visitors are drawn (group headers stay with their members)\n  limitRows(rows, limit) {\n    let shown = 0, total = 0;\n    const out = [];\n    for (const r of rows) {\n      if (r.__g) { out.push(r); continue; }\n      total++;\n      if (shown < limit) { shown++; out.push(r); }\n    }\n    // a group header stays when its group is folded, or when at least one of its members is drawn\n    const kept = out.filter((r, i) => !r.__g || r.folded || (out[i + 1] && !out[i + 1].__g));\n    return { rows: kept, shown, total };\n  },\n  // one expiry -> {label, cls}; cls is a badge colour class, label may be \"\" when there is nothing to show\n"
+    },
+    {
+     "old": "      const key = k || \"__none__\";\n      out.push({ __g: true, key, title: k || \"ללא פרויקט\", count: members.length });\n      if (!collapsed[key]) members.forEach(m => out.push(m));\n",
+     "new": "      const key = k || \"__none__\";\n      out.push({ __g: true, key, title: k || \"ללא פרויקט\", count: members.length, folded: !!collapsed[key] });\n      if (!collapsed[key]) members.forEach(m => out.push(m));\n"
+    },
     {
      "old": "    const me = await Kav1.me();\n    if (!me || !(me.permissions || []).includes(\"locations.view\")) return;\n    const f = await Kav1.extras.flags();\n",
      "new": "    const me = await Kav1.me();\n    const perms = (me && me.permissions) || [];\n    if (!perms.includes(\"locations.manage\") && !perms.includes(\"locations.operate\")) return;\n    const f = await Kav1.extras.flags();\n"
@@ -121,12 +200,20 @@
      "new": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n"
     },
     {
+     "old": "\n      <template x-if=\"rows.length === 0 && !loading\">\n",
+     "new": "\n      <div x-show=\"total > shown\" class=\"row\" style=\"justify-content:center;margin-top:12px;\">\n        <span class=\"muted\" x-text=\"'מוצגים ' + shown + ' מתוך ' + total\"></span>\n        <button class=\"btn btn-sm\" @click=\"limit += 200\">הצג עוד 200</button>\n        <button class=\"btn btn-sm btn-ghost\" @click=\"limit = 100000\">הצג הכל</button>\n      </div>\n\n      <template x-if=\"rows.length === 0 && !loading\">\n"
+    },
+    {
+     "old": "              <label>תוקף אישור (חובה כשיש אישור)</label>\n              <input type=\"date\" x-model=\"mf.approval\">\n            </div>\n            <div class=\"field\">\n              <label class=\"checkbox-row\" style=\"color:var(--text);\"><input type=\"checkbox\" x-model=\"mf.hasCls\"> יש תוקף סב\"ט (אופציונלי)</label>\n              <input type=\"date\" x-model=\"mf.cls\" x-show=\"mf.hasCls\">\n            </div>\n",
+     "new": "              <label>תוקף אישור (חובה כשיש אישור)</label>\n              <input type=\"text\" x-model=\"mf.approval\" placeholder=\"יום.חודש.שנה, למשל 31.12.2026\" dir=\"ltr\" inputmode=\"numeric\" maxlength=\"12\">\n            </div>\n            <div class=\"field\">\n              <label class=\"checkbox-row\" style=\"color:var(--text);\"><input type=\"checkbox\" x-model=\"mf.hasCls\"> יש תוקף סב\"ט (אופציונלי)</label>\n              <input type=\"text\" x-model=\"mf.cls\" x-show=\"mf.hasCls\" placeholder=\"יום.חודש.שנה, למשל 31.12.2026\" dir=\"ltr\" inputmode=\"numeric\" maxlength=\"12\">\n            </div>\n"
+    },
+    {
      "old": "\n  <script src=\"static/js/kav1.js\"></script>\n  <script>\n",
      "new": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n"
     },
     {
-     "old": "        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n",
-     "new": "        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n"
+     "old": "        ov: {}, xFlags: {}, projFilter: \"\", projects: [], collapsed: {}, expOpen: false,\n        rows: [], expList: [],\n        // rows / expList are rebuilt only when their inputs change (not on every binding read)\n        refreshRows() {\n          this.rows = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n          this.expList = Kav1.extras.alerts(this.visitors, this.ov);\n",
+     "new": "        ov: {}, xFlags: {}, projFilter: \"\", projects: [], collapsed: {}, expOpen: false,\n        rows: [], expList: [], limit: 200, shown: 0, total: 0,\n        // rows / expList are rebuilt only when their inputs change (not on every binding read)\n        refreshRows() {\n          if (!Kav1.extras) { this.rows = this.filtered; this.expList = []; return; }   // old kav1.js: plain list\n          const all = Kav1.extras.arrange(this.filtered, this.ov, this.projFilter, !!this.xFlags.group_by_project, this.collapsed);\n          const lim = Kav1.extras.limitRows(all, this.limit);   // a long list is drawn in pages of 200\n          this.rows = lim.rows; this.shown = lim.shown; this.total = lim.total;\n          this.expList = Kav1.extras.alerts(this.visitors, this.ov);\n"
     },
     {
      "old": "        async loadExtras() {\n          this.xFlags = await Kav1.extras.flags();\n          this.ov = await Kav1.extras.overview();\n          this.projects = Kav1.extras.projects(this.ov);\n        },\n",
@@ -135,6 +222,34 @@
     {
      "old": "            infosec: [\"אבטחת מידע\"],\n            approval: [\"תוקף אישור\", \"תוקף אבטחת מידע\", \"תאריך תום אישור\"],\n            cls: ['תוקף סב\"ט', \"תוקף סב״ט\", \"תוקף סיווג\", \"תוקף סיווג בטחוני\"],\n          };\n          const props = Object.assign({}, v.properties || {});\n          const find = (field) => Object.keys(props).find(k => ALIASES[field].includes(k.trim()) || ALIASES[field].includes(k.trim().toLowerCase()));\n          const o = this.ov[v.dbid] || {};\n",
      "new": "            infosec: [\"אבטחת מידע\"],\n            approval: [\"תוקף אישור\", \"תאריך תום אישור\"],\n            cls: ['תוקף סב\"ט', \"תוקף סב״ט\", \"תוקף סיווג\", \"תוקף סיווג בטחוני\"],\n          };\n          const props = Object.assign({}, v.properties || {});\n          // aliases are in order of preference: the first one that holds a value wins\n          const find = (field) => {\n            const keys = Object.keys(props);\n            const hit = (a) => keys.filter(k => k.trim() === a || k.trim().toLowerCase() === a);\n            for (const a of ALIASES[field]) {\n              const k = hit(a).find(x => String(props[x] == null ? \"\" : props[x]).trim() !== \"\");\n              if (k !== undefined) return k;\n            }\n            for (const a of ALIASES[field]) { const k = hit(a)[0]; if (k !== undefined) return k; }   // present but empty\n            return undefined;\n          };\n          const o = this.ov[v.dbid] || {};\n"
+    },
+    {
+     "old": "            else if (field === \"infosec\") this.mf.infosec = val;\n            else if (field === \"approval\") this.mf.approval = iso.approval;\n            else { this.mf.hasCls = true; this.mf.cls = iso.cls; }\n            delete props[k];\n          }\n          return props;\n        },\n",
+     "new": "            else if (field === \"infosec\") this.mf.infosec = val;\n            else if (field === \"approval\") this.mf.approval = Kav1.extras.fmtDate(iso.approval);\n            else { this.mf.hasCls = true; this.mf.cls = Kav1.extras.fmtDate(iso.cls); }\n            delete props[k];\n          }\n          return props;\n        },\n        // dates are typed day.month.year and stored the same way (as most of the existing data is)\n        managedDateError() {\n          const bad = (txt) => (txt || \"\").trim() !== \"\" && !Kav1.extras.parseDate(txt);\n          if (bad(this.mf.approval)) return \"תאריך תוקף האישור לא תקין. יש לכתוב יום.חודש.שנה, למשל 31.12.2026\";\n          if (this.mf.hasCls && (this.mf.cls || \"\").trim() === \"\") return 'יש להזין תאריך תוקף סב\"ט (יום.חודש.שנה)';\n          if (this.mf.hasCls && bad(this.mf.cls)) return 'תאריך תוקף הסב\"ט לא תקין. יש לכתוב יום.חודש.שנה, למשל 31.12.2026';\n          return \"\";\n        },\n"
+    },
+    {
+     "old": "          put(\"infosec\", \"אבטחת מידע\", this.mf.infosec);\n          put(\"approval\", \"תוקף אישור\", this.mf.approval);\n          put(\"cls\", 'תוקף סב\"ט', this.mf.hasCls ? this.mf.cls : \"\");\n          return obj;\n",
+     "new": "          put(\"infosec\", \"אבטחת מידע\", this.mf.infosec);\n          put(\"approval\", \"תוקף אישור\", Kav1.extras.parseDate(this.mf.approval));\n          put(\"cls\", 'תוקף סב\"ט', this.mf.hasCls ? Kav1.extras.parseDate(this.mf.cls) : \"\");\n          return obj;\n"
+    },
+    {
+     "old": "        async init() {\n          [\"filtered\", \"projFilter\", \"collapsed\"].forEach(k => this.$watch(k, () => this.refreshRows()));\n          try {\n",
+     "new": "        async init() {\n          [\"filtered\", \"projFilter\", \"collapsed\", \"limit\"].forEach(k => this.$watch(k, () => this.refreshRows()));\n          [\"filtered\", \"projFilter\"].forEach(k => this.$watch(k, () => { this.limit = 200; }));\n          try {\n"
+    },
+    {
+     "old": "          if (!ts) return \"—\";\n          try { return new Date(ts).toLocaleString(\"he-IL\"); }\n          catch (e) { return ts; }\n        },\n",
+     "new": "          if (!ts) return \"—\";\n          return Kav1.fmtDateTime(ts);\n        },\n"
+    },
+    {
+     "old": "          }\n          const properties = this.mergeManaged(this.propsToObject());\n",
+     "new": "          }\n          const dateError = this.managedDateError();\n          if (dateError) { this.modalError = dateError; return; }\n          const properties = this.mergeManaged(this.propsToObject());\n"
+    },
+    {
+     "old": "\n        connectWs() {\n",
+     "new": "\n        // every entry / exit / edit by anybody sends \"sync\"; several in a row must cause ONE reload\n        scheduleReload() {\n          if (this._reloadTimer) return;\n          this._reloadTimer = setTimeout(async () => {\n            this._reloadTimer = null;\n            if (this.loading) { this.scheduleReload(); return; }\n            await this.load();\n          }, 600);\n        },\n\n        connectWs() {\n"
+    },
+    {
+     "old": "            this.ws = new WebSocket(proto + \"://\" + location.host + \"/ws\");\n            this.ws.onmessage = () => this.load();\n            this.ws.onclose = () => setTimeout(() => this.connectWs(), 4000);\n",
+     "new": "            this.ws = new WebSocket(proto + \"://\" + location.host + \"/ws\");\n            this.ws.onmessage = () => this.scheduleReload();\n            this.ws.onclose = () => setTimeout(() => this.connectWs(), 4000);\n"
     }
    ]
   }

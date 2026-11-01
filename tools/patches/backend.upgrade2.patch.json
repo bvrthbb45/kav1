@@ -5,12 +5,20 @@
    "path": "main.py",
    "replace": [
     {
+     "old": "from fastapi import FastAPI\nfrom fastapi.staticfiles import StaticFiles\n",
+     "new": "from fastapi import FastAPI\nfrom fastapi.middleware.gzip import GZipMiddleware\nfrom fastapi.staticfiles import StaticFiles\n"
+    },
+    {
      "old": "from .routes_reports import router as reports_router\nfrom .routes_locations import router as locations_router, ensure_locations_permissions\nfrom .visitor_extras import router as extras_router\n",
      "new": "from .routes_reports import router as reports_router\nfrom .routes_locations import router as locations_router, ensure_locations_setup\nfrom .visitor_extras import router as extras_router\n"
     },
     {
      "old": "        run_seed(db)\n        ensure_locations_permissions(db)\n    finally:\n",
      "new": "        run_seed(db)\n        ensure_locations_setup(db)\n    finally:\n"
+    },
+    {
+     "old": "app = FastAPI(lifespan=lifespan)\n\n",
+     "new": "app = FastAPI(lifespan=lifespan)\n# the visitor lists are large JSON (hundreds of KB); compressed they are ~10x smaller on the network\napp.add_middleware(GZipMiddleware, minimum_size=1024)\n\n"
     }
    ]
   },
@@ -134,6 +142,35 @@
     {
      "old": "        return None\n    wanted = {k.strip().lower() for k in ([keys] if isinstance(keys, str) else keys)}\n    for key, value in properties.items():\n        if str(key).strip().lower() in wanted:\n            text = _text(value)\n            if text:\n                return text\n    return None\n\n",
      "new": "        return None\n    key = find_key(properties, [keys] if isinstance(keys, str) else keys)\n    return _text(properties[key]) if key is not None else None\n\n"
+    },
+    {
+     "old": "        if parsed is not None:\n            result[key] = parsed.isoformat()\n\n",
+     "new": "        if parsed is not None:\n            result[key] = parsed.strftime(\"%d.%m.%Y\")  # day.month.year, like the existing data\n\n"
+    },
+    {
+     "old": ")\ndef visitors_overview(db: Session = Depends(database.get_db)):\n    \"\"\"Extra columns for the visitor lists (see the module header).\"\"\"\n",
+     "new": ")\ndef visitors_overview(inside: bool = False, db: Session = Depends(database.get_db)):\n    \"\"\"Extra columns for the visitor lists (see the module header).\"\"\"\n"
+    },
+    {
+     "old": "    rows = []\n    for dbid, props in db.query(models.Visitor.dbid, models.Visitor.properties).all():\n        props = props if isinstance(props, dict) else {}\n",
+     "new": "    rows = []\n    q = db.query(models.Visitor.dbid, models.Visitor.properties)\n    if inside:  # the control panel only needs those inside now (a few rows instead of everyone)\n        q = q.filter(models.Visitor.inside.is_(True))\n    for dbid, props in q.all():\n        props = props if isinstance(props, dict) else {}\n"
+    }
+   ]
+  },
+  {
+   "path": "websocket.py",
+   "replace": [
+    {
+     "old": "from fastapi import WebSocket\nfrom typing import List\n\n",
+     "new": "import asyncio\nfrom fastapi import WebSocket\nfrom typing import List\n\nSEND_TIMEOUT = 2.0  # seconds a single client may take; a stuck one must not hold everybody else\n\n"
+    },
+    {
+     "old": "    def disconnect(self, websocket: WebSocket):\n        self.active_connections.remove(websocket)\n\n",
+     "new": "    def disconnect(self, websocket: WebSocket):\n        if websocket in self.active_connections:  # it may already have been dropped by a broadcast\n            self.active_connections.remove(websocket)\n\n"
+    },
+    {
+     "old": "\n    async def broadcast(self, message: str):\n        for connection in self.active_connections:\n            try:\n                await connection.send_text(message)\n            except Exception as e:\n                print(f\"Broadcast error: {e}\")\n",
+     "new": "\n    async def _send(self, connection: WebSocket, message: str) -> bool:\n        try:\n            await asyncio.wait_for(connection.send_text(message), SEND_TIMEOUT)\n            return True\n        except Exception as e:\n            print(f\"Broadcast error (client dropped): {e}\")\n            return False\n\n    async def broadcast(self, message: str):\n        \"\"\"Send to every client at the same time. A client that fails or is stuck is dropped,\n        so one dead browser can no longer delay (or hang) an entry / exit for everyone.\"\"\"\n        connections = list(self.active_connections)\n        if not connections:\n            return\n        results = await asyncio.gather(*(self._send(c, message) for c in connections))\n        for connection, ok in zip(connections, results):\n            if not ok:\n                self.disconnect(connection)\n"
     }
    ]
   },
