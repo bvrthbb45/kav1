@@ -52,6 +52,7 @@ def hunks(old_text, new_text):
         else:
             groups.append([op])
     out = []
+    cur = old_text  # the text as it is once the earlier hunks are applied (hunks apply in order)
     for g in groups:
         i1, i2, j1, j2 = g[0][1], g[-1][2], g[0][3], g[-1][4]
         ctx = 1
@@ -59,11 +60,12 @@ def hunks(old_text, new_text):
             lo, hi = max(0, i1 - ctx), min(len(a), i2 + ctx)
             old = "".join(a[lo:hi])
             new = "".join(b[max(0, j1 - (i1 - lo)) : min(len(b), j2 + (hi - i2))])
-            if old_text.count(old) == 1 or ctx > 30:
+            if (old_text.count(old) == 1 and cur.count(old) == 1) or ctx > 30:
                 break
             ctx += 1
-        if old_text.count(old) != 1:
+        if old_text.count(old) != 1 or cur.count(old) != 1:
             raise SystemExit("cannot make a unique hunk")
+        cur = cur.replace(old, new, 1)
         out.append({"old": old, "new": new})
     return out
 

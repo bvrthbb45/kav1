@@ -15,6 +15,8 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the release process.
 - **Added** the database path printed at start (`KAV1_DB` override), `tools/db_portability.py` (check / export / import, never drops visitors), `tools/install_update.py` (dry run, verified backup, row-count verification, auto-revert).
 - **Added** additive visitor features (latest entry first, project, expiry badges, information-security select, optional grouping, optional "Control & Locations") behind admin switches, design unchanged; docs in `docs/package/`.
 
+- **Changed** "Control & Locations": pinning is now done from a toolbar (project from the control panel + escort from the pool + location, then click the map; re-pinning the same placement moves it), project lists are synchronized with the control panel (each project once, contractors without one under "ללא פרויקט"), escorts of the pool can be assigned to the contractors of a project (`location_assignments`, single and bulk), the pool shows under each escort the projects he is assigned to, and duplicate escorts/placements are refused. New table only; nothing is deleted (assigned escorts are deactivated instead of removed).
+
 ### Added
 - `tools/install_update.py`: one-click installer for the seed.py fix + locations feature (DB backup, all-patches check, ordered install, `--revert`)
 - Optional feature **"שליטה ומיקומים"** (control & locations): escort + location rows per project, uploaded maps stored in the DB, points placed on a map, admin switches for the feature and for "group list by project" (`backend/production_modules/locations`, patch `tools/patches/locations_feature.patch.json`); `code_patch.py` can now create new files

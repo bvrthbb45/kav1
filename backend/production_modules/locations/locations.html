@@ -4,14 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kav1 - שליטה ומיקומים</title>
-  <link rel="stylesheet" href="static/css/kav1.css?v=20261029">
+  <link rel="stylesheet" href="static/css/kav1.css?v=20261101">
   <style>
-    .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
-    .stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
+    .split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+    @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
     .stage { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; line-height: 0; display: inline-block; max-width: 100%; }
     .stage img { display: block; max-width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
-    .stage.placing { outline: 2px dashed var(--accent); cursor: crosshair; }
+    .stage.placing { outline: 3px dashed var(--accent); cursor: crosshair; }
     .pt { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--danger); border: 2px solid #fff; transform: translate(-50%, -50%); cursor: pointer; }
     .pt.sel { background: var(--accent); width: 18px; height: 18px; }
     .pt span { position: absolute; top: 16px; right: 0; white-space: nowrap; font-size: 12px; line-height: 1.3; background: rgba(0,0,0,0.8); color: #fff; padding: 1px 6px; border-radius: 4px; }
@@ -19,9 +18,15 @@
     tr.sel td { background: #2f3b4d; }
     tr.clickable { cursor: pointer; }
     .wrap { flex-wrap: wrap; }
-    .pool-table td input[type=text] { min-width: 110px; }
     .sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
     h3.sec { font-size: 15px; margin: 0 0 10px; color: var(--text-bright); font-weight: 600; }
+    .pinbar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-bottom: 12px; }
+    .pinbar label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+    .pinbar .fld { flex: 1; min-width: 130px; }
+    .chip { display: inline-block; background: rgba(58,123,213,0.18); color: #7aa9e8; border-radius: 12px; padding: 1px 9px; font-size: 12px; margin: 2px 0 0 4px; }
+    .notice { background: rgba(216,169,58,0.15); border: 1px solid rgba(216,169,58,0.5); color: #e6bf62; border-radius: var(--radius); padding: 8px 12px; font-size: 13px; margin-bottom: 10px; }
+    .pool-table td input[type=text] { min-width: 110px; }
+    .full { display: grid; gap: 16px; margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -51,9 +56,9 @@
         <h1>שליטה ומיקומים</h1>
         <div class="row">
           <span class="badge badge-active" x-text="canManage() ? 'ניהול פאנל' : 'הפעלה'"></span>
-          <select x-model="projFilter" style="width:170px;">
+          <select x-model="projFilter" x-effect="$nextTick(() => $el.value = projFilter)" style="width:190px;">
             <option value="">כל הפרויקטים</option>
-            <template x-for="p in projects" :key="p"><option :value="p" x-text="p"></option></template>
+            <template x-for="p in projectNames" :key="p"><option :value="p" x-text="p"></option></template>
           </select>
         </div>
       </div>
@@ -63,61 +68,81 @@
       </template>
 
       <template x-if="loaded && enabled">
-        <div style="display:grid;gap:16px;">
-        <div class="split">
-          <!-- map -->
-          <div class="card">
-            <div class="row wrap" style="margin-bottom:10px;">
-              <select x-model.number="mapId" x-effect="$nextTick(() => $el.value = mapId)" style="width:180px;" @change="selectMap()">
-                <template x-for="m in maps" :key="m.id"><option :value="m.id" x-text="m.name"></option></template>
-              </select>
+        <div>
+          <div class="split">
+            <!-- ===== map and pinning ===== -->
+            <div class="card">
+              <h3 class="sec">מפה ונעיצת מלווים לפי פרויקט</h3>
+
+              <div class="row wrap" style="margin-bottom:10px;">
+                <select x-model.number="mapId" x-effect="$nextTick(() => $el.value = mapId)" style="width:180px;" @change="placing = null">
+                  <template x-for="m in maps" :key="m.id"><option :value="m.id" x-text="m.name"></option></template>
+                </select>
+                <template x-if="canManage() && mapId">
+                  <div class="row wrap">
+                    <button class="btn btn-sm" @click="renameMap()">שינוי שם</button>
+                    <button class="btn btn-sm btn-danger" @click="deleteMap()">מחיקת מפה</button>
+                  </div>
+                </template>
+              </div>
               <template x-if="canManage()">
-                <div class="row wrap">
-                  <button class="btn btn-sm" @click="renameMap()" :disabled="!mapId">שינוי שם</button>
-                  <button class="btn btn-sm btn-danger" @click="deleteMap()" :disabled="!mapId">מחיקת מפה</button>
+                <div class="row wrap" style="margin-bottom:10px;">
+                  <input type="file" accept="image/png,image/jpeg" @change="onFile($event)" style="font-size:13px;width:auto;">
+                  <input type="text" x-model="newMapName" placeholder="שם למפה" style="width:150px;">
+                  <button class="btn btn-primary btn-sm" @click="uploadMap()" :disabled="!file">העלאת מפה</button>
+                </div>
+              </template>
+              <p x-show="msg" x-text="msg" :style="'font-size:13px;margin:0 0 10px;color:' + (msgErr ? 'var(--danger)' : 'var(--success)')"></p>
+
+              <div class="notice" x-show="!mapId">
+                אין מפה במערכת, ולכן אי אפשר לנעוץ.
+                <span x-show="canManage()">אפשר להעלות מפה (PNG או JPEG) למעלה.</span>
+                <span x-show="!canManage()">מי שיש לו הרשאת "ניהול פאנל" צריך להעלות מפה.</span>
+              </div>
+
+              <!-- the pin bar: project (from the control panel) + escort (from the pool) + location, then click the map -->
+              <div class="pinbar">
+                <div class="row wrap" style="align-items:flex-end;">
+                  <div class="fld">
+                    <label>פרויקט (מפאנל השליטה)</label>
+                    <select x-model="pin.project" x-effect="$nextTick(() => $el.value = pin.project)">
+                      <option value="">בחר פרויקט</option>
+                      <template x-for="p in projectOptions" :key="p.project">
+                        <option :value="p.project" x-text="p.label"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div class="fld">
+                    <label>מלווה (מהפול)</label>
+                    <select x-model.number="pin.escortId" x-effect="$nextTick(() => $el.value = pin.escortId)">
+                      <option value="">בחר מלווה</option>
+                      <template x-for="p in activePool" :key="p.id"><option :value="p.id" x-text="escortLabel(p)"></option></template>
+                    </select>
+                  </div>
+                  <div class="fld">
+                    <label>מיקום (אופציונלי)</label>
+                    <input type="text" x-model="pin.location" maxlength="200" placeholder="למשל: שער צפוני">
+                  </div>
+                  <button class="btn btn-primary" @click="startPin()" :disabled="!mapId" x-text="placing ? 'לחץ על המפה...' : '📍 נעץ על המפה'"></button>
+                </div>
+                <p class="muted" style="font-size:12px;margin:8px 0 0;" x-text="hint"></p>
+              </div>
+
+              <template x-if="mapId">
+                <div class="stage" :class="placing ? 'placing' : ''" @click="onStage($event)">
+                  <img :src="'/locations/maps/' + mapId + '/image'" alt="" x-ref="img">
+                  <template x-for="e in mapEntries" :key="e.id">
+                    <div class="pt" :class="e.id === selId ? 'sel' : ''" :style="'left:' + (e.x * 100) + '%;top:' + (e.y * 100) + '%'"
+                         @click.stop="select(e.id)"><span x-text="e.project + (e.escort_name ? ' · ' + e.escort_name : '')"></span></div>
+                  </template>
                 </div>
               </template>
             </div>
-            <template x-if="canManage()">
-              <div class="row wrap" style="margin-bottom:10px;">
-                <input type="file" accept="image/png,image/jpeg" @change="onFile($event)" style="font-size:13px;width:auto;">
-                <input type="text" x-model="newMapName" placeholder="שם למפה" style="width:150px;">
-                <button class="btn btn-primary btn-sm" @click="uploadMap()" :disabled="!file">העלאת מפה</button>
-              </div>
-            </template>
-            <div class="row wrap" style="margin-bottom:10px;">
-              <button class="btn btn-sm" @click="startPlace()" :disabled="!selected || !mapId">מקם נקודה לשורה שנבחרה</button>
-              <button class="btn btn-sm" @click="clearPoint()" :disabled="!selected || selected.x == null">הסר נקודה</button>
-              <span class="muted" style="font-size:12px;" x-text="hint"></span>
-            </div>
-            <p x-show="msg" x-text="msg" :style="'font-size:13px;margin:0 0 10px;color:' + (msgErr ? 'var(--danger)' : 'var(--success)')"></p>
-            <template x-if="mapId">
-              <div class="stage" :class="placing ? 'placing' : ''" @click="onStage($event)" x-ref="stage">
-                <img :src="'/locations/maps/' + mapId + '/image'" alt="" x-ref="img">
-                <template x-for="e in mapEntries" :key="e.id">
-                  <div class="pt" :class="e.id === selId ? 'sel' : ''" :style="'left:' + (e.x * 100) + '%;top:' + (e.y * 100) + '%'"
-                       @click.stop="select(e.id)"><span x-text="e.project + (e.escort_name ? ' · ' + e.escort_name : '')"></span></div>
-                </template>
-              </div>
-            </template>
-            <template x-if="!mapId"><p class="muted">אין מפה להצגה.<span x-show="canManage()"> אפשר להעלות מפה למעלה.</span></p></template>
-          </div>
 
-          <div class="stack">
-            <!-- placements: project + escort + location -->
+            <!-- ===== placements ===== -->
             <div class="card">
-              <h3 class="sec">הצבות: פרויקט, מלווה ומיקום</h3>
-              <div class="row wrap" style="margin-bottom:10px;">
-                <input type="text" x-model="nProj" placeholder="פרויקט" list="locProjects" style="flex:1;min-width:90px;">
-                <datalist id="locProjects"><template x-for="p in projects" :key="p"><option :value="p"></option></template></datalist>
-                <select x-model.number="nEscId" style="flex:1;min-width:120px;">
-                  <option value="">מלווה: טקסט חופשי</option>
-                  <template x-for="p in activePool" :key="p.id"><option :value="p.id" x-text="p.name + (p.catalog_number ? ' (' + p.catalog_number + ')' : '')"></option></template>
-                </select>
-                <input type="text" x-show="!nEscId" x-model="nEsc" placeholder="שם מלווה" style="flex:1;min-width:90px;">
-                <input type="text" x-model="nLoc" placeholder="מיקום" style="flex:1;min-width:90px;">
-                <button class="btn btn-primary btn-sm" @click="addEntry()">הוסף</button>
-              </div>
+              <h3 class="sec">הצבות לפי פרויקט</h3>
+              <p class="muted" style="font-size:12px;margin:-4px 0 10px;">כל פרויקט מופיע פעם אחת. נעיצה חדשה לאותו פרויקט, מלווה ומיקום מזיזה את הנקודה הקיימת.</p>
               <p x-show="entMsg" x-text="entMsg" style="font-size:13px;margin:0 0 10px;color:var(--danger);"></p>
               <div class="tbl-wrap">
                 <table class="data">
@@ -142,7 +167,9 @@
                         <td x-text="r.__g ? '' : (r.x == null ? '—' : '✔')"></td>
                         <td>
                           <template x-if="!r.__g">
-                            <div class="row">
+                            <div class="row wrap">
+                              <button class="btn btn-sm" @click.stop="repin(r)" :disabled="!mapId" x-text="r.x == null ? '📍 נעץ' : '📍 הזז'"></button>
+                              <button class="btn btn-sm" @click.stop="clearPoint(r)" x-show="r.x != null">הסר נקודה</button>
                               <button class="btn btn-sm" @click.stop="saveEntry(r)">שמירה</button>
                               <button class="btn btn-sm btn-danger" @click.stop="removeEntry(r)">מחיקה</button>
                             </div>
@@ -152,61 +179,115 @@
                     </template>
                   </tbody>
                 </table>
-                <template x-if="rows.length === 0"><p class="muted" style="text-align:center;">אין שורות להצגה.</p></template>
+                <template x-if="rows.length === 0"><p class="muted" style="text-align:center;">אין הצבות עדיין. בחר פרויקט ומלווה, ולחץ "נעץ על המפה".</p></template>
+              </div>
+            </div>
+          </div>
+
+          <div class="full">
+            <!-- ===== escorts <-> contractors ===== -->
+            <div class="card">
+              <h3 class="sec">שיוך מלווים לקבלנים (לפי פאנל השליטה)</h3>
+              <div class="row wrap" style="margin-bottom:10px;align-items:flex-end;">
+                <div style="min-width:220px;">
+                  <label class="muted" style="font-size:12px;display:block;margin-bottom:3px;">פרויקט</label>
+                  <select x-model="cProject" x-effect="$nextTick(() => $el.value = cProject)" @change="loadContractors()">
+                    <option value="">בחר פרויקט</option>
+                    <template x-for="p in projectOptions" :key="p.project"><option :value="p.project" x-text="p.label"></option></template>
+                  </select>
+                </div>
+                <label class="checkbox-row" style="color:var(--text);"><input type="checkbox" x-model="cInside" @change="loadContractors()"> רק מי שבפנים כרגע</label>
+                <div style="min-width:200px;">
+                  <label class="muted" style="font-size:12px;display:block;margin-bottom:3px;">שייך מלווה לכל הקבלנים המוצגים</label>
+                  <select x-model.number="bulkEscort" x-effect="$nextTick(() => $el.value = bulkEscort)">
+                    <option value="">בחר מלווה</option>
+                    <template x-for="p in activePool" :key="p.id"><option :value="p.id" x-text="escortLabel(p)"></option></template>
+                  </select>
+                </div>
+                <button class="btn btn-primary btn-sm" @click="assignAll()" :disabled="!cProject || !bulkEscort">שייך לכולם</button>
+              </div>
+              <p x-show="asgMsg" x-text="asgMsg" :style="'font-size:13px;margin:0 0 10px;color:' + (asgErr ? 'var(--danger)' : 'var(--success)')"></p>
+              <template x-if="!cProject"><p class="muted">בחר פרויקט כדי לראות את הקבלנים שלו מפאנל השליטה.</p></template>
+              <div class="tbl-wrap" x-show="cProject">
+                <table class="data">
+                  <thead><tr><th>קבלן</th><th>מספר זיהוי</th><th>סטטוס</th><th>מלווה</th></tr></thead>
+                  <tbody>
+                    <template x-for="c in contractors" :key="c.dbid">
+                      <tr>
+                        <td x-text="c.name"></td>
+                        <td x-text="c.visitorid"></td>
+                        <td><span class="badge" :class="c.inside ? 'badge-in' : 'badge-out'" x-text="c.inside ? 'בפנים' : 'בחוץ'"></span></td>
+                        <td>
+                          <select x-model.number="c.escort_id" x-effect="$nextTick(() => $el.value = c.escort_id == null ? '' : c.escort_id)" @change="assignOne(c)">
+                            <option value="">ללא מלווה</option>
+                            <template x-for="p in contractorOptions(c)" :key="p.id"><option :value="p.id" x-text="escortLabel(p) + (p.active ? '' : ' (לא פעיל)')"></option></template>
+                          </select>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <template x-if="contractors.length === 0"><p class="muted" style="text-align:center;">אין קבלנים להצגה בפרויקט הזה.</p></template>
               </div>
             </div>
 
+            <!-- ===== escort pool ===== -->
+            <div class="card">
+              <h3 class="sec">פול מלווים</h3>
+              <div class="row wrap" style="margin-bottom:10px;">
+                <input type="text" x-model="pName" placeholder="שם" style="flex:2;min-width:110px;">
+                <input type="text" x-model="pCat" placeholder="מספר קטלוגי" dir="ltr" style="flex:1;min-width:90px;">
+                <input type="text" x-model="pPhone" placeholder="טלפון" dir="ltr" style="flex:1;min-width:100px;">
+                <button class="btn btn-primary btn-sm" @click="addEscort()">הוסף לפול</button>
+              </div>
+              <p x-show="poolMsg" x-text="poolMsg" :style="'font-size:13px;margin:0 0 10px;color:' + (poolErr ? 'var(--danger)' : 'var(--success)')"></p>
+              <div class="tbl-wrap pool-table">
+                <table class="data">
+                  <thead><tr><th>שם</th><th>מספר קטלוגי</th><th>טלפון</th><th>משויך לפרויקטים</th><th>מצב</th><th></th></tr></thead>
+                  <tbody>
+                    <template x-for="p in pool" :key="p.id">
+                      <tr>
+                        <td><input type="text" x-model="p.name" maxlength="200"></td>
+                        <td><input type="text" x-model="p.catalog_number" maxlength="50" dir="ltr"></td>
+                        <td><input type="text" x-model="p.phone" maxlength="30" dir="ltr"></td>
+                        <td>
+                          <template x-for="pr in p.projects" :key="pr.project"><span class="chip" x-text="pr.project + ' (' + pr.contractors + ')'"></span></template>
+                          <span class="muted" x-show="!p.projects || p.projects.length === 0">לא משויך</span>
+                        </td>
+                        <td><span class="badge" :class="p.active ? 'badge-in' : 'badge-out'" x-text="p.active ? 'פעיל' : 'לא פעיל'"></span></td>
+                        <td>
+                          <div class="row">
+                            <button class="btn btn-sm" @click="saveEscort(p)">שמירה</button>
+                            <button class="btn btn-sm" @click="p.active = !p.active; saveEscort(p)" x-text="p.active ? 'השבתה' : 'הפעלה'"></button>
+                            <button class="btn btn-sm btn-danger" @click="removeEscort(p)">מחיקה</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <template x-if="pool.length === 0"><p class="muted" style="text-align:center;">הפול ריק. אפשר להוסיף מלווים למעלה.</p></template>
+              </div>
+              <p class="muted" style="font-size:12px;margin:8px 0 0;">מלווה ששויך (להצבה או לקבלן) לא נמחק אלא מושבת, והשיוך נשמר. ליד כל מלווה מופיעים הפרויקטים שאליהם הוא משויך, ובסוגריים מספר הקבלנים.</p>
+            </div>
           </div>
-        </div>
-        <!-- escort pool (full width) -->
-        <div class="card">
-          <h3 class="sec">פול מלווים</h3>
-          <div class="row wrap" style="margin-bottom:10px;">
-            <input type="text" x-model="pName" placeholder="שם" style="flex:2;min-width:110px;">
-            <input type="text" x-model="pCat" placeholder="מספר קטלוגי" dir="ltr" style="flex:1;min-width:90px;">
-            <input type="text" x-model="pPhone" placeholder="טלפון" dir="ltr" style="flex:1;min-width:100px;">
-            <button class="btn btn-primary btn-sm" @click="addEscort()">הוסף לפול</button>
-          </div>
-          <p x-show="poolMsg" x-text="poolMsg" :style="'font-size:13px;margin:0 0 10px;color:' + (poolErr ? 'var(--danger)' : 'var(--success)')"></p>
-          <div class="tbl-wrap pool-table">
-            <table class="data">
-              <thead><tr><th>שם</th><th>מספר קטלוגי</th><th>טלפון</th><th>מצב</th><th></th></tr></thead>
-              <tbody>
-                <template x-for="p in pool" :key="p.id">
-                  <tr>
-                    <td><input type="text" x-model="p.name" maxlength="200"></td>
-                    <td><input type="text" x-model="p.catalog_number" maxlength="50" dir="ltr"></td>
-                    <td><input type="text" x-model="p.phone" maxlength="30" dir="ltr"></td>
-                    <td><span class="badge" :class="p.active ? 'badge-in' : 'badge-out'" x-text="p.active ? 'פעיל' : 'לא פעיל'"></span></td>
-                    <td>
-                      <div class="row">
-                        <button class="btn btn-sm" @click="saveEscort(p)">שמירה</button>
-                        <button class="btn btn-sm" @click="p.active = !p.active; saveEscort(p)" x-text="p.active ? 'השבתה' : 'הפעלה'"></button>
-                        <button class="btn btn-sm btn-danger" @click="removeEscort(p)">מחיקה</button>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-            <template x-if="pool.length === 0"><p class="muted" style="text-align:center;">הפול ריק. אפשר להוסיף מלווים למעלה.</p></template>
-          </div>
-          <p class="muted" style="font-size:12px;margin:8px 0 0;">מלווה ששויך להצבה לא נמחק אלא מושבת (השיוך נשמר).</p>
-        </div>
         </div>
       </template>
     </div>
   </div>
 
-  <script src="static/js/kav1.js?v=20261029"></script>
+  <script src="static/js/kav1.js?v=20261101"></script>
   <script>
     function locationsPage() {
       return {
         Kav1, me: null, brand: {}, loaded: false, enabled: false,
-        maps: [], entries: [], pool: [], mapId: null, selId: null, placing: false,
-        projFilter: "", collapsed: {}, hint: "בחר שורה בטבלה, לחץ \"מקם\" ואז לחץ על המפה.",
+        maps: [], entries: [], pool: [], projects: [], mapId: null, selId: null,
+        placing: null,                       // null | {mode: "new"} | {mode: "entry", id}
+        projFilter: "", collapsed: {},
+        hint: "בחר פרויקט ומלווה, לחץ \"נעץ על המפה\" ואז לחץ על המקום במפה.",
+        pin: { project: "", escortId: "", location: "" },
         file: null, newMapName: "", msg: "", msgErr: false, entMsg: "",
-        nProj: "", nEscId: "", nEsc: "", nLoc: "",
+        cProject: "", cInside: true, contractors: [], bulkEscort: "", asgMsg: "", asgErr: false,
         pName: "", pCat: "", pPhone: "", poolMsg: "", poolErr: false,
 
         can(perm) { return !!(this.me && this.me.permissions && this.me.permissions.includes(perm)); },
@@ -214,7 +295,14 @@
         canOperate() { return this.canManage() || this.can("locations.operate"); }, // operation
 
         get activePool() { return this.pool.filter(p => p.active); },
-        get projects() { return [...new Set(this.entries.map(e => e.project))].sort(); },
+        // the projects of the control panel, each once (plus any project an old placement still uses)
+        get projectOptions() {
+          const list = this.projects.map(p => ({ project: p.project, label: p.project + " (" + p.contractors + " קבלנים" + (p.inside ? ", " + p.inside + " בפנים" : "") + ")" }));
+          const known = new Set(list.map(p => p.project));
+          this.entries.forEach(e => { if (!known.has(e.project)) { known.add(e.project); list.push({ project: e.project, label: e.project + " (אין קבלנים בפאנל)" }); } });
+          return list;
+        },
+        get projectNames() { return this.projectOptions.map(p => p.project); },
         get selected() { return this.entries.find(e => e.id === this.selId) || null; },
         get mapEntries() { return this.entries.filter(e => e.map_id === this.mapId && e.x != null && (!this.projFilter || e.project === this.projFilter)); },
         get rows() {
@@ -228,8 +316,10 @@
           });
           return out;
         },
+        escortLabel(p) { return p.name + (p.catalog_number ? " (" + p.catalog_number + ")" : ""); },
         // active escorts, plus the one this row already has (even if it was deactivated since)
         optionsFor(r) { return this.pool.filter(p => p.active || p.id === r.escort_id); },
+        contractorOptions(c) { return this.pool.filter(p => p.active || p.id === c.escort_id); },
 
         async init() {
           try { this.me = await Kav1.me(); } catch (e) { location.href = "/login.html"; return; }
@@ -243,15 +333,16 @@
 
         async refresh() {
           try {
-            [this.maps, this.entries, this.pool] = await Promise.all([
-              Kav1.get("locations/maps"), Kav1.get("locations/entries"), Kav1.get("locations/escorts?include_inactive=true"),
+            [this.maps, this.entries, this.pool, this.projects] = await Promise.all([
+              Kav1.get("locations/maps"), Kav1.get("locations/entries"),
+              Kav1.get("locations/escorts?include_inactive=true"), Kav1.get("locations/projects"),
             ]);
             if (!this.maps.some(m => m.id === this.mapId)) this.mapId = this.maps.length ? this.maps[0].id : null;
+            if (this.cProject) await this.loadContractors();
           } catch (e) { if (e.message !== "unauthorized") Kav1.toast(e.message, "error"); }
         },
-        selectMap() { this.placing = false; },
         toggle(k) { this.collapsed = { ...this.collapsed, [k]: !this.collapsed[k] }; },
-        select(id) { this.selId = id; this.placing = false; },
+        select(id) { this.selId = id; },
 
         // ---- maps (panel management)
         onFile(ev) { this.file = ev.target.files[0] || null; },
@@ -277,16 +368,48 @@
           try { await Kav1.del("locations/maps/" + this.mapId); await this.refresh(); } catch (e) { this.msgErr = true; this.msg = e.message; }
         },
 
-        // ---- placements (operation)
-        async addEntry() {
+        // ---- pinning
+        startPin() {
           this.entMsg = "";
-          try {
-            const r = await Kav1.post("locations/entries", {
-              project: this.nProj, escort_id: this.nEscId || null, escort_name: this.nEscId ? "" : this.nEsc, location_text: this.nLoc,
-            });
-            this.nEsc = ""; this.nEscId = ""; this.nLoc = ""; await this.refresh(); this.selId = r.id;
-          } catch (e) { this.entMsg = e.message; }
+          if (!this.pin.project) { this.hint = "קודם בחר פרויקט."; return; }
+          if (!this.pin.escortId) { this.hint = "קודם בחר מלווה מהפול."; return; }
+          this.placing = { mode: "new" };
+          this.hint = "לחץ על המפה במקום הרצוי (או לחץ שוב על הכפתור לביטול).";
         },
+        repin(r) {
+          this.selId = r.id; this.placing = { mode: "entry", id: r.id };
+          this.hint = "לחץ על המפה במקום החדש של " + r.project + ".";
+        },
+        async onStage(ev) {
+          if (!this.placing) return;
+          const r = this.$refs.img.getBoundingClientRect();
+          if (!r.width || !this.mapId) return;
+          const x = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+          const y = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+          const mode = this.placing; this.placing = null;
+          this.hint = "בחר פרויקט ומלווה, לחץ \"נעץ על המפה\" ואז לחץ על המקום במפה.";
+          if (mode.mode === "entry") {
+            const e = this.entries.find(z => z.id === mode.id);
+            if (e) await this.saveEntry(e, { map_id: this.mapId, x, y });
+            return;
+          }
+          // a new pin: the same project + escort + location is the same placement, so it only moves
+          const loc = (this.pin.location || "").trim();
+          const same = this.entries.find(e => e.project === this.pin.project && e.escort_id === this.pin.escortId && (e.location_text || "").trim().toLowerCase() === loc.toLowerCase());
+          try {
+            if (same) {
+              await Kav1.put("locations/entries/" + same.id, this.body(same, { map_id: this.mapId, x, y }));
+              this.selId = same.id;
+            } else {
+              const created = await Kav1.post("locations/entries", { project: this.pin.project, escort_id: this.pin.escortId, escort_name: "", location_text: loc, map_id: this.mapId, x, y });
+              this.selId = created.id;
+            }
+            Kav1.toast("הנקודה נשמרה");
+            await this.refresh();
+          } catch (er) { this.entMsg = er.message; }
+        },
+
+        // ---- placements
         body(e, patch) {
           return { project: e.project, escort_id: e.escort_id || null, escort_name: e.escort_id ? "" : e.escort_name, location_text: e.location_text, map_id: e.map_id, x: e.x, y: e.y, ...patch };
         },
@@ -294,25 +417,35 @@
         async saveEntry(e, patch) {
           this.entMsg = "";
           try { await Kav1.put("locations/entries/" + e.id, this.body(e, patch || {})); Kav1.toast("נשמר"); await this.refresh(); }
-          catch (er) { this.entMsg = er.message; }
+          catch (er) { this.entMsg = er.message; await this.refresh(); }
         },
+        clearPoint(e) { this.saveEntry(e, { map_id: null, x: null, y: null }); },
         async removeEntry(e) {
-          if (!confirm("למחוק את השורה?")) return;
+          if (!confirm("למחוק את ההצבה?")) return;
           try { await Kav1.del("locations/entries/" + e.id); await this.refresh(); } catch (er) { this.entMsg = er.message; }
         },
-        startPlace() { this.placing = true; this.hint = "לחץ על המפה במקום הרצוי"; },
-        async onStage(ev) {
-          if (!this.placing || !this.selected) return;
-          const r = this.$refs.img.getBoundingClientRect();
-          if (!r.width) return;
-          const x = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
-          const y = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
-          this.placing = false; this.hint = "בחר שורה בטבלה, לחץ \"מקם\" ואז לחץ על המפה.";
-          await this.saveEntry(this.selected, { map_id: this.mapId, x, y });
-        },
-        clearPoint() { if (this.selected) this.saveEntry(this.selected, { map_id: null, x: null, y: null }); },
 
-        // ---- escort pool (operation)
+        // ---- escorts <-> contractors of the control panel
+        async loadContractors() {
+          if (!this.cProject) { this.contractors = []; return; }
+          try { this.contractors = await Kav1.get("locations/contractors?project=" + encodeURIComponent(this.cProject) + "&inside_only=" + (this.cInside ? "true" : "false")); }
+          catch (e) { this.contractors = []; this.asgErr = true; this.asgMsg = e.message; }
+        },
+        async assignOne(c) {
+          try {
+            await Kav1.put("locations/assignments", { visitor_dbid: c.dbid, escort_id: c.escort_id || null });
+            this.asgErr = false; this.asgMsg = "נשמר";
+            this.pool = await Kav1.get("locations/escorts?include_inactive=true");   // refresh the projects shown under each escort
+          } catch (e) { this.asgErr = true; this.asgMsg = e.message; await this.loadContractors(); }
+        },
+        async assignAll() {
+          try {
+            const r = await Kav1.post("locations/assignments/bulk", { project: this.cProject, escort_id: this.bulkEscort || null, inside_only: this.cInside });
+            this.asgErr = false; this.asgMsg = "שויך מלווה ל-" + r.updated + " קבלנים"; await this.refresh();
+          } catch (e) { this.asgErr = true; this.asgMsg = e.message; }
+        },
+
+        // ---- escort pool
         poolSay(text, err) { this.poolMsg = text; this.poolErr = !!err; },
         async addEscort() {
           try {
@@ -327,10 +460,10 @@
           } catch (e) { this.poolSay(e.message, true); await this.refresh(); }
         },
         async removeEscort(p) {
-          if (!confirm("למחוק את " + p.name + " מהפול? מלווה ששויך להצבה יושבת במקום זאת.")) return;
+          if (!confirm("למחוק את " + p.name + " מהפול? מלווה ששויך יושבת במקום זאת.")) return;
           try {
             const r = await Kav1.del("locations/escorts/" + p.id);
-            this.poolSay(r.detail === "deactivated" ? "המלווה משויך להצבות, ולכן הושבת (לא נמחק)" : "נמחק מהפול", false); await this.refresh();
+            this.poolSay(r.detail === "deactivated" ? "המלווה משויך, ולכן הושבת (לא נמחק)" : "נמחק מהפול", false); await this.refresh();
           } catch (e) { this.poolSay(e.message, true); }
         },
       };

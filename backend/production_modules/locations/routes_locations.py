@@ -29,7 +29,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
 )
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from . import models, database, settings_store
@@ -51,6 +51,7 @@ KEY_EXPIRY_DAYS = "visitors.expiry_warn_days"
 DEFAULT_EXPIRY_DAYS = 30
 ALLOWED_EXPIRY_DAYS = (7, 14, 30, 60, 90)
 
+NO_PROJECT = "ללא פרויקט"  # the project name used for contractors that have none
 MAX_MAP_BYTES = 15 * 1024 * 1024
 MAX_TEXT = 200
 IMAGE_TYPES = {
@@ -100,6 +101,22 @@ class LocationEntry(models.Base):
     y = Column(Float, nullable=True)  # 0..1 of the map height
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class LocationAssignment(models.Base):
+    """Which pool escort accompanies which contractor (visitor). One escort per contractor; one escort can
+    have many contractors. The project is NOT stored: it is read from the contractor, so it always matches
+    the control panel."""
+
+    __tablename__ = "location_assignments"
+    id = Column(Integer, primary_key=True, index=True)
+    visitor_dbid = Column(
+        Integer, ForeignKey("visitors.dbid"), nullable=False, unique=True, index=True
+    )
+    escort_id = Column(
+        Integer, ForeignKey("location_escorts.id"), nullable=False, index=True
+    )
+    created_at = Column(DateTime, default=datetime.now)
 
 
 # ----------------------------------------------------------------- helpers
@@ -154,13 +171,51 @@ def _clean(text: Optional[str], field: str, required: bool = False) -> str:
     return value
 
 
-def _escort_dict(p: LocationEscort) -> dict:
+def _visitor_projects(db: Session) -> dict:
+    """{project: [(dbid, inside)]} for every contractor, read from the control panel's own data
+    (visitors.properties). A project appears ONCE however many contractors it has."""
+    from .visitor_extras import get_project  # lazy: visitor_extras imports this module
+
+    out: dict = {}
+    for dbid, props, inside in db.query(
+        models.Visitor.dbid, models.Visitor.properties, models.Visitor.inside
+    ).all():
+        name = get_project(props if isinstance(props, dict) else {}) or NO_PROJECT
+        out.setdefault(name, []).append((dbid, bool(inside)))
+    return out
+
+
+def _escort_projects(db: Session) -> dict:
+    """{escort_id: [{"project", "contractors"}]} - the projects each escort is assigned to."""
+    rows = db.query(LocationAssignment.visitor_dbid, LocationAssignment.escort_id).all()
+    if not rows:
+        return {}
+    by_visitor = {}
+    for name, members in _visitor_projects(db).items():
+        for dbid, _inside in members:
+            by_visitor[dbid] = name
+    counts: dict = {}
+    for dbid, escort_id in rows:
+        project = by_visitor.get(dbid)
+        if project is None:  # the contractor was deleted
+            continue
+        counts.setdefault(escort_id, {}).setdefault(project, 0)
+        counts[escort_id][project] += 1
+    return {
+        eid: [{"project": p, "contractors": n} for p, n in sorted(d.items())]
+        for eid, d in counts.items()
+    }
+
+
+def _escort_dict(p: LocationEscort, projects: Optional[list] = None) -> dict:
     return {
         "id": p.id,
         "name": p.name,
         "catalog_number": p.catalog_number or "",
         "phone": p.phone or "",
         "active": bool(p.active),
+        "projects": projects
+        or [],  # where this escort is assigned (shown under the escort)
     }
 
 
@@ -192,6 +247,17 @@ def _escort_fields(payload: "EscortIn", db: Session, own_id: Optional[int] = Non
         raise HTTPException(
             status_code=422, detail="phone may only hold digits and + - ( ) spaces"
         )
+    twin = db.query(LocationEscort).filter(
+        func.lower(LocationEscort.name) == name.lower(),
+        func.coalesce(LocationEscort.phone, "") == (phone or ""),
+    )
+    if own_id is not None:
+        twin = twin.filter(LocationEscort.id != own_id)
+    if twin.first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="an escort with this name and phone is already in the pool",
+        )
     if catalog:
         dup = db.query(LocationEscort).filter(LocationEscort.catalog_number == catalog)
         if own_id is not None:
@@ -220,6 +286,27 @@ def _resolve_escort(
     if not p.active and p.id != current:
         raise HTTPException(status_code=422, detail="this escort is inactive")
     return p.id, p.name
+
+
+def _refuse_twin(
+    db: Session, project: str, escort_id, location_text, own_id=None
+) -> None:
+    """The same project + the same pool escort + the same location is one placement, not two."""
+    if escort_id is None:
+        return
+    q = db.query(LocationEntry).filter(
+        LocationEntry.project == project,
+        LocationEntry.escort_id == escort_id,
+        func.lower(LocationEntry.location_text)
+        == (location_text or "").strip().lower(),
+    )
+    if own_id is not None:
+        q = q.filter(LocationEntry.id != own_id)
+    if q.first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="this placement already exists (same project, escort and location)",
+        )
 
 
 def _check_point(map_id, x, y, db: Session) -> None:
@@ -320,6 +407,17 @@ class EntryIn(BaseModel):
     map_id: Optional[int] = None
     x: Optional[float] = None
     y: Optional[float] = None
+
+
+class AssignOne(BaseModel):
+    visitor_dbid: int
+    escort_id: Optional[int] = None  # None removes the assignment
+
+
+class AssignBulk(BaseModel):
+    project: str
+    escort_id: Optional[int] = None
+    inside_only: bool = True
 
 
 class MapRename(BaseModel):
@@ -489,7 +587,11 @@ def list_escorts(
     q = db.query(LocationEscort)
     if not include_inactive:
         q = q.filter(LocationEscort.active.is_(True))
-    return [_escort_dict(p) for p in q.order_by(LocationEscort.name, LocationEscort.id)]
+    where = _escort_projects(db)
+    return [
+        _escort_dict(p, where.get(p.id))
+        for p in q.order_by(LocationEscort.name, LocationEscort.id)
+    ]
 
 
 @router.post(
@@ -540,6 +642,9 @@ def delete_escort(
         raise HTTPException(status_code=404, detail="Not found")
     in_use = (
         db.query(LocationEntry).filter(LocationEntry.escort_id == escort_id).count()
+        + db.query(LocationAssignment)
+        .filter(LocationAssignment.escort_id == escort_id)
+        .count()
     )
     name = p.name
     if in_use:
@@ -553,6 +658,132 @@ def delete_escort(
     db.commit()
     settings_store.audit(db, _user, "escort.delete", "נמחק מלווה מהפול: %s" % name)
     return {"detail": "deleted"}
+
+
+# ----------------------------------------------------------------- projects and contractor assignment
+@router.get("/projects", dependencies=[Depends(_require_enabled)])
+def list_projects(
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """The projects of the control panel, each ONCE, with how many contractors it has (and how many are
+    inside now). Contractors without a project are listed as "ללא פרויקט"."""
+    return [
+        {
+            "project": name,
+            "contractors": len(members),
+            "inside": sum(1 for _d, inside in members if inside),
+        }
+        for name, members in sorted(
+            _visitor_projects(db).items(), key=lambda kv: (kv[0] == NO_PROJECT, kv[0])
+        )
+    ]
+
+
+@router.get("/contractors", dependencies=[Depends(_require_enabled)])
+def list_contractors(
+    project: str,
+    inside_only: bool = False,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """The contractors of one project (from the control panel) and the escort each one has."""
+    members = dict(_visitor_projects(db).get(project, []))
+    ids = [d for d, inside in members.items() if inside or not inside_only]
+    if not ids:
+        return []
+    assigned = dict(
+        db.query(LocationAssignment.visitor_dbid, LocationAssignment.escort_id)
+        .filter(LocationAssignment.visitor_dbid.in_(ids))
+        .all()
+    )
+    rows = (
+        db.query(
+            models.Visitor.dbid,
+            models.Visitor.name,
+            models.Visitor.visitorid,
+            models.Visitor.inside,
+        )
+        .filter(models.Visitor.dbid.in_(ids))
+        .order_by(models.Visitor.name)
+        .all()
+    )
+    return [
+        {
+            "dbid": dbid,
+            "name": name,
+            "visitorid": visitorid,
+            "inside": bool(inside),
+            "escort_id": assigned.get(dbid),
+        }
+        for dbid, name, visitorid, inside in rows
+    ]
+
+
+def _assignable_escort(
+    db: Session, escort_id: Optional[int]
+) -> Optional[LocationEscort]:
+    if escort_id is None:
+        return None
+    p = db.get(LocationEscort, escort_id)
+    if p is None:
+        raise HTTPException(status_code=422, detail="unknown escort")
+    if not p.active:
+        raise HTTPException(status_code=422, detail="this escort is inactive")
+    return p
+
+
+def _set_assignment(db: Session, visitor_dbid: int, escort_id: Optional[int]) -> None:
+    row = (
+        db.query(LocationAssignment)
+        .filter(LocationAssignment.visitor_dbid == visitor_dbid)
+        .first()
+    )
+    if escort_id is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(LocationAssignment(visitor_dbid=visitor_dbid, escort_id=escort_id))
+    else:
+        row.escort_id = escort_id
+
+
+@router.put("/assignments", dependencies=[Depends(_require_enabled)])
+def assign_one(
+    payload: AssignOne,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """Give a contractor an escort from the pool (or take it away)."""
+    if db.get(models.Visitor, payload.visitor_dbid) is None:
+        raise HTTPException(status_code=404, detail="contractor not found")
+    _assignable_escort(db, payload.escort_id)
+    _set_assignment(db, payload.visitor_dbid, payload.escort_id)
+    db.commit()
+    return {"visitor_dbid": payload.visitor_dbid, "escort_id": payload.escort_id}
+
+
+@router.post("/assignments/bulk", dependencies=[Depends(_require_enabled)])
+def assign_project(
+    payload: AssignBulk,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """Give one pool escort to every contractor of a project (by default: those inside now)."""
+    escort = _assignable_escort(db, payload.escort_id)
+    members = _visitor_projects(db).get(payload.project, [])
+    ids = [d for d, inside in members if inside or not payload.inside_only]
+    for dbid in ids:
+        _set_assignment(db, dbid, payload.escort_id)
+    db.commit()
+    settings_store.audit(
+        db,
+        _user,
+        "escort.assign",
+        "%s: %d קבלנים בפרויקט %s"
+        % ("שויך מלווה" if escort else "הוסר שיוך מלווה", len(ids), payload.project),
+    )
+    return {"updated": len(ids)}
 
 
 # ----------------------------------------------------------------- entries
@@ -584,6 +815,12 @@ def create_entry(
 ):
     _check_point(payload.map_id, payload.x, payload.y, db)
     escort_id, escort_name = _resolve_escort(db, payload.escort_id, payload.escort_name)
+    _refuse_twin(
+        db,
+        _clean(payload.project, "project", required=True),
+        escort_id,
+        payload.location_text,
+    )
     e = LocationEntry(
         project=_clean(payload.project, "project", required=True),
         escort_id=escort_id,
@@ -612,6 +849,13 @@ def update_entry(
     _check_point(payload.map_id, payload.x, payload.y, db)
     escort_id, escort_name = _resolve_escort(
         db, payload.escort_id, payload.escort_name, current=e.escort_id
+    )
+    _refuse_twin(
+        db,
+        _clean(payload.project, "project", required=True),
+        escort_id,
+        payload.location_text,
+        own_id=e.id,
     )
     e.project = _clean(payload.project, "project", required=True)
     e.escort_id = escort_id

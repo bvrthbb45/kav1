@@ -31,6 +31,9 @@ the permission column is what the role must hold (`or` = any one of them). `-` m
 | POST | `/auth/login` | - | routes_auth.py |  |
 | POST | `/auth/logout` | - | routes_auth.py |  |
 | GET | `/auth/me` | - | routes_auth.py |  |
+| PUT | `/locations/assignments` | - | routes_locations.py | Give a contractor an escort from the pool (or take it away). |
+| POST | `/locations/assignments/bulk` | - | routes_locations.py | Give one pool escort to every contractor of a project (by default: those inside now). |
+| GET | `/locations/contractors` | - | routes_locations.py | The contractors of one project (from the control panel) and the escort each one has. |
 | GET | `/locations/entries` | - | routes_locations.py |  |
 | POST | `/locations/entries` | - | routes_locations.py |  |
 | DELETE | `/locations/entries/{entry_id}` | - | routes_locations.py |  |
@@ -46,6 +49,7 @@ the permission column is what the role must hold (`or` = any one of them). `-` m
 | DELETE | `/locations/maps/{map_id}` | - | routes_locations.py | Removes only the map picture; the rows that used it keep their text and lose the point. |
 | PUT | `/locations/maps/{map_id}` | - | routes_locations.py |  |
 | GET | `/locations/maps/{map_id}/image` | - | routes_locations.py |  |
+| GET | `/locations/projects` | - | routes_locations.py | The projects of the control panel, each ONCE, with how many contractors it has (and how many are |
 | GET | `/logs` | `logs.view` | routes.py |  |
 | GET | `/logs/{visitor_id}` | `logs.view` | routes.py |  |
 | GET | `/reports/dashboard` | `reports.view` | routes_reports.py |  |
