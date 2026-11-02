@@ -1,4 +1,4 @@
-from sqlalchemy import func, cast, String
+from sqlalchemy import func, cast, select, String
 from sqlalchemy.orm import Session
 from . import models
 
@@ -11,15 +11,54 @@ def get_visitors_inside(db: Session):
     return db.query(models.Visitor).filter(models.Visitor.inside).all()
 
 
+def get_visitors_inside_with_latest_log(db: Session):
+    """Visitors currently inside, newest arrival first.
+
+    Each row is (visitor, latest_log_or_None, entered_at_or_None) where
+    entered_at is the time of the visitor's latest "entry" log. One query
+    instead of one per visitor; uses the (visitor_dbid, timestamp) index.
+    Order: latest entry first; visitors without an entry log fall back to
+    their latest log; ties by dbid (newest created first).
+    """
+    latest_log_id = (
+        select(models.VisitorLog.id)
+        .where(models.VisitorLog.visitor_dbid == models.Visitor.dbid)
+        .order_by(models.VisitorLog.timestamp.desc(), models.VisitorLog.id.desc())
+        .limit(1)
+        .correlate(models.Visitor)
+        .scalar_subquery()
+    )
+    last_entry = (
+        select(func.max(models.VisitorLog.timestamp))
+        .where(
+            models.VisitorLog.visitor_dbid == models.Visitor.dbid,
+            models.VisitorLog.action == "entry",
+        )
+        .correlate(models.Visitor)
+        .scalar_subquery()
+    )
+    return (
+        db.query(models.Visitor, models.VisitorLog, last_entry.label("entered_at"))
+        .outerjoin(models.VisitorLog, models.VisitorLog.id == latest_log_id)
+        .filter(models.Visitor.inside)
+        .order_by(
+            func.coalesce(last_entry, models.VisitorLog.timestamp).desc(),
+            models.Visitor.dbid.desc(),
+        )
+        .all()
+    )
+
+
 def create_visitor(db: Session, name: str, visitorid: str, properties: dict):
     db_visitor = models.Visitor(
         name=name, visitorid=visitorid, inside=False, properties=properties
     )
     db.add(db_visitor)
-    db.commit()
-    db.refresh(db_visitor)
+    db.flush()  # assigns dbid so the log row can reference it
 
-    log_visitor_action(db, db_visitor.dbid, "creation")
+    log_visitor_action(db, db_visitor.dbid, "creation", commit=False)
+    db.commit()  # one commit (one fsync) for the visitor and its log
+    db.refresh(db_visitor)
 
     return db_visitor
 
@@ -31,9 +70,11 @@ def update_visitor_status(db: Session, visitor_id: str, is_inside: bool):
 
     if visitor:
         visitor.inside = is_inside
+        log_visitor_action(
+            db, visitor.dbid, "entry" if is_inside else "exit", commit=False
+        )
         db.commit()
         db.refresh(visitor)
-        log_visitor_action(db, visitor.dbid, "entry" if is_inside else "exit")
         return visitor
     return None
 
@@ -69,14 +110,17 @@ def search_visitors_by_name(db: Session, search_query: str):
     )
 
 
-def log_visitor_action(db: Session, visitor_dbid: int, action: str):
+def log_visitor_action(
+    db: Session, visitor_dbid: int, action: str, commit: bool = True
+):
     log = models.VisitorLog(
         visitor_dbid=visitor_dbid,
         action=action,
     )
     db.add(log)
-    db.commit()
-    db.refresh(log)
+    if commit:
+        db.commit()
+        db.refresh(log)
 
 
 def get_latest_log_for_visitor(db: Session, visitor_dbid: int):
@@ -91,6 +135,19 @@ def get_latest_log_for_visitor(db: Session, visitor_dbid: int):
 def get_logs(db: Session, limit: int = 20):
     return (
         db.query(models.VisitorLog)
+        .order_by(models.VisitorLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def get_logs_with_visitor_names(db: Session, limit: int = 20):
+    """Latest logs with the visitor name (None if the visitor was deleted)."""
+    return (
+        db.query(models.VisitorLog, models.Visitor.name)
+        .outerjoin(
+            models.Visitor, models.Visitor.dbid == models.VisitorLog.visitor_dbid
+        )
         .order_by(models.VisitorLog.timestamp.desc())
         .limit(limit)
         .all()
@@ -154,8 +211,8 @@ def update_visitor_details(
             visitor.visitorid = visitorid
         if properties is not None:
             visitor.properties = properties
+        log_visitor_action(db, visitor.dbid, "update", commit=False)
         db.commit()
         db.refresh(visitor)
-        log_visitor_action(db, visitor.dbid, "update")
         return visitor
     return None

@@ -27,6 +27,7 @@ from PySide6.QtGui import QIcon
 from app.core.api_client import ApiClient
 
 from app.views.common.warning_dialog import show_warning
+from app.views.visitor.managed_fields import ManagedFields
 
 
 class CreateVisitorDialog(QDialog):
@@ -48,6 +49,9 @@ class CreateVisitorDialog(QDialog):
 
         layout.addWidget(QLabel("Visitor ID:"))
         layout.addWidget(self.visitorid_field)
+
+        self.managed = ManagedFields(require_infosec=True)
+        layout.addWidget(self.managed)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -131,6 +135,11 @@ class CreateVisitorDialog(QDialog):
             )
             return
 
+        problem = self.managed.validate()
+        if problem:
+            show_warning("Missing Information", problem)
+            return
+
         self.check_visitor_exist(visitor_id)
 
     def check_visitor_exist(self, visitor_id: str):
@@ -189,6 +198,8 @@ class CreateVisitorDialog(QDialog):
                     pass
 
             properties[key] = val
+
+        properties.update(self.managed.get_properties())
 
         data = {"name": name, "visitorid": visitor_id, "properties": properties}
 

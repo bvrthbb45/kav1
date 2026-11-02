@@ -27,6 +27,15 @@ dist
 
 # Text Files
 *.txt
+!requirements*.txt
+!tools/**/*.txt
 
 # version files
 version.txt
+
+# Runtime data (never commit)
+backups/
+diagnostics/
+visitor_logs/
+wheels/
+.env

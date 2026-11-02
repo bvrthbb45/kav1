@@ -19,13 +19,16 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QInputDialog,
+    QComboBox,
+    QListWidgetItem,
 )
-from PySide6.QtGui import QFont
-from PySide6.QtCore import QTimer
+from PySide6.QtGui import QFont, QBrush, QColor
+from PySide6.QtCore import QTimer, Qt
 
 from app.core.api_client import ApiClient
 from app.core.ws_client import WebSocketClient
 from app.core.settings import Settings
+from app.core import fields
 
 # from app.core.version import get_version
 
@@ -33,16 +36,22 @@ from app.views.visitor.visitor_details_dialog import VisitorDetailsDialog
 from app.views.visitor.create_visitor_dialog import CreateVisitorDialog
 from .connection_dialog import ConnectionDialog
 from app.views.search.search_dialog import SearchDialog
+from app.views.expiry.expiring_dialog import ExpiringDialog
 
 # from search.search_result_dialog import SearchResultDialog
 from app.views.common.warning_dialog import show_critical_disconnection_warning
 from app.utils.log import Log
+
+ALL_PROJECTS = "All projects"
+RED = QColor("#b00020")
+ORANGE = QColor("#b36b00")
 
 
 class MainWindow(QMainWindow):
     def __init__(self, appName="Kav 1"):
         super().__init__()
         self.logger = Log()
+        self.inside_rows = []  # last list received from the server
 
         self.ask_for_connection()
 
@@ -105,7 +114,19 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(button_layout)
 
-        layout.addWidget(QLabel("Visitors Inside:"))
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Project:"))
+        self.project_filter = QComboBox()
+        self.project_filter.addItem(ALL_PROJECTS, None)
+        self.project_filter.setMinimumWidth(200)
+        filter_layout.addWidget(self.project_filter)
+        filter_layout.addStretch()
+        self.expiry_button = QPushButton("Expiring approvals")
+        self.expiry_button.setFixedHeight(button_height)
+        filter_layout.addWidget(self.expiry_button)
+        layout.addLayout(filter_layout)
+
+        layout.addWidget(QLabel("Visitors Inside (latest arrival first):"))
         layout.addWidget(self.visitors_list)
         # layout.addWidget(self.log)
 
@@ -130,6 +151,10 @@ class MainWindow(QMainWindow):
 
         # Connect buttons
         self.logs_button.clicked.connect(self.open_logs_dialog)
+
+        self.project_filter.currentIndexChanged.connect(self.render_visitors)
+        self.expiry_button.clicked.connect(self.open_expiring_dialog)
+        self.api_client.tagged_response.connect(self.handle_tagged_response)
 
         # Default API response handler
         self.api_client.response_received.connect(self.handle_api_response)
@@ -195,26 +220,102 @@ class MainWindow(QMainWindow):
             self.logger.write_to_log(f"Exception in handle_get_visitors: {e}")
 
     def update_visitors_list(self, visitors):
-        """Update the visitors list with those currently inside."""
+        """Remember the list of visitors inside and show it (filtered)."""
+        if isinstance(visitors, list):
+            self.inside_rows = [
+                v
+                for v in visitors
+                if isinstance(v, dict) and "visitorid" in v and "name" in v
+            ]
+        self.render_visitors()
+        self.refresh_side_data()
+
+    def refresh_side_data(self):
+        """Project list and expiring-approvals counter (tagged requests, so they
+        never reach the handlers that swap response_received)."""
+        self.api_client.get_projects()
+        self.api_client.get_expiring(fields.DEFAULT_WARN_DAYS)
+
+    def render_visitors(self, *_):
+        """Show self.inside_rows, honouring the project filter. The server sends
+        them latest arrival first and that order is kept."""
         try:
+            project = self.project_filter.currentData()
             self.visitors_list.clear()
-            if visitors and isinstance(visitors, list):  # More explicit check
-                for visitor in visitors:
-                    if (
-                        isinstance(visitor, dict)
-                        and "visitorid" in visitor
-                        and "name" in visitor
-                    ):
-                        display_name = f"{visitor['visitorid']} - {visitor['name']}"
-                        self.visitors_list.addItem(display_name)
+            for visitor in self.inside_rows:
+                if (
+                    project
+                    and (visitor.get("project") or "").lower() != project.lower()
+                ):
+                    continue
+                self.visitors_list.addItem(self.make_visitor_item(visitor))
         except Exception as e:
             self.log_error(f"Error updating visitors list: {str(e)}")
+
+    def make_visitor_item(self, visitor):
+        text = f"{visitor['visitorid']} - {visitor['name']}"
+        severity = 0  # 1 = orange, 2 = red
+        if visitor.get("project"):
+            text += f"   [{visitor['project']}]"
+        infosec = visitor.get("infosec")
+        if infosec == fields.INFOSEC_DENIED:
+            text += f"   ⛔ {infosec}"
+            severity = 2
+        elif infosec == fields.INFOSEC_EXCEPTION:
+            text += "   ⚠ חריג מפקד יחידה"
+            severity = max(severity, 1)
+        expiry = visitor.get("expiry")
+        if expiry and expiry["status"] == "expired":
+            text += f"   ⛔ {expiry['field']} פג {expiry['date']}"
+            severity = 2
+        elif expiry and expiry["status"] == "expiring":
+            text += f"   ⚠ {expiry['field']} עד {expiry['date']} ({expiry['days_left']} ימים)"
+            severity = max(severity, 1)
+        item = QListWidgetItem(text)
+        item.setData(Qt.UserRole, visitor["visitorid"])
+        if severity:
+            item.setForeground(QBrush(RED if severity == 2 else ORANGE))
+        return item
+
+    def handle_tagged_response(self, tag, data):
+        if not isinstance(data, list):
+            return
+        if tag == "projects":
+            current = self.project_filter.currentData()
+            self.project_filter.blockSignals(True)
+            self.project_filter.clear()
+            self.project_filter.addItem(ALL_PROJECTS, None)
+            for entry in data:
+                label = f"{entry['project']} ({entry['inside']} inside)"
+                self.project_filter.addItem(label, entry["project"])
+            index = self.project_filter.findData(current)
+            self.project_filter.setCurrentIndex(index if index >= 0 else 0)
+            self.project_filter.blockSignals(False)
+            self.render_visitors()
+        elif tag == "expiring":
+            expired = sum(1 for r in data if r["expiry"]["status"] == "expired")
+            soon = len(data) - expired
+            self.expiry_button.setText(
+                f"Expiring approvals ({expired} expired, {soon} soon)"
+                if data
+                else "Expiring approvals"
+            )
+            self.expiry_button.setStyleSheet(
+                "color: #b00020; font-weight: bold;"
+                if expired
+                else ("color: #b36b00; font-weight: bold;" if soon else "")
+            )
+
+    def open_expiring_dialog(self):
+        ExpiringDialog(fields.DEFAULT_WARN_DAYS, self).exec()
 
     def on_visitor_clicked(self):
         """Handle visitor item click."""
         selected_item = self.visitors_list.currentItem()
         if selected_item:
-            visitor_id = selected_item.text().split(" - ")[0]
+            visitor_id = selected_item.data(Qt.UserRole) or (
+                selected_item.text().split(" - ")[0]
+            )
             self.show_visitor_details(visitor_id)
 
     def show_visitor_details(self, visitor_id):

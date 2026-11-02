@@ -1,0 +1,883 @@
+# routes_locations.py
+# ---------------------------------------------------------------------------
+# Optional feature "שליטה ומיקומים" (control & locations):
+#   * escort + location rows per project, each linked to an escort from the escort pool
+#     (name, catalog number, phone) or typed freely,
+#   * uploaded site maps (stored inside the database file, so a DB backup
+#     covers them and nothing leaves the network),
+#   * a point (x, y) per row placed on a map.
+# Also holds the admin switches "locations enabled" and "group list by project".
+#
+# Safety: only NEW tables are created; no existing data is touched. The feature
+# is OFF until an administrator turns it on, and while OFF every endpoint except
+# the switches answers 404. Turning it off never deletes data.
+# ---------------------------------------------------------------------------
+
+import re
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, Field
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+)
+from sqlalchemy import func, text
+from sqlalchemy.orm import Session
+
+from . import models, database, settings_store
+from .dependencies import get_current_user, require_any_permission, require_permission
+
+# Two levels (both are in permissions_catalog.py, so they show in the role editor):
+#   locations.manage  - panel management: everything, including uploading / renaming / deleting maps
+#   locations.operate - operation: place contractors on the map, assign escorts, manage the escort pool
+# Either one lets a user open the page.
+MANAGE_PERMISSION = "locations.manage"
+OPERATE_PERMISSION = "locations.operate"
+SETTINGS_PERMISSION = "admin.settings"
+ANY_LEVEL = (MANAGE_PERMISSION, OPERATE_PERMISSION)
+
+FLAG_LOCATIONS = "locations.enabled"
+FLAG_GROUPING = "list.group_by_project"
+FLAG_REQUIRE_INFOSEC = "visitors.require_infosec"
+KEY_EXPIRY_DAYS = "visitors.expiry_warn_days"
+DEFAULT_EXPIRY_DAYS = 30
+ALLOWED_EXPIRY_DAYS = (7, 14, 30, 60, 90)
+
+NO_PROJECT = "ללא פרויקט"  # the project name used for contractors that have none
+MAX_MAP_BYTES = 15 * 1024 * 1024
+MAX_TEXT = 200
+IMAGE_TYPES = {
+    b"\x89PNG\r\n\x1a\n": "image/png",
+    b"\xff\xd8\xff": "image/jpeg",
+}
+
+
+# ----------------------------------------------------------------- tables
+class FeatureFlag(models.Base):
+    __tablename__ = "kav1_feature_flags"
+    key = Column(String(80), primary_key=True)
+    value = Column(String(20), nullable=False, default="0")
+
+
+class LocationMap(models.Base):
+    __tablename__ = "location_maps"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(MAX_TEXT), nullable=False)
+    content_type = Column(String(40), nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class LocationEscort(models.Base):
+    """The escort pool: people who can be assigned as escorts."""
+
+    __tablename__ = "location_escorts"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(MAX_TEXT), nullable=False)
+    catalog_number = Column(String(50), nullable=True, index=True)
+    phone = Column(String(30), nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class LocationEntry(models.Base):
+    __tablename__ = "location_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    project = Column(String(MAX_TEXT), nullable=False, index=True)
+    escort_name = Column(String(MAX_TEXT), nullable=False, default="")
+    escort_id = Column(Integer, ForeignKey("location_escorts.id"), nullable=True)
+    location_text = Column(String(MAX_TEXT), nullable=False, default="")
+    map_id = Column(Integer, ForeignKey("location_maps.id"), nullable=True)
+    x = Column(Float, nullable=True)  # 0..1 of the map width
+    y = Column(Float, nullable=True)  # 0..1 of the map height
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class LocationAssignment(models.Base):
+    """Which pool escort accompanies which contractor (visitor). One escort per contractor; one escort can
+    have many contractors. The project is NOT stored: it is read from the contractor, so it always matches
+    the control panel."""
+
+    __tablename__ = "location_assignments"
+    id = Column(Integer, primary_key=True, index=True)
+    visitor_dbid = Column(
+        Integer, ForeignKey("visitors.dbid"), nullable=False, unique=True, index=True
+    )
+    escort_id = Column(
+        Integer, ForeignKey("location_escorts.id"), nullable=False, index=True
+    )
+    created_at = Column(DateTime, default=datetime.now)
+
+
+# ----------------------------------------------------------------- helpers
+def _flag(db: Session, key: str) -> bool:
+    row = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    return row is not None and row.value == "1"
+
+
+def _set_flag(db: Session, key: str, on: bool) -> None:
+    row = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    if row is None:
+        db.add(FeatureFlag(key=key, value="1" if on else "0"))
+    else:
+        row.value = "1" if on else "0"
+
+
+def get_int_setting(db: Session, key: str, default: int) -> int:
+    row = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    try:
+        return int(row.value) if row is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _set_text(db: Session, key: str, value: str) -> None:
+    row = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    if row is None:
+        db.add(FeatureFlag(key=key, value=value))
+    else:
+        row.value = value
+
+
+def flag_enabled(db: Session, key: str) -> bool:
+    return _flag(db, key)
+
+
+def _require_enabled(
+    _user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+) -> None:
+    """404 while the feature is off (after the login check, so nothing leaks to strangers)."""
+    if not _flag(db, FLAG_LOCATIONS):
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+def _clean(text: Optional[str], field: str, required: bool = False) -> str:
+    value = (text or "").strip()
+    if required and not value:
+        raise HTTPException(status_code=422, detail="%s is required" % field)
+    if len(value) > MAX_TEXT:
+        raise HTTPException(status_code=422, detail="%s is too long" % field)
+    return value
+
+
+def _visitor_projects(db: Session) -> dict:
+    """{project: [(dbid, inside)]} for every contractor, read from the control panel's own data
+    (visitors.properties). A project appears ONCE however many contractors it has."""
+    from .visitor_extras import get_project  # lazy: visitor_extras imports this module
+
+    out: dict = {}
+    for dbid, props, inside in db.query(
+        models.Visitor.dbid, models.Visitor.properties, models.Visitor.inside
+    ).all():
+        name = get_project(props if isinstance(props, dict) else {}) or NO_PROJECT
+        out.setdefault(name, []).append((dbid, bool(inside)))
+    return out
+
+
+def _escort_projects(db: Session) -> dict:
+    """{escort_id: [{"project", "contractors"}]} - the projects each escort is assigned to."""
+    rows = db.query(LocationAssignment.visitor_dbid, LocationAssignment.escort_id).all()
+    if not rows:
+        return {}
+    by_visitor = {}
+    for name, members in _visitor_projects(db).items():
+        for dbid, _inside in members:
+            by_visitor[dbid] = name
+    counts: dict = {}
+    for dbid, escort_id in rows:
+        project = by_visitor.get(dbid)
+        if project is None:  # the contractor was deleted
+            continue
+        counts.setdefault(escort_id, {}).setdefault(project, 0)
+        counts[escort_id][project] += 1
+    return {
+        eid: [{"project": p, "contractors": n} for p, n in sorted(d.items())]
+        for eid, d in counts.items()
+    }
+
+
+def _escort_dict(p: LocationEscort, projects: Optional[list] = None) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "catalog_number": p.catalog_number or "",
+        "phone": p.phone or "",
+        "active": bool(p.active),
+        "projects": projects
+        or [],  # where this escort is assigned (shown under the escort)
+    }
+
+
+def _entry_dict(e: LocationEntry, pool: Optional[dict] = None) -> dict:
+    p = (pool or {}).get(e.escort_id) if e.escort_id else None
+    return {
+        "id": e.id,
+        "project": e.project,
+        # a linked escort always shows the pool's current data
+        "escort_id": e.escort_id,
+        "escort_name": p.name if p else e.escort_name,
+        "escort_phone": (p.phone or "") if p else "",
+        "escort_catalog": (p.catalog_number or "") if p else "",
+        "location_text": e.location_text,
+        "map_id": e.map_id,
+        "x": e.x,
+        "y": e.y,
+    }
+
+
+_PHONE = re.compile(r"^[0-9+\-\s()*#.]{0,30}$")
+
+
+def _escort_fields(payload: "EscortIn", db: Session, own_id: Optional[int] = None):
+    name = _clean(payload.name, "name", required=True)
+    catalog = (payload.catalog_number or "").strip()
+    phone = (payload.phone or "").strip()
+    if not _PHONE.match(phone):
+        raise HTTPException(
+            status_code=422, detail="phone may only hold digits and + - ( ) spaces"
+        )
+    twin = db.query(LocationEscort).filter(
+        func.lower(LocationEscort.name) == name.lower(),
+        func.coalesce(LocationEscort.phone, "") == (phone or ""),
+    )
+    if own_id is not None:
+        twin = twin.filter(LocationEscort.id != own_id)
+    if twin.first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="an escort with this name and phone is already in the pool",
+        )
+    if catalog:
+        dup = db.query(LocationEscort).filter(LocationEscort.catalog_number == catalog)
+        if own_id is not None:
+            dup = dup.filter(LocationEscort.id != own_id)
+        if dup.first() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="an escort with this catalog number already exists",
+            )
+    return name, catalog or None, phone or None
+
+
+def _resolve_escort(
+    db: Session,
+    escort_id: Optional[int],
+    escort_name: str,
+    current: Optional[int] = None,
+):
+    """(escort_id, name) to store. A pool escort wins over typed text; an inactive escort can only be
+    kept where it is already assigned."""
+    if escort_id is None:
+        return None, _clean(escort_name, "escort_name")
+    p = db.get(LocationEscort, escort_id)
+    if p is None:
+        raise HTTPException(status_code=422, detail="unknown escort")
+    if not p.active and p.id != current:
+        raise HTTPException(status_code=422, detail="this escort is inactive")
+    return p.id, p.name
+
+
+def _refuse_twin(
+    db: Session, project: str, escort_id, location_text, own_id=None
+) -> None:
+    """The same project + the same pool escort + the same location is one placement, not two."""
+    if escort_id is None:
+        return
+    q = db.query(LocationEntry).filter(
+        LocationEntry.project == project,
+        LocationEntry.escort_id == escort_id,
+        func.lower(LocationEntry.location_text)
+        == (location_text or "").strip().lower(),
+    )
+    if own_id is not None:
+        q = q.filter(LocationEntry.id != own_id)
+    if q.first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="this placement already exists (same project, escort and location)",
+        )
+
+
+def _check_point(map_id, x, y, db: Session) -> None:
+    if (x is None) != (y is None):
+        raise HTTPException(status_code=422, detail="x and y go together")
+    if x is None:
+        return
+    if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+        raise HTTPException(status_code=422, detail="point outside the map")
+    if map_id is None or db.get(LocationMap, map_id) is None:
+        raise HTTPException(status_code=422, detail="unknown map")
+
+
+def _retire_old_permissions(db: Session) -> None:
+    """The first versions of this feature used locations.view / locations.edit (admin only). They are
+    replaced by locations.manage / locations.operate. A role that had `edit` keeps its power as `manage`;
+    `view` is dropped (read-only does not exist any more, and `operate` would be MORE than it was).
+    Without this, the role editor refuses to save a role that still holds the old keys.
+    """
+    old = ("locations.view", "locations.edit")
+    links = (
+        db.query(models.RolePermission)
+        .filter(models.RolePermission.permission_key.in_(old))
+        .all()
+    )
+    if (
+        not links
+        and not db.query(models.Permission)
+        .filter(models.Permission.key.in_(old))
+        .first()
+    ):
+        return
+    for link in links:
+        if link.permission_key == "locations.edit":
+            has = (
+                db.query(models.RolePermission)
+                .filter(
+                    models.RolePermission.role_id == link.role_id,
+                    models.RolePermission.permission_key == "locations.manage",
+                )
+                .first()
+            )
+            if (
+                has is None
+                and db.get(models.Permission, "locations.manage") is not None
+            ):
+                db.add(
+                    models.RolePermission(
+                        role_id=link.role_id, permission_key="locations.manage"
+                    )
+                )
+        db.delete(link)
+    db.flush()
+    for key in old:
+        perm = db.get(models.Permission, key)
+        if perm is not None:
+            db.delete(perm)
+    db.commit()
+
+
+def ensure_locations_setup(db: Session) -> None:
+    """Idempotent, additive: adds the escort link column to a location_entries table created by an
+    earlier version of this feature (create_all never alters existing tables), and retires the
+    permission keys of the first versions."""
+    _retire_old_permissions(db)
+    cols = {
+        r[1] for r in db.execute(text("PRAGMA table_info(location_entries)")).fetchall()
+    }
+    if cols and "escort_id" not in cols:
+        db.execute(
+            text(
+                "ALTER TABLE location_entries ADD COLUMN escort_id INTEGER REFERENCES location_escorts (id)"
+            )
+        )
+        db.commit()
+
+
+# ----------------------------------------------------------------- schemas
+class FlagsUpdate(BaseModel):
+    locations_enabled: Optional[bool] = None
+    group_by_project: Optional[bool] = None
+    require_infosec: Optional[bool] = None
+    expiry_days: Optional[int] = None
+
+
+class EscortIn(BaseModel):
+    name: str = Field(..., max_length=MAX_TEXT)
+    catalog_number: str = Field("", max_length=50)
+    phone: str = Field("", max_length=30)
+    active: bool = True
+
+
+class EntryIn(BaseModel):
+    project: str = Field(..., max_length=MAX_TEXT)
+    escort_id: Optional[int] = None
+    escort_name: str = Field("", max_length=MAX_TEXT)
+    location_text: str = Field("", max_length=MAX_TEXT)
+    map_id: Optional[int] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+
+
+class AssignOne(BaseModel):
+    visitor_dbid: int
+    escort_id: Optional[int] = None  # None removes the assignment
+
+
+class AssignBulk(BaseModel):
+    project: str
+    escort_id: Optional[int] = None
+    inside_only: bool = True
+
+
+class MapRename(BaseModel):
+    name: str = Field(..., max_length=MAX_TEXT)
+
+
+router = APIRouter(prefix="/locations", tags=["locations"])
+
+
+# ----------------------------------------------------------------- switches
+@router.get("/flags")
+def get_flags(
+    _user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    return {
+        "locations_enabled": _flag(db, FLAG_LOCATIONS),
+        "group_by_project": _flag(db, FLAG_GROUPING),
+        "require_infosec": _flag(db, FLAG_REQUIRE_INFOSEC),
+        "expiry_days": get_int_setting(db, KEY_EXPIRY_DAYS, DEFAULT_EXPIRY_DAYS),
+    }
+
+
+@router.put("/flags")
+def put_flags(
+    payload: FlagsUpdate,
+    _user: models.User = Depends(require_permission(SETTINGS_PERMISSION)),
+    db: Session = Depends(database.get_db),
+):
+    changes = []
+
+    def _on_off(label, value):
+        changes.append("%s: %s" % (label, "הופעל" if value else "כובה"))
+
+    if payload.locations_enabled is not None:
+        _set_flag(db, FLAG_LOCATIONS, payload.locations_enabled)
+        _on_off("שליטה ומיקומים", payload.locations_enabled)
+    if payload.group_by_project is not None:
+        _set_flag(db, FLAG_GROUPING, payload.group_by_project)
+        _on_off("קיבוץ לפי פרויקט", payload.group_by_project)
+    if payload.require_infosec is not None:
+        _set_flag(db, FLAG_REQUIRE_INFOSEC, payload.require_infosec)
+        _on_off("חובה לבחור אבטחת מידע", payload.require_infosec)
+    if payload.expiry_days is not None:
+        if payload.expiry_days not in ALLOWED_EXPIRY_DAYS:
+            raise HTTPException(
+                status_code=422,
+                detail="expiry_days must be one of %s" % (ALLOWED_EXPIRY_DAYS,),
+            )
+        _set_text(db, KEY_EXPIRY_DAYS, str(payload.expiry_days))
+        changes.append("ימי התראת תוקף: %d" % payload.expiry_days)
+    db.commit()
+    if changes:
+        settings_store.audit(db, _user, "features.update", "; ".join(changes))
+    return get_flags(_user, db)
+
+
+# ----------------------------------------------------------------- maps
+@router.get("/maps", dependencies=[Depends(_require_enabled)])
+def list_maps(
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    rows = (
+        db.query(LocationMap.id, LocationMap.name, LocationMap.created_at)
+        .order_by(LocationMap.id)
+        .all()
+    )
+    return [{"id": r.id, "name": r.name, "created_at": r.created_at} for r in rows]
+
+
+@router.post(
+    "/maps",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_enabled)],
+)
+async def upload_map(
+    request: Request,
+    name: str,
+    _user: models.User = Depends(require_permission(MANAGE_PERMISSION)),
+    db: Session = Depends(database.get_db),
+):
+    """Raw image bytes in the request body (PNG or JPEG); the name is a query parameter."""
+    name = _clean(name, "name", required=True)
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_MAP_BYTES:
+        raise HTTPException(status_code=413, detail="Map file is too large")
+    body = await request.body()
+    if len(body) > MAX_MAP_BYTES:
+        raise HTTPException(status_code=413, detail="Map file is too large")
+    content_type = next(
+        (ct for magic, ct in IMAGE_TYPES.items() if body.startswith(magic)), None
+    )
+    if content_type is None:
+        raise HTTPException(
+            status_code=415, detail="Only PNG or JPEG maps are supported"
+        )
+    row = LocationMap(name=name, content_type=content_type, data=body)
+    db.add(row)
+    db.commit()
+    settings_store.audit(db, _user, "map.upload", "הועלתה מפה: %s" % name)
+    return {"id": row.id, "name": row.name}
+
+
+@router.get("/maps/{map_id}/image", dependencies=[Depends(_require_enabled)])
+def map_image(
+    map_id: int,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    row = db.get(LocationMap, map_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(
+        content=row.data,
+        media_type=row.content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@router.put("/maps/{map_id}", dependencies=[Depends(_require_enabled)])
+def rename_map(
+    map_id: int,
+    payload: MapRename,
+    _user: models.User = Depends(require_permission(MANAGE_PERMISSION)),
+    db: Session = Depends(database.get_db),
+):
+    row = db.get(LocationMap, map_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    old_name = row.name
+    row.name = _clean(payload.name, "name", required=True)
+    db.commit()
+    settings_store.audit(db, _user, "map.rename", "%s ← %s" % (old_name, row.name))
+    return {"id": row.id, "name": row.name}
+
+
+@router.delete("/maps/{map_id}", dependencies=[Depends(_require_enabled)])
+def delete_map(
+    map_id: int,
+    _user: models.User = Depends(require_permission(MANAGE_PERMISSION)),
+    db: Session = Depends(database.get_db),
+):
+    """Removes only the map picture; the rows that used it keep their text and lose the point."""
+    row = db.get(LocationMap, map_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    for e in db.query(LocationEntry).filter(LocationEntry.map_id == map_id):
+        e.map_id = None
+        e.x = None
+        e.y = None
+    map_name = row.name
+    db.delete(row)
+    db.commit()
+    settings_store.audit(db, _user, "map.delete", "נמחקה מפה: %s" % map_name)
+    return {"detail": "deleted"}
+
+
+# ----------------------------------------------------------------- entries
+# ----------------------------------------------------------------- escort pool
+@router.get("/escorts", dependencies=[Depends(_require_enabled)])
+def list_escorts(
+    include_inactive: bool = False,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    q = db.query(LocationEscort)
+    if not include_inactive:
+        q = q.filter(LocationEscort.active.is_(True))
+    where = _escort_projects(db)
+    return [
+        _escort_dict(p, where.get(p.id))
+        for p in q.order_by(LocationEscort.name, LocationEscort.id)
+    ]
+
+
+@router.post(
+    "/escorts",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_enabled)],
+)
+def create_escort(
+    payload: EscortIn,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    name, catalog, phone = _escort_fields(payload, db)
+    p = LocationEscort(name=name, catalog_number=catalog, phone=phone, active=True)
+    db.add(p)
+    db.commit()
+    settings_store.audit(db, _user, "escort.create", "נוסף מלווה לפול: %s" % name)
+    return _escort_dict(p)
+
+
+@router.put("/escorts/{escort_id}", dependencies=[Depends(_require_enabled)])
+def update_escort(
+    escort_id: int,
+    payload: EscortIn,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    p = db.get(LocationEscort, escort_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    p.name, p.catalog_number, p.phone = _escort_fields(payload, db, own_id=escort_id)
+    p.active = bool(payload.active)
+    db.commit()
+    settings_store.audit(db, _user, "escort.update", "עודכן מלווה בפול: %s" % p.name)
+    return _escort_dict(p)
+
+
+@router.delete("/escorts/{escort_id}", dependencies=[Depends(_require_enabled)])
+def delete_escort(
+    escort_id: int,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """An escort that is assigned somewhere is only deactivated (the assignments keep their data);
+    one that is not is removed."""
+    p = db.get(LocationEscort, escort_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    in_use = (
+        db.query(LocationEntry).filter(LocationEntry.escort_id == escort_id).count()
+        + db.query(LocationAssignment)
+        .filter(LocationAssignment.escort_id == escort_id)
+        .count()
+    )
+    name = p.name
+    if in_use:
+        p.active = False
+        db.commit()
+        settings_store.audit(
+            db, _user, "escort.deactivate", "הושבת מלווה בפול (משויך): %s" % name
+        )
+        return {"detail": "deactivated", "assigned": in_use}
+    db.delete(p)
+    db.commit()
+    settings_store.audit(db, _user, "escort.delete", "נמחק מלווה מהפול: %s" % name)
+    return {"detail": "deleted"}
+
+
+# ----------------------------------------------------------------- projects and contractor assignment
+@router.get("/projects", dependencies=[Depends(_require_enabled)])
+def list_projects(
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """The projects of the control panel, each ONCE, with how many contractors it has (and how many are
+    inside now). Contractors without a project are listed as "ללא פרויקט"."""
+    return [
+        {
+            "project": name,
+            "contractors": len(members),
+            "inside": sum(1 for _d, inside in members if inside),
+        }
+        for name, members in sorted(
+            _visitor_projects(db).items(), key=lambda kv: (kv[0] == NO_PROJECT, kv[0])
+        )
+    ]
+
+
+@router.get("/contractors", dependencies=[Depends(_require_enabled)])
+def list_contractors(
+    project: str,
+    inside_only: bool = False,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """The contractors of one project (from the control panel) and the escort each one has."""
+    members = dict(_visitor_projects(db).get(project, []))
+    ids = [d for d, inside in members.items() if inside or not inside_only]
+    if not ids:
+        return []
+    assigned = dict(
+        db.query(LocationAssignment.visitor_dbid, LocationAssignment.escort_id)
+        .filter(LocationAssignment.visitor_dbid.in_(ids))
+        .all()
+    )
+    rows = (
+        db.query(
+            models.Visitor.dbid,
+            models.Visitor.name,
+            models.Visitor.visitorid,
+            models.Visitor.inside,
+        )
+        .filter(models.Visitor.dbid.in_(ids))
+        .order_by(models.Visitor.name)
+        .all()
+    )
+    return [
+        {
+            "dbid": dbid,
+            "name": name,
+            "visitorid": visitorid,
+            "inside": bool(inside),
+            "escort_id": assigned.get(dbid),
+        }
+        for dbid, name, visitorid, inside in rows
+    ]
+
+
+def _assignable_escort(
+    db: Session, escort_id: Optional[int]
+) -> Optional[LocationEscort]:
+    if escort_id is None:
+        return None
+    p = db.get(LocationEscort, escort_id)
+    if p is None:
+        raise HTTPException(status_code=422, detail="unknown escort")
+    if not p.active:
+        raise HTTPException(status_code=422, detail="this escort is inactive")
+    return p
+
+
+def _set_assignment(db: Session, visitor_dbid: int, escort_id: Optional[int]) -> None:
+    row = (
+        db.query(LocationAssignment)
+        .filter(LocationAssignment.visitor_dbid == visitor_dbid)
+        .first()
+    )
+    if escort_id is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(LocationAssignment(visitor_dbid=visitor_dbid, escort_id=escort_id))
+    else:
+        row.escort_id = escort_id
+
+
+@router.put("/assignments", dependencies=[Depends(_require_enabled)])
+def assign_one(
+    payload: AssignOne,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """Give a contractor an escort from the pool (or take it away)."""
+    if db.get(models.Visitor, payload.visitor_dbid) is None:
+        raise HTTPException(status_code=404, detail="contractor not found")
+    _assignable_escort(db, payload.escort_id)
+    _set_assignment(db, payload.visitor_dbid, payload.escort_id)
+    db.commit()
+    return {"visitor_dbid": payload.visitor_dbid, "escort_id": payload.escort_id}
+
+
+@router.post("/assignments/bulk", dependencies=[Depends(_require_enabled)])
+def assign_project(
+    payload: AssignBulk,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    """Give one pool escort to every contractor of a project (by default: those inside now)."""
+    escort = _assignable_escort(db, payload.escort_id)
+    members = _visitor_projects(db).get(payload.project, [])
+    ids = [d for d, inside in members if inside or not payload.inside_only]
+    for dbid in ids:
+        _set_assignment(db, dbid, payload.escort_id)
+    db.commit()
+    settings_store.audit(
+        db,
+        _user,
+        "escort.assign",
+        "%s: %d קבלנים בפרויקט %s"
+        % ("שויך מלווה" if escort else "הוסר שיוך מלווה", len(ids), payload.project),
+    )
+    return {"updated": len(ids)}
+
+
+# ----------------------------------------------------------------- entries
+@router.get("/entries", dependencies=[Depends(_require_enabled)])
+def list_entries(
+    project: Optional[str] = None,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    q = db.query(LocationEntry)
+    if project:
+        q = q.filter(LocationEntry.project == project)
+    pool = {p.id: p for p in db.query(LocationEscort).all()}
+    return [
+        _entry_dict(e, pool)
+        for e in q.order_by(LocationEntry.project, LocationEntry.id)
+    ]
+
+
+@router.post(
+    "/entries",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_enabled)],
+)
+def create_entry(
+    payload: EntryIn,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    _check_point(payload.map_id, payload.x, payload.y, db)
+    escort_id, escort_name = _resolve_escort(db, payload.escort_id, payload.escort_name)
+    _refuse_twin(
+        db,
+        _clean(payload.project, "project", required=True),
+        escort_id,
+        payload.location_text,
+    )
+    e = LocationEntry(
+        project=_clean(payload.project, "project", required=True),
+        escort_id=escort_id,
+        escort_name=escort_name,
+        location_text=_clean(payload.location_text, "location_text"),
+        map_id=payload.map_id if payload.x is not None else None,
+        x=payload.x,
+        y=payload.y,
+    )
+    db.add(e)
+    db.commit()
+    pool = {p.id: p for p in db.query(LocationEscort).all()}
+    return _entry_dict(e, pool)
+
+
+@router.put("/entries/{entry_id}", dependencies=[Depends(_require_enabled)])
+def update_entry(
+    entry_id: int,
+    payload: EntryIn,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    e = db.get(LocationEntry, entry_id)
+    if e is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    _check_point(payload.map_id, payload.x, payload.y, db)
+    escort_id, escort_name = _resolve_escort(
+        db, payload.escort_id, payload.escort_name, current=e.escort_id
+    )
+    _refuse_twin(
+        db,
+        _clean(payload.project, "project", required=True),
+        escort_id,
+        payload.location_text,
+        own_id=e.id,
+    )
+    e.project = _clean(payload.project, "project", required=True)
+    e.escort_id = escort_id
+    e.escort_name = escort_name
+    e.location_text = _clean(payload.location_text, "location_text")
+    e.map_id = payload.map_id if payload.x is not None else None
+    e.x = payload.x
+    e.y = payload.y
+    db.commit()
+    pool = {p.id: p for p in db.query(LocationEscort).all()}
+    return _entry_dict(e, pool)
+
+
+@router.delete("/entries/{entry_id}", dependencies=[Depends(_require_enabled)])
+def delete_entry(
+    entry_id: int,
+    _user: models.User = Depends(require_any_permission(*ANY_LEVEL)),
+    db: Session = Depends(database.get_db),
+):
+    e = db.get(LocationEntry, entry_id)
+    if e is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(e)
+    db.commit()
+    return {"detail": "deleted"}
