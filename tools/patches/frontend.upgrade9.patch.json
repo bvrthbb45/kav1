@@ -1,0 +1,103 @@
+{
+ "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
+ "files": [
+  {
+   "path": "admin/settings.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - הגדרות מערכת</title>\n  <link rel=\"stylesheet\" href=\"../static/css/kav1.css?v=20261029\">\n  <style>\n",
+     "new": "  <title>Kav1 - הגדרות מערכת</title>\n  <link rel=\"stylesheet\" href=\"../static/css/kav1.css?v=20261102\">\n  <style>\n"
+    },
+    {
+     "old": "\n  <script src=\"../static/js/kav1.js?v=20261029\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"../static/js/kav1.js?v=20261102\"></script>\n  <script>\n"
+    }
+   ]
+  },
+  {
+   "path": "index.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n",
+     "new": "  <title>Kav1 - פאנל שליטה</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261102\">\n</head>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261102\"></script>\n  <script>\n"
+    },
+    {
+     "old": "            const res = await fetch(\"/reports/visitor/\" + encodeURIComponent(vid) + \"/export\", { credentials: \"same-origin\" });\n            if (!res.ok) throw new Error(\"הייצוא נכשל\");\n            const blob = await res.blob();\n            const url = URL.createObjectURL(blob);\n            const a = document.createElement(\"a\");\n            a.href = url; a.download = \"kav1_visitor_\" + vid + \".xlsx\"; a.click();\n            URL.revokeObjectURL(url);\n            Kav1.toast(\"הדוח יוצא בהצלחה\");\n",
+     "new": "            const res = await fetch(\"/reports/visitor/\" + encodeURIComponent(vid) + \"/export\", { credentials: \"same-origin\" });\n            if (!res.ok) throw new Error(await Kav1.errorText(res, \"הייצוא נכשל\"));\n            const blob = await res.blob();\n            Kav1.download(blob, \"kav1_visitor_\" + vid + \".xlsx\");\n            Kav1.toast(\"הדוח יוצא בהצלחה\");\n"
+    }
+   ]
+  },
+  {
+   "path": "locations.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - שליטה ומיקומים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261101\">\n  <style>\n",
+     "new": "  <title>Kav1 - שליטה ומיקומים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261102\">\n  <style>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js?v=20261101\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261102\"></script>\n  <script>\n"
+    }
+   ]
+  },
+  {
+   "path": "reports.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - דוחות וסטטיסטיקות</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n  <style>\n",
+     "new": "  <title>Kav1 - דוחות וסטטיסטיקות</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261102\">\n  <style>\n"
+    },
+    {
+     "old": "  <script src=\"static/vendor/chart.min.js\"></script>\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n",
+     "new": "  <script src=\"static/vendor/chart.min.js\"></script>\n  <script src=\"static/js/kav1.js?v=20261102\"></script>\n  <script>\n"
+    },
+    {
+     "old": "        Kav1, me: null, data: null, days: 7,\n        charts: {}, printing: false,\n\n",
+     "new": "        Kav1, me: null, data: null, days: 7,\n        charts: {}, printing: false, timer: null,\n\n"
+    },
+    {
+     "old": "          await this.load();\n        },\n\n        async load() {\n          try {\n            this.data = await Kav1.get(\"reports/dashboard?days=\" + this.days);\n            this.$nextTick(() => this.renderCharts());\n          } catch (e) {\n            if (e.message !== \"unauthorized\") Kav1.toast(e.message, \"error\");\n          }\n",
+     "new": "          await this.load();\n          // keep the numbers fresh without a manual reload: every 30 s while the page is visible\n          this.timer = setInterval(() => { if (!document.hidden && !this.printing) this.load(true); }, 30000);\n          document.addEventListener(\"visibilitychange\", () => { if (!document.hidden) this.load(true); });\n        },\n\n        async load(quiet) {\n          try {\n            const days = this.days;\n            const data = await Kav1.get(\"reports/dashboard?days=\" + days);\n            if (days !== this.days) return;          // the period was changed meanwhile: drop the stale answer\n            this.data = data;\n            this.$nextTick(() => this.renderCharts());\n          } catch (e) {\n            if (!quiet && e.message !== \"unauthorized\") Kav1.toast(e.message, \"error\");\n          }\n"
+    },
+    {
+     "old": "            data: {\n              labels: t.labels.map(d => d.slice(8, 10) + \".\" + d.slice(5, 7)),   // day.month\n              datasets: [\n",
+     "new": "            data: {\n              // day.month, and with the year when the period crosses a new year (else two days look alike)\n              labels: t.labels.map(d => d.slice(8, 10) + \".\" + d.slice(5, 7) + (t.labels[0].slice(0, 4) !== t.labels[t.labels.length - 1].slice(0, 4) ? \".\" + d.slice(2, 4) : \"\")),\n              datasets: [\n"
+    },
+    {
+     "old": "            });\n            if (!res.ok) throw new Error(\"שגיאה בייצוא\");\n            const blob = await res.blob();\n            const url = URL.createObjectURL(blob);\n            const a = document.createElement(\"a\");\n            a.href = url;\n            a.download = \"kav1_report.xlsx\";\n            a.click();\n            URL.revokeObjectURL(url);\n            Kav1.toast(\"הדוח יוצא בהצלחה\");\n",
+     "new": "            });\n            if (!res.ok) throw new Error(await Kav1.errorText(res, \"שגיאה בייצוא\"));\n            const blob = await res.blob();\n            const d = new Date(), p = n => String(n).padStart(2, \"0\");\n            Kav1.download(blob, \"kav1_report_\" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + \"_\" + p(d.getHours()) + p(d.getMinutes()) + \".xlsx\");\n            Kav1.toast(\"הדוח יוצא בהצלחה\");\n"
+    }
+   ]
+  },
+  {
+   "path": "static/js/kav1.js",
+   "replace": [
+    {
+     "old": "    return p(d.getDate()) + \".\" + p(d.getMonth() + 1) + \".\" + d.getFullYear() + \" \" + p(d.getHours()) + \":\" + p(d.getMinutes()) + \":\" + p(d.getSeconds());\n  },\n",
+     "new": "    return p(d.getDate()) + \".\" + p(d.getMonth() + 1) + \".\" + d.getFullYear() + \" \" + p(d.getHours()) + \":\" + p(d.getMinutes()) + \":\" + p(d.getSeconds());\n  },\n\n  // ---- downloads ----\n  // The temporary link must outlive the click: revoking it at once cancels the download in some browsers.\n  download(blob, filename) {\n    const url = URL.createObjectURL(blob);\n    const a = document.createElement(\"a\");\n    a.href = url; a.download = filename; a.style.display = \"none\";\n    document.body.appendChild(a); a.click();\n    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 10000);\n  },\n  // a readable reason from a failed response (the server's detail, else the status)\n  async errorText(res, fallback) {\n    try {\n      const d = await res.json();\n      if (typeof d.detail === \"string\") return fallback + \": \" + d.detail;\n    } catch (e) {}\n    return fallback + \" (\" + res.status + \")\";\n  },\n"
+    }
+   ]
+  },
+  {
+   "path": "visitors.html",
+   "replace": [
+    {
+     "old": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261029\">\n</head>\n",
+     "new": "  <title>Kav1 - מבקרים</title>\n  <link rel=\"stylesheet\" href=\"static/css/kav1.css?v=20261102\">\n</head>\n"
+    },
+    {
+     "old": "\n  <script src=\"static/js/kav1.js?v=20261029\"></script>\n  <script>\n",
+     "new": "\n  <script src=\"static/js/kav1.js?v=20261102\"></script>\n  <script>\n"
+    },
+    {
+     "old": "            const res = await fetch(\"/reports/visitor/\" + encodeURIComponent(vid) + \"/export\", { credentials: \"same-origin\" });\n            if (!res.ok) throw new Error(\"הייצוא נכשל\");\n            const blob = await res.blob();\n            const url = URL.createObjectURL(blob);\n            const a = document.createElement(\"a\");\n            a.href = url; a.download = \"kav1_visitor_\" + vid + \".xlsx\"; a.click();\n            URL.revokeObjectURL(url);\n            Kav1.toast(\"הדוח יוצא בהצלחה\");\n",
+     "new": "            const res = await fetch(\"/reports/visitor/\" + encodeURIComponent(vid) + \"/export\", { credentials: \"same-origin\" });\n            if (!res.ok) throw new Error(await Kav1.errorText(res, \"הייצוא נכשל\"));\n            const blob = await res.blob();\n            Kav1.download(blob, \"kav1_visitor_\" + vid + \".xlsx\");\n            Kav1.toast(\"הדוח יוצא בהצלחה\");\n"
+    }
+   ]
+  }
+ ]
+}

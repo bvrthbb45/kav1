@@ -2,6 +2,15 @@
  "name": "Kav1 update: backend (permissions fix, database settings, visitor additions, optional features)",
  "files": [
   {
+   "path": "crud.py",
+   "replace": [
+    {
+     "old": "    if visitor:\n        visitor.inside = is_inside\n",
+     "new": "    if visitor:\n        if bool(visitor.inside) == bool(is_inside):\n            # already in that state (double click, two operators at once): no second log row,\n            # otherwise the statistics count the same entry/exit twice\n            return visitor\n        visitor.inside = is_inside\n"
+    }
+   ]
+  },
+  {
    "path": "crud_admin.py",
    "replace": [
     {
@@ -27,8 +36,28 @@
    "path": "reports.py",
    "replace": [
     {
-     "old": "\n    s = data[\"summary\"]\n    rows = [\n        (\"סך הכל מבקרים במערכת\", s[\"total_visitors\"]),\n",
-     "new": "\n    def _dmy(iso):  # 2026-12-31 -> 31.12.2026\n        return iso[8:10] + \".\" + iso[5:7] + \".\" + iso[0:4]\n\n    s = data[\"summary\"]\n    rows = [\n        (\"תקופה\", \"{} - {}\".format(_dmy(data[\"period_start\"]), _dmy(data[\"period_end\"]))),\n        (\"סך הכל מבקרים במערכת\", s[\"total_visitors\"]),\n"
+     "old": "\ndef _style_header_row(ws, row, ncols):\n",
+     "new": "\nACTION_LABELS = {\n    \"entry\": \"כניסה\",\n    \"exit\": \"יציאה\",\n    \"creation\": \"יצירה\",\n    \"create\": \"יצירה\",\n    \"update\": \"עדכון\",\n    \"delete\": \"מחיקה\",\n}\n\n\ndef norm_action(action) -> str:\n    \"\"\"The same normalisation the statistics use (trim + lower case).\"\"\"\n    return (action or \"\").strip().lower()\n\n\ndef action_label(action) -> str:\n    n = norm_action(action)\n    return ACTION_LABELS.get(n, (action or \"\").strip() or \"—\")\n\n\ndef _style_header_row(ws, row, ncols):\n"
+    },
+    {
+     "old": "\n    action_labels = {\n        \"entry\": \"כניסה\", \"exit\": \"יציאה\",\n        \"creation\": \"יצירה\", \"create\": \"יצירה\",\n        \"update\": \"עדכון\", \"delete\": \"מחיקה\",\n    }\n\n    wb = Workbook()\n",
+     "new": "\n    wb = Workbook()\n"
+    },
+    {
+     "old": "    ws[\"A2\"].font = Font(bold=True, size=12)\n    ws[\"A3\"] = \"הופק: \" + datetime.now().strftime(\"%d/%m/%Y %H:%M\")\n    ws[\"A3\"].font = Font(italic=True, size=10, color=\"888888\")\n\n    entries = sum(1 for l in logs if (l.action or \"\").lower() == \"entry\")\n    exits = sum(1 for l in logs if (l.action or \"\").lower() == \"exit\")\n    ws[\"A4\"] = 'סה\"כ כניסות: {} | סה\"כ יציאות: {}'.format(entries, exits)\n",
+     "new": "    ws[\"A2\"].font = Font(bold=True, size=12)\n    ws[\"A3\"] = \"הופק: \" + datetime.now().strftime(\"%d.%m.%Y %H:%M\")\n    ws[\"A3\"].font = Font(italic=True, size=10, color=\"888888\")\n\n    entries = sum(1 for l in logs if norm_action(l.action) == \"entry\")\n    exits = sum(1 for l in logs if norm_action(l.action) == \"exit\")\n    ws[\"A4\"] = 'סה\"כ כניסות: {} | סה\"כ יציאות: {}'.format(entries, exits)\n"
+    },
+    {
+     "old": "    for log in logs:\n        ts = log.timestamp.strftime(\"%d/%m/%Y %H:%M:%S\") if log.timestamp else \"—\"\n        action = action_labels.get((log.action or \"\").lower(), log.action or \"—\")\n        ws.cell(row=r, column=1, value=ts)\n",
+     "new": "    for log in logs:\n        ts = log.timestamp.strftime(\"%d.%m.%Y %H:%M:%S\") if log.timestamp else \"—\"\n        action = action_label(log.action)\n        ws.cell(row=r, column=1, value=ts)\n"
+    },
+    {
+     "old": "\n    import io\n    buf = io.BytesIO()\n",
+     "new": "\n    buf = io.BytesIO()\n"
+    },
+    {
+     "old": "    ws[\"A1\"].font = _TITLE_FONT\n    ws[\"A2\"] = \"הופק בתאריך: \" + datetime.now().strftime(\"%d/%m/%Y %H:%M\")\n    ws[\"A2\"].font = Font(italic=True, size=10, color=\"888888\")\n\n    s = data[\"summary\"]\n    rows = [\n        (\"סך הכל מבקרים במערכת\", s[\"total_visitors\"]),\n",
+     "new": "    ws[\"A1\"].font = _TITLE_FONT\n    ws[\"A2\"] = \"הופק בתאריך: \" + datetime.now().strftime(\"%d.%m.%Y %H:%M\")\n    ws[\"A2\"].font = Font(italic=True, size=10, color=\"888888\")\n\n    def _dmy(iso):  # 2026-12-31 -> 31.12.2026\n        return iso[8:10] + \".\" + iso[5:7] + \".\" + iso[0:4]\n\n    s = data[\"summary\"]\n    rows = [\n        (\"תקופה\", \"{} - {}\".format(_dmy(data[\"period_start\"]), _dmy(data[\"period_end\"]))),\n        (\"סך הכל מבקרים במערכת\", s[\"total_visitors\"]),\n"
     },
     {
      "old": "        (\"יציאות היום\", s[\"exits_today\"]),\n    ]\n",
@@ -106,6 +135,31 @@
     {
      "old": "    )\n    e.project = _clean(payload.project, \"project\", required=True)\n",
      "new": "    )\n    _refuse_twin(\n        db,\n        _clean(payload.project, \"project\", required=True),\n        escort_id,\n        payload.location_text,\n        own_id=e.id,\n    )\n    e.project = _clean(payload.project, \"project\", required=True)\n"
+    }
+   ]
+  },
+  {
+   "path": "routes_reports.py",
+   "replace": [
+    {
+     "old": "\nfrom datetime import datetime\n\n",
+     "new": "\nimport re\nfrom datetime import datetime\nfrom urllib.parse import quote\n\n"
+    },
+    {
+     "old": "router = APIRouter(prefix=\"/reports\", tags=[\"reports\"])\n\n",
+     "new": "router = APIRouter(prefix=\"/reports\", tags=[\"reports\"])\n\n\ndef _attachment(filename: str) -> dict:\n    \"\"\"Content-Disposition that survives any visitor id (Hebrew letters, quotes, slashes).\n\n    HTTP headers carry latin-1 only, so the plain name is an ASCII fallback and the real\n    name goes in filename* (RFC 5987), which browsers use when present.\n    \"\"\"\n    ascii_name = re.sub(r\"[^A-Za-z0-9._-]+\", \"_\", filename) or \"report.xlsx\"\n    return {\n        \"Content-Disposition\": \"attachment; filename=\\\"{}\\\"; filename*=UTF-8''{}\".format(\n            ascii_name, quote(filename, safe=\"\")\n        )\n    }\n\n"
+    },
+    {
+     "old": "            \"spreadsheetml.sheet\"\n        ),\n        headers={\n            \"Content-Disposition\": 'attachment; filename=\"{}\"'.format(filename)\n        },\n    )\n\n",
+     "new": "            \"spreadsheetml.sheet\"\n        ),\n        headers=_attachment(filename),\n    )\n\n"
+    },
+    {
+     "old": "    )\n    labels = {\"entry\": \"כניסה\", \"exit\": \"יציאה\", \"creation\": \"יצירה\",\n              \"create\": \"יצירה\", \"update\": \"עדכון\", \"delete\": \"מחיקה\"}\n    history = [\n        {\n            \"timestamp\": l.timestamp.isoformat() if l.timestamp else None,\n            \"action\": (l.action or \"\").lower(),\n            \"action_label\": labels.get((l.action or \"\").lower(), l.action or \"—\"),\n        }\n        for l in logs\n    ]\n    entries = sum(1 for l in logs if (l.action or \"\").lower() == \"entry\")\n    exits = sum(1 for l in logs if (l.action or \"\").lower() == \"exit\")\n    return {\n",
+     "new": "    )\n    history = [\n        {\n            \"timestamp\": l.timestamp.isoformat() if l.timestamp else None,\n            \"action\": reports.norm_action(l.action),\n            \"action_label\": reports.action_label(l.action),\n        }\n        for l in logs\n    ]\n    entries = sum(1 for l in logs if reports.norm_action(l.action) == \"entry\")\n    exits = sum(1 for l in logs if reports.norm_action(l.action) == \"exit\")\n    return {\n"
+    },
+    {
+     "old": "        visitor_id, datetime.now().strftime(\"%Y%m%d_%H%M\")\n    )\n    return StreamingResponse(\n        iter([content]),\n        media_type=(\n            \"application/vnd.openxmlformats-officedocument.\"\n            \"spreadsheetml.sheet\"\n        ),\n        headers={\n            \"Content-Disposition\": 'attachment; filename=\"{}\"'.format(filename)\n        },\n    )\n",
+     "new": "        visitor_id, datetime.now().strftime(\"%Y%m%d_%H%M\")\n    )\n    return StreamingResponse(\n        iter([content]),\n        media_type=(\n            \"application/vnd.openxmlformats-officedocument.\"\n            \"spreadsheetml.sheet\"\n        ),\n        headers=_attachment(filename),\n    )\n"
     }
    ]
   },
