@@ -31,6 +31,13 @@ the permission column is what the role must hold (`or` = any one of them). `-` m
 | POST | `/auth/login` | - | routes_auth.py |  |
 | POST | `/auth/logout` | - | routes_auth.py |  |
 | GET | `/auth/me` | - | routes_auth.py |  |
+| GET | `/inviters` | `control.panel` or `reports.view` or `visitor.edit` or `visitor.view` | inviters.py |  |
+| POST | `/inviters` | - | inviters.py |  |
+| PUT | `/inviters/config` | - | inviters.py |  |
+| POST | `/inviters/migration/apply` | - | inviters.py |  |
+| GET | `/inviters/migration/preview` | - | inviters.py |  |
+| DELETE | `/inviters/{inviter_id}` | - | inviters.py |  |
+| PUT | `/inviters/{inviter_id}` | - | inviters.py |  |
 | PUT | `/locations/assignments` | - | routes_locations.py | Give a contractor an escort from the pool (or take it away). |
 | POST | `/locations/assignments/bulk` | - | routes_locations.py | Give one pool escort to every contractor of a project (by default: those inside now). |
 | GET | `/locations/contractors` | - | routes_locations.py | The contractors of one project (from the control panel) and the escort each one has. |
