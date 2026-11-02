@@ -54,11 +54,10 @@ the permission column is what the role must hold (`or` = any one of them). `-` m
 | GET | `/logs/{visitor_id}` | `logs.view` | routes.py |  |
 | POST | `/maintenance/duplicates/apply` | - | dedupe.py |  |
 | GET | `/maintenance/duplicates/preview` | `admin.settings` | dedupe.py |  |
-| POST | `/maintenance/duplicates/restore` | - | dedupe.py |  |
 | GET | `/reports/custom` | `reports.view` | custom_reports.py |  |
 | GET | `/reports/custom/export` | `reports.export` | custom_reports.py |  |
 | GET | `/reports/custom/options` | `reports.view` | custom_reports.py |  |
-| GET | `/reports/dashboard` | `reports.view` | routes_reports.py |  |
+| GET | `/reports/dashboard` | `reports.view` | routes_reports.py | The charts and cards. A date range and/or one project narrow every number on the page. |
 | GET | `/reports/export/excel` | `reports.export` | routes_reports.py |  |
 | GET | `/reports/visitor/{visitor_id}/export` | `reports.export` | routes_reports.py | Excel report of one visitor's entry/exit history. |
 | GET | `/reports/visitor/{visitor_id}/history` | `logs.view` | routes_reports.py | JSON entry/exit history for one visitor (for the on-screen view). |

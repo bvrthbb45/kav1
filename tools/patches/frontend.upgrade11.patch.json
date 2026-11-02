@@ -1,0 +1,75 @@
+{
+ "name": "Kav1 update: web pages (project, expiry and latest-entry additions, optional features)",
+ "files": [
+  {
+   "path": "admin/settings.html",
+   "replace": [
+    {
+     "old": "          כניסה אחרי כניסה (או יציאה אחרי יציאה) לאותו מבקר בתוך חלון הזמן, למשל לחיצה כפולה, נחשבת כפילות.\n          הכפילויות מוסתרות מהלוגים, מהסטטיסטיקה ומהדוחות. שום שורה לא נמחקת, ואפשר לבטל את הניקוי. לפני הניקוי נשמר גיבוי של המסד.\n        </p>\n",
+     "new": "          כניסה אחרי כניסה (או יציאה אחרי יציאה) לאותו מבקר בתוך חלון הזמן, למשל לחיצה כפולה, נחשבת כפילות.\n          הכפילויות נמחקות מהיומן (ומקובצי הלוג היומיים), כך שהן לא מופיעות בלוגים, בסטטיסטיקה ובדוחות. מבקרים לא נמחקים.\n          לפני המחיקה נשמר גיבוי מאומת של מסד הנתונים, ומי שרוצה לחזור אחורה משחזר ממנו. אפשר קודם לבדוק, בלי לשנות כלום.\n        </p>\n"
+    },
+    {
+     "old": "          <button class=\"btn\" @click=\"ddPreview()\">בדיקה (בלי לשנות)</button>\n          <button class=\"btn btn-primary\" @click=\"ddApply()\" :disabled=\"!dd.preview || !dd.preview.to_mark\">בצע ניקוי</button>\n          <button class=\"btn\" @click=\"ddRestore()\">בטל ניקוי קודם</button>\n        </div>\n        <template x-if=\"dd.preview\">\n          <div style=\"font-size:13px;\">\n            <p style=\"margin:0 0 6px;\">כפילויות לסימון: <b x-text=\"dd.preview.to_mark\"></b>\n              (כניסות <span x-text=\"dd.preview.by_action.entry || 0\"></span>, יציאות <span x-text=\"dd.preview.by_action.exit || 0\"></span>,\n              אחר <span x-text=\"(dd.preview.by_action.creation || 0) + (dd.preview.by_action.update || 0)\"></span>)\n              &nbsp;|&nbsp; כבר מוסתרות: <span x-text=\"dd.preview.already_marked\"></span>\n              &nbsp;|&nbsp; חשודות מעבר לחלון (לא נוגעים): <span x-text=\"dd.preview.suspicious_beyond_window\"></span></p>\n",
+     "new": "          <button class=\"btn\" @click=\"ddPreview()\">בדיקה (בלי לשנות)</button>\n          <button class=\"btn btn-danger\" @click=\"ddApply()\" :disabled=\"!dd.preview || (!dd.preview.to_delete && !dd.preview.already_marked && !dd.preview.text_log_lines)\">מחק כפילויות</button>\n        </div>\n        <template x-if=\"dd.preview\">\n          <div style=\"font-size:13px;\">\n            <p style=\"margin:0 0 6px;\">כפילויות למחיקה: <b x-text=\"dd.preview.to_delete\"></b>\n              (כניסות <span x-text=\"dd.preview.by_action.entry || 0\"></span>, יציאות <span x-text=\"dd.preview.by_action.exit || 0\"></span>,\n              אחר <span x-text=\"(dd.preview.by_action.creation || 0) + (dd.preview.by_action.update || 0)\"></span>)\n              &nbsp;|&nbsp; שורות בקובצי הלוג היומיים: <span x-text=\"dd.preview.text_log_lines\"></span>\n              &nbsp;|&nbsp; מסומנות מגרסה קודמת (יימחקו גם הן): <span x-text=\"dd.preview.already_marked\"></span>\n              &nbsp;|&nbsp; חשודות מעבר לחלון (לא נוגעים): <span x-text=\"dd.preview.suspicious_beyond_window\"></span></p>\n"
+    },
+    {
+     "old": "        async ddApply() {\n          if (!confirm(\"לסמן \" + this.dd.preview.to_mark + \" כפילויות? נשמר גיבוי, ואפשר לבטל.\")) return;\n          try {\n            const r = await Kav1.post(\"maintenance/duplicates/apply\", { window_seconds: this.dd.window ?? 120 });\n            this.dd.err = false; this.dd.msg = \"סומנו \" + r.marked + \" כפילויות\" + (r.backup ? \". גיבוי: \" + r.backup : \"\");\n            await this.ddPreview();\n          } catch (e) { this.dd.err = true; this.dd.msg = e.message; }\n        },\n        async ddRestore() {\n          if (!confirm(\"לבטל את כל הסימונים הקודמים? הכפילויות יחזרו להופיע.\")) return;\n          try { const r = await Kav1.post(\"maintenance/duplicates/restore\", {}); this.dd.err = false; this.dd.msg = \"הוחזרו \" + r.restored + \" שורות\"; await this.ddPreview(); }\n          catch (e) { this.dd.err = true; this.dd.msg = e.message; }\n        },\n",
+     "new": "        async ddApply() {\n          if (!confirm(\"למחוק \" + this.dd.preview.to_delete + \" כפילויות מהיומן? נשמר גיבוי מאומת לפני המחיקה.\")) return;\n          try {\n            const r = await Kav1.post(\"maintenance/duplicates/apply\", { window_seconds: this.dd.window ?? 120 });\n            this.dd.err = false; this.dd.msg = \"נמחקו \" + r.deleted + \" שורות מהיומן ו-\" + r.text_log_lines + \" שורות מקובצי הלוג\" + (r.backup ? \". גיבוי: \" + r.backup : \"\");\n            await this.ddPreview();\n          } catch (e) { this.dd.err = true; this.dd.msg = e.message; }\n        },\n"
+    }
+   ]
+  },
+  {
+   "path": "reports.html",
+   "replace": [
+    {
+     "old": "    @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }\n    .print-only { display: none; }\n",
+     "new": "    @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }\n    .page-head { flex-wrap: wrap; gap: 10px; }\n    .print-only { display: none; }\n"
+    },
+    {
+     "old": "      <div class=\"page-head\">\n        <h1>דוחות וסטטיסטיקות</h1>\n        <div class=\"row no-print\">\n          <label class=\"muted\" style=\"font-size:13px;\">תקופה</label>\n          <select x-model.number=\"days\" @change=\"load()\" style=\"width:120px;\">\n            <option value=\"1\">היום</option>\n",
+     "new": "      <div class=\"page-head\">\n        <h1 style=\"white-space:nowrap;\">דוחות וסטטיסטיקות</h1>\n        <div class=\"row no-print\" style=\"flex-wrap:wrap;\">\n          <label class=\"muted\" style=\"font-size:13px;\">פרויקט</label>\n          <select x-model=\"statProject\" x-effect=\"$nextTick(() => $el.value = statProject)\" @change=\"load()\" style=\"width:170px;\">\n            <option value=\"\">כל הפרויקטים</option>\n            <template x-for=\"p in crProjects\" :key=\"p.project\"><option :value=\"p.project\" x-text=\"p.project\"></option></template>\n          </select>\n          <label class=\"muted\" style=\"font-size:13px;\">תקופה</label>\n          <select x-model=\"periodSel\" x-effect=\"$nextTick(() => $el.value = periodSel)\" @change=\"onPeriod()\" style=\"width:130px;\">\n            <option value=\"1\">היום</option>\n"
+    },
+    {
+     "old": "            <option value=\"90\">90 ימים</option>\n          </select>\n          <button x-show=\"can('reports.export')\" class=\"btn\" @click=\"exportExcel()\">ייצוא Excel</button>\n",
+     "new": "            <option value=\"90\">90 ימים</option>\n            <option value=\"custom\">מתאריך עד תאריך</option>\n          </select>\n          <template x-if=\"periodSel === 'custom'\"><span class=\"row\">\n            <input type=\"text\" dir=\"ltr\" x-model=\"statFrom\" placeholder=\"יום.חודש.שנה\" maxlength=\"10\" style=\"width:120px;\" @keydown.enter=\"load()\">\n            <span class=\"muted\">עד</span>\n            <input type=\"text\" dir=\"ltr\" x-model=\"statTo\" placeholder=\"יום.חודש.שנה\" maxlength=\"10\" style=\"width:120px;\" @keydown.enter=\"load()\">\n            <button class=\"btn btn-sm btn-primary\" @click=\"load()\">החל</button>\n          </span></template>\n          <button x-show=\"can('reports.export')\" class=\"btn\" @click=\"exportExcel()\">ייצוא Excel</button>\n"
+    },
+    {
+     "old": "\n      <p class=\"muted print-only\" style=\"margin:0 0 12px;\" x-text=\"periodText()\"></p>\n",
+     "new": "\n      <p x-show=\"statMsg\" x-text=\"statMsg\" class=\"no-print\" style=\"color:var(--danger);font-size:13px;margin:-6px 0 10px;\"></p>\n      <p class=\"muted print-only\" style=\"margin:0 0 12px;\" x-text=\"periodText()\"></p>\n"
+    },
+    {
+     "old": "        <div class=\"chart-wrap\"><canvas id=\"hourlyChart\"></canvas></div>\n      </div>\n",
+     "new": "        <div class=\"chart-wrap\"><canvas id=\"hourlyChart\"></canvas></div>\n      </div>\n\n      <div class=\"chart-grid\" x-show=\"data\" style=\"margin-top:22px;\">\n        <div class=\"chart-card\">\n          <h3>כניסות ויציאות לפי פרויקט</h3>\n          <div class=\"chart-wrap\"><canvas id=\"projectChart\"></canvas></div>\n        </div>\n        <div class=\"chart-card\">\n          <h3>מצב תוקף של המבקרים</h3>\n          <div class=\"chart-wrap\"><canvas id=\"expiryChart\"></canvas></div>\n        </div>\n      </div>\n"
+    },
+    {
+     "old": "        charts: {}, printing: false, timer: null,\n        cr: { type: \"activity\", from: \"\", to: \"\", project: \"\", action: \"both\", field: \"all\", status: \"all\", warn: 30 },\n",
+     "new": "        charts: {}, printing: false, timer: null,\n        periodSel: \"7\", statProject: \"\", statFrom: \"\", statTo: \"\", statMsg: \"\",\n        cr: { type: \"activity\", from: \"\", to: \"\", project: \"\", action: \"both\", field: \"all\", status: \"all\", warn: 30 },\n"
+    },
+    {
+     "old": "          const when = this.data.period_days === 1 ? f(this.data.period_end) : f(this.data.period_start) + \" - \" + f(this.data.period_end);\n          return \"תקופה: \" + when + \"   |   הופק: \" + Kav1.fmtDateTime(this.data.generated_at);\n        },\n",
+     "new": "          const when = this.data.period_days === 1 ? f(this.data.period_end) : f(this.data.period_start) + \" - \" + f(this.data.period_end);\n          return \"תקופה: \" + when + \"   |   פרויקט: \" + (this.data.project || \"כל הפרויקטים\") + \"   |   הופק: \" + Kav1.fmtDateTime(this.data.generated_at);\n        },\n"
+    },
+    {
+     "old": "          if (!this.can(\"reports.view\")) { location.href = \"/index.html\"; return; }\n          await this.load();\n          this.crInit();\n          // keep the numbers fresh without a manual reload: every 30 s while the page is visible\n",
+     "new": "          if (!this.can(\"reports.view\")) { location.href = \"/index.html\"; return; }\n          await this.crInit();\n          await this.load();\n          // keep the numbers fresh without a manual reload: every 30 s while the page is visible\n"
+    },
+    {
+     "old": "\n        async load(quiet) {\n          try {\n            const days = this.days;\n            const data = await Kav1.get(\"reports/dashboard?days=\" + days);\n            if (days !== this.days) return;          // the period was changed meanwhile: drop the stale answer\n            this.data = data;\n",
+     "new": "\n        // the same parameters for the cards, the charts and the Excel export: period (days or from-to) + project\n        statQuery() {\n          const q = new URLSearchParams();\n          if (this.periodSel === \"custom\") {\n            const from = this.crIso(this.statFrom), to = this.crIso(this.statTo);\n            if (!from || !to) { this.statMsg = \"כתוב תאריך התחלה ותאריך סיום בפורמט יום.חודש.שנה, למשל 31.12.2026\"; return null; }\n            if (from > to) { this.statMsg = \"'מתאריך' מאוחר מ'עד תאריך'\"; return null; }\n            q.set(\"date_from\", from); q.set(\"date_to\", to);\n          } else {\n            q.set(\"days\", this.periodSel);\n          }\n          if (this.statProject) q.set(\"project\", this.statProject);\n          this.statMsg = \"\";\n          return q.toString();\n        },\n        onPeriod() {\n          if (this.periodSel !== \"custom\") { this.days = +this.periodSel; this.load(); return; }\n          if (!this.statFrom) {                      // a sensible start: the last 30 days\n            const to = new Date(), from = new Date(); from.setDate(from.getDate() - 29);\n            this.statFrom = this.crFmt(from); this.statTo = this.crFmt(to);\n          }\n          this.load();\n        },\n        async load(quiet) {\n          try {\n            const q = this.statQuery(); if (q === null) return;\n            const data = await Kav1.get(\"reports/dashboard?\" + q);\n            if (q !== this.statQuery()) return;      // the selection changed meanwhile: drop the stale answer\n            this.data = data;\n"
+    },
+    {
+     "old": "          const hourlyEl = document.getElementById(\"hourlyChart\");\n          if (!trendEl || !pieEl || !hourlyEl) return;\n          if (typeof Chart === \"undefined\") return;\n",
+     "new": "          const hourlyEl = document.getElementById(\"hourlyChart\");\n          const projectEl = document.getElementById(\"projectChart\");\n          const expiryEl = document.getElementById(\"expiryChart\");\n          if (!trendEl || !pieEl || !hourlyEl || !projectEl || !expiryEl) return;\n          if (typeof Chart === \"undefined\") return;\n"
+    },
+    {
+     "old": "          });\n          } catch (e) {\n",
+     "new": "          });\n\n          // Entries / exits per project\n          const bp = this.data.by_project;\n          this.charts.project = new Chart(projectEl, {\n            type: \"bar\",\n            data: {\n              labels: bp.labels,\n              datasets: [\n                { label: \"כניסות\", data: bp.entries, backgroundColor: \"#4caf7d\" },\n                { label: \"יציאות\", data: bp.exits, backgroundColor: \"#3a7bd5\" },\n                { label: \"מבקרים שונים\", data: bp.unique, backgroundColor: \"#d8a93a\" },\n              ],\n            },\n            options: baseOpts,\n          });\n\n          // Expiry status of the visitors (expired / expiring / valid / none)\n          const ex = this.data.expiry;\n          this.charts.expiry = new Chart(expiryEl, {\n            type: \"doughnut\",\n            data: {\n              labels: ex.labels,\n              datasets: [{\n                data: ex.counts,\n                backgroundColor: [\"#d35a5a\", \"#d8a93a\", \"#4caf7d\", \"#888\"],\n                borderColor: this.printing ? \"#fff\" : \"#2d2d2d\", borderWidth: 2,\n              }],\n            },\n            options: {\n              responsive: true, maintainAspectRatio: false,\n              animation: false,\n              plugins: { legend: { position: \"bottom\", labels: { color: textColor, font: { family: \"Segoe UI\" }, padding: 12 } } },\n            },\n          });\n          } catch (e) {\n"
+    },
+    {
+     "old": "          try {\n            const res = await fetch(\"/reports/export/excel?days=\" + this.days, {\n              credentials: \"same-origin\",\n",
+     "new": "          try {\n            const q = this.statQuery(); if (q === null) return;\n            const res = await fetch(\"/reports/export/excel?\" + q, {\n              credentials: \"same-origin\",\n"
+    }
+   ]
+  }
+ ]
+}
