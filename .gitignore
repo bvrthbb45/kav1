@@ -30,6 +30,22 @@ dist
 
 # version files
 version.txt
+# Warehouse server: keep requirements and tests despite the rules above
+!server/requirements*.txt
+!server/packaging/windows/README_HE.txt
+!server/tests/test_*.py
+.pytest_cache
+
+# Android / Gradle
+.gradle
+local.properties
+.idea
+*.iml
+.cxx
+captures
+.externalNativeBuild
+*.apk
+*.aab
 
 # graphify local cache / machine-specific state (knowledge-graph outputs themselves are committed)
 graphify-out/cache/

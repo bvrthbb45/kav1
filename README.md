@@ -20,6 +20,21 @@ It features a PySide6 desktop frontend and a FastAPI backend, connected through 
 
 Kav1 is ideal for environments where offline-capable, locally hosted visitor management is preferred over cloud-based tools.
 
+## Warehouse Inventory (offline-first)
+
+This repository also contains an offline-first warehouse inventory system:
+
+- `server/` — FastAPI + SQLite sync server (see [server/README.md](server/README.md)).
+- `app/` — Android app (Kotlin, XML views, Hebrew RTL UI, minSdk 19). Open the repository root in
+  Android Studio, or build with `./gradlew assembleDebug`. The server address is set by
+  `SERVER_BASE_URL` in `app/build.gradle.kts` (default `http://192.168.42.100:8000/`).
+
+The app stores every borrow/return in a local outbox (Room) first, so it works without a
+connection. Sync (manual button, 10 s after each action, and every 15 minutes via WorkManager)
+pushes the outbox, removes what the server accepted, then replaces the local items and users
+with the server's state. Actions the server rejects stay on the device with the reason and can be
+re-sent or deleted from the main screen.
+
 ## License
 
 This project is licensed under the [GNU General Public License (GPL)](https://www.gnu.org/licenses/gpl-3.0.html). You are free to use, modify, and distribute the project under the terms of this license.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="big_button_height">72dp</dimen>
+    <dimen name="big_button_text">22sp</dimen>
+    <dimen name="body_text">18sp</dimen>
+    <dimen name="gap">16dp</dimen>
+</resources>
