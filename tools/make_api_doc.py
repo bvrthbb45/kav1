@@ -2,7 +2,7 @@
 """Generates the API table (route, method, required permission) from the backend source files.
 
   python make_api_doc.py BACKEND_APP_DIR > API_ENDPOINTS.md
-Reads routes*.py (and routes_locations.py / visitor_extras.py / dedupe.py / custom_reports.py / inviters.py) as text: no imports, no database.
+Reads routes*.py (and routes_locations.py / visitor_extras.py / dedupe.py / custom_reports.py / inviters.py / deck_report.py) as text: no imports, no database.
 """
 
 import re
@@ -32,6 +32,7 @@ def main():
         + sorted(app.glob("dedupe.py"))
         + sorted(app.glob("custom_reports.py"))
         + sorted(app.glob("inviters.py"))
+        + sorted(app.glob("deck_report.py"))
     ):
         src = f.read_text(encoding="utf-8")
         m = re.search(r"APIRouter\(([^)]*)\)", src)
